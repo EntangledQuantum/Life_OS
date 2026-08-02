@@ -59,26 +59,13 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
     .where(eq(schema.scheduleBlocks.date, dateStr))
     .all();
 
-  /** Continuous 0→24h coverage — gaps filled with Free so bar has no black vacuum */
-  const rawSegs = blocks
-    .map((b) => {
-      let start = hourFromTime(b.plannedStart) ?? 0;
-      let end = hourFromTime(b.plannedEnd) ?? start + 1;
-      // overnight segment: e.g. 00:00–02:00 is fine; 22–02 becomes 22–26 then split later
-      if (end <= start) end += 24;
-      return {
-        id: b.id,
-        category: b.category,
-        label: b.label,
-        start,
-        end,
-        color: CATEGORY_COLORS[b.category] ?? "#5B8CFF",
-        status: b.status ?? "planned",
-      };
-    })
-    .sort((a, b) => a.start - b.start);
-
-  // Flatten into [0, 24] continuous pieces
+  /**
+   * Continuous solid color strip for the full 0–24h day.
+   * - Keep each block’s category color (do NOT merge categories).
+   * - Clip overlaps.
+   * - Close gaps by extending each segment to the next start (no black Free holes).
+   * - Pin first.start=0 and last.end=24.
+   */
   type Seg = {
     id: string;
     category: string;
@@ -88,62 +75,76 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
     color: string;
     status: string;
   };
-  const timeline: Seg[] = [];
-  let cursor = 0;
-  const FREE = {
-    category: "Free",
-    /** Soft slate — fills schedule gaps so the bar never shows black vacuum */
-    color: "#2a2f3a",
-    status: "planned",
-  };
 
-  for (const s of rawSegs) {
-    const start = Math.max(0, Math.min(24, s.start));
-    const end = Math.max(start, Math.min(24, s.end > 24 ? 24 : s.end));
-    if (start > cursor + 0.001) {
-      timeline.push({
-        id: `free-${cursor}`,
-        category: FREE.category,
-        label: "Open",
-        startHour: cursor,
-        endHour: start,
-        color: FREE.color,
-        status: FREE.status,
-      });
-    }
-    if (end > start) {
-      timeline.push({
-        id: s.id,
-        category: s.category,
-        label: s.label,
-        startHour: start,
-        endHour: end,
-        color: s.color,
-        status: s.status,
-      });
-      cursor = Math.max(cursor, end);
-    }
-    // overnight tail past 24 was clipped; handle start>=24 skip
-  }
-  // any block starting after 24 from overnight expand: second pass for end>24
-  for (const s of rawSegs) {
-    if (s.end > 24) {
-      const tailEnd = Math.min(24, s.end - 24);
-      // overnight morning already covered if seed has sleep 02-11
-      void tailEnd;
+  const segs = blocks
+    .map((b) => {
+      let start = hourFromTime(b.plannedStart) ?? 0;
+      let end = hourFromTime(b.plannedEnd) ?? start + 1;
+      if (end <= start) end += 24;
+      start = Math.max(0, Math.min(24, start));
+      end = Math.max(start, Math.min(24, end > 24 ? 24 : end));
+      return {
+        id: b.id,
+        category: b.category,
+        label: b.label,
+        start,
+        end,
+        color: CATEGORY_COLORS[b.category] ?? "#5B8CFF",
+        status: (b.status as string) ?? "planned",
+      };
+    })
+    .filter((s) => s.end > s.start + 1e-6)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  // Resolve overlaps: later block starts at earlier end
+  for (let i = 1; i < segs.length; i++) {
+    if (segs[i]!.start < segs[i - 1]!.end) {
+      segs[i]!.start = segs[i - 1]!.end;
     }
   }
-  if (cursor < 24 - 0.001) {
-    timeline.push({
-      id: `free-end`,
-      category: FREE.category,
-      label: "Open",
-      startHour: cursor,
-      endHour: 24,
-      color: FREE.color,
-      status: FREE.status,
-    });
+  const cleaned = segs.filter((s) => s.end > s.start + 1e-6);
+
+  // Close gaps + pin day ends — neighbors share a boundary (solid ribbon)
+  if (cleaned.length > 0) {
+    cleaned[0]!.start = 0;
+    for (let i = 0; i < cleaned.length - 1; i++) {
+      cleaned[i]!.end = cleaned[i + 1]!.start;
+    }
+    cleaned[cleaned.length - 1]!.end = 24;
   }
+
+  let timeline: Seg[] =
+    cleaned.length > 0
+      ? cleaned.map((s) => ({
+          id: s.id,
+          category: s.category,
+          label: s.label,
+          startHour: s.start,
+          endHour: s.end,
+          color: s.color,
+          status: s.status,
+        }))
+      : [
+          {
+            id: "empty-day",
+            category: "Life",
+            label: "Unscheduled",
+            startHour: 0,
+            endHour: 24,
+            color: CATEGORY_COLORS.Life ?? "#5B8CFF",
+            status: "planned",
+          },
+        ];
+
+  // Enforce chain: each start === previous end (kill any float holes)
+  for (let i = 1; i < timeline.length; i++) {
+    timeline[i]!.startHour = timeline[i - 1]!.endHour;
+  }
+  if (timeline.length) {
+    timeline[0]!.startHour = 0;
+    timeline[timeline.length - 1]!.endHour = 24;
+  }
+  timeline = timeline.filter((s) => s.endHour > s.startHour + 1e-6);
 
   const active = db.select().from(schema.activeSessions).limit(1).get();
   const agentEvents = listAgentEvents(db);

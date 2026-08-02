@@ -177,8 +177,16 @@ export function OverviewPage() {
     },
   ];
 
-  // Continuous flex segments (sorted by start, no gaps in layout)
-  const segs = [...data.timeline].sort((a, b) => a.startHour - b.startHour);
+  // Solid bar: absolute % widths from continuous 0–24 segments (no Free holes)
+  const segs = [...data.timeline]
+    .map((b) => {
+      const start = Math.max(0, Math.min(24, Number(b.startHour) || 0));
+      let end = Math.max(0, Math.min(24, Number(b.endHour) || 0));
+      if (end < start) end = start;
+      return { ...b, startHour: start, endHour: end };
+    })
+    .filter((b) => b.endHour > b.startHour)
+    .sort((a, b) => a.startHour - b.startHour);
 
   return (
     <motion.div
@@ -300,7 +308,7 @@ export function OverviewPage() {
         </div>
       </section>
 
-      {/* Continuous timeline — flex fill, no black gaps */}
+      {/* Solid 24h ribbon: neighbors share edges — zero black Free gaps */}
       <section>
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <SectionLabel className="mb-0">Day timeline</SectionLabel>
@@ -321,27 +329,27 @@ export function OverviewPage() {
             ))}
           </div>
         </div>
-        <div className="relative h-3 w-full overflow-hidden rounded-full">
-          <div className="absolute inset-0 flex">
-            {segs.map((b, i) => {
-              const w = Math.max(0, b.endHour - b.startHour);
-              if (w <= 0) return null;
-              return (
-                <div
-                  key={`${b.id}-${i}`}
-                  title={`${b.label} · ${b.startHour.toFixed(1)}–${b.endHour.toFixed(1)}h`}
-                  className="h-full min-w-0"
-                  style={{
-                    flex: `${w} 0 0%`,
-                    background: b.color,
-                    opacity: b.status === "done" ? 0.45 : 1,
-                  }}
-                />
-              );
-            })}
-          </div>
+        <div className="relative h-3.5 w-full overflow-hidden rounded-full bg-transparent">
+          {segs.map((b, i) => {
+            const left = (b.startHour / 24) * 100;
+            const width = ((b.endHour - b.startHour) / 24) * 100;
+            // overdraw 0.2px to kill subpixel seams
+            return (
+              <div
+                key={`${b.id}-${i}`}
+                title={`${b.label} · ${b.category}`}
+                className="absolute top-0 bottom-0"
+                style={{
+                  left: `${left}%`,
+                  width: `calc(${width}% + 0.2px)`,
+                  backgroundColor: b.color,
+                  opacity: b.status === "done" ? 0.55 : 1,
+                }}
+              />
+            );
+          })}
           <div
-            className="pointer-events-none absolute inset-y-[-2px] z-10 w-0.5 bg-white"
+            className="pointer-events-none absolute top-[-2px] bottom-[-2px] z-10 w-0.5 bg-white"
             style={{ left: `${(hourFrac / 24) * 100}%` }}
             title="Now"
           />
