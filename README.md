@@ -141,7 +141,9 @@ data/              Local SQLite file (gitignored)
 
 ## Spec & design
 
+- **Handoff log (read first for agents):** [`docs/development_log.md`](docs/development_log.md)
 - Full product rules: [`docs/LIFE_OS.md`](docs/LIFE_OS.md)
+- Agent skill: [`docs/skills/life-os/SKILL.md`](docs/skills/life-os/SKILL.md)
 - Design handoff (inspiration only): [`docs/design_handoff_lifeos_dashboard/`](docs/design_handoff_lifeos_dashboard/)
 - Brand icon: [`docs/icon.png`](docs/icon.png)
 
