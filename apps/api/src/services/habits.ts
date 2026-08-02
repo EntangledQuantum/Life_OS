@@ -5,6 +5,7 @@ import * as schema from "@life-os/db";
 import {
   HABIT_COLOR_PALETTE,
   awardXpForHabit,
+  redistributeDailyXp,
   type HabitGraphic,
 } from "@life-os/shared";
 import {
@@ -20,6 +21,30 @@ import {
 import { maybeUnlockAchievements } from "./achievements.js";
 import { refreshTodaySnapshot } from "./snapshots.js";
 import { bumpQuestProgress } from "./quests.js";
+import { fireAgentWebhook } from "./webhook.js";
+
+/** Rebalance baseXp across active habits from fixed dailyXpTarget pool. */
+export function rebalanceHabitXp(db: LifeOsDb) {
+  const config = loadGamificationConfig(db);
+  const rows = db
+    .select()
+    .from(schema.habits)
+    .where(and(eq(schema.habits.active, true), isNull(schema.habits.deletedAt)))
+    .all()
+    .map((h) => ({
+      id: h.id,
+      xpWeight: (h as { xpWeight?: number }).xpWeight ?? 1,
+      active: true as boolean,
+    }));
+  const shares = redistributeDailyXp(rows, config.dailyXpTarget);
+  for (const [id, baseXp] of shares) {
+    db.update(schema.habits)
+      .set({ baseXp, updatedAt: nowIso() })
+      .where(eq(schema.habits.id, id))
+      .run();
+  }
+  return Object.fromEntries(shares);
+}
 
 export function listHabits(db: LifeOsDb) {
   const rows = db
@@ -72,6 +97,9 @@ export function createHabit(
     linkedGoalId?: string | null;
     isTiny?: boolean;
     baseXp?: number;
+    extraXp?: number;
+    xpWeight?: number;
+    redistribute?: boolean;
     notes?: string | null;
     themeColor?: string;
     themeGraphic?: HabitGraphic;
@@ -100,6 +128,8 @@ export function createHabit(
       linkedGoalId: input.linkedGoalId ?? null,
       isTiny: input.isTiny ?? true,
       baseXp: input.baseXp ?? 15,
+      extraXp: input.extraXp ?? 0,
+      xpWeight: input.xpWeight ?? 1,
       active: true,
       notes: input.notes ?? null,
       themeColor: color,
@@ -110,6 +140,10 @@ export function createHabit(
       deletedAt: null,
     })
     .run();
+
+  if (input.redistribute !== false) {
+    rebalanceHabitXp(db);
+  }
   return getHabit(db, id)!;
 }
 
@@ -126,6 +160,9 @@ export function updateHabit(
     linkedGoalId: string | null;
     isTiny: boolean;
     baseXp: number;
+    extraXp: number;
+    xpWeight: number;
+    redistribute: boolean;
     notes: string | null;
     themeColor: string;
     themeGraphic: HabitGraphic;
@@ -135,13 +172,19 @@ export function updateHabit(
 ) {
   const existing = db.select().from(schema.habits).where(eq(schema.habits.id, id)).get();
   if (!existing || existing.deletedAt) return null;
+  const { redistribute, ...rest } = input;
   db.update(schema.habits)
     .set({
-      ...input,
+      ...rest,
       updatedAt: nowIso(),
     })
     .where(eq(schema.habits.id, id))
     .run();
+  if (redistribute !== false && (input.xpWeight !== undefined || input.active !== undefined || input.extraXp !== undefined)) {
+    rebalanceHabitXp(db);
+  } else if (redistribute === true) {
+    rebalanceHabitXp(db);
+  }
   return getHabit(db, id);
 }
 
@@ -152,6 +195,7 @@ export function deleteHabit(db: LifeOsDb, id: string) {
     .set({ deletedAt: nowIso(), active: false, updatedAt: nowIso() })
     .where(eq(schema.habits.id, id))
     .run();
+  rebalanceHabitXp(db);
   return true;
 }
 
@@ -169,8 +213,10 @@ export function completeHabit(
   }
 
   const config = loadGamificationConfig(db);
+  const extraXp = (habit as { extraXp?: number }).extraXp ?? 0;
   const xp = awardXpForHabit({
     baseXp: habit.baseXp,
+    extraXp,
     isTiny: habit.isTiny,
     config,
   });
@@ -204,6 +250,16 @@ export function completeHabit(
 
   bumpQuestProgress(db, 1);
   refreshTodaySnapshot(db);
+
+  // Notify agent (async fire-and-forget)
+  void fireAgentWebhook(db, "habit.complete", {
+    habit: after,
+    logId,
+    xpAwarded: xp,
+    extraXp,
+    source: opts.source ?? "user",
+    note: opts.note ?? null,
+  });
 
   return {
     habit: after,

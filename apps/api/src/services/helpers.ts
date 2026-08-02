@@ -35,6 +35,7 @@ export function getLocalDayBounds(db: LifeOsDb, date = new Date()) {
 }
 
 export function mapHabit(row: typeof schema.habits.$inferSelect) {
+  const r = row as typeof row & { extraXp?: number; xpWeight?: number };
   return {
     id: row.id,
     name: row.name,
@@ -46,6 +47,8 @@ export function mapHabit(row: typeof schema.habits.$inferSelect) {
     linkedGoalId: row.linkedGoalId,
     isTiny: row.isTiny,
     baseXp: row.baseXp,
+    extraXp: r.extraXp ?? 0,
+    xpWeight: r.xpWeight ?? 1,
     active: row.active,
     notes: row.notes,
     themeColor: row.themeColor,

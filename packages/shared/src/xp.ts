@@ -9,14 +9,46 @@ export const DEFAULT_GAMIFICATION_CONFIG: GamificationConfig = {
     tinyHabit: 1.1,
     fullBlock: 1.25,
   },
-  /** Hermes-editable daily XP target for nurture visuals (water/plant full = 100%) */
+  /**
+   * Fixed daily XP pool for habit completions (agent-editable).
+   * Adding a habit does NOT increase this — base XP is redistributed by weight.
+   */
   dailyXpTarget: 200,
-  /** Nurture visual style for Improvement Pulse card */
+  /** Nurture visual: plant | water */
   nurtureStyle: "plant",
 };
 
+/**
+ * Redistribute daily pool across active habits by weight.
+ * extraXp is NOT taken from the pool — it's awarded on top of baseXp.
+ * Returns map habitId → baseXp share (sums ≈ dailyXpTarget).
+ */
+export function redistributeDailyXp(habits: {
+  id: string;
+  xpWeight?: number;
+  active?: boolean;
+}[], dailyXpTarget: number): Map<string, number> {
+  const active = habits.filter((h) => h.active !== false);
+  const out = new Map<string, number>();
+  if (active.length === 0 || dailyXpTarget <= 0) return out;
+
+  const weights = active.map((h) => Math.max(1, h.xpWeight ?? 1));
+  const totalW = weights.reduce((a, b) => a + b, 0);
+  let assigned = 0;
+  active.forEach((h, i) => {
+    const isLast = i === active.length - 1;
+    const share = isLast
+      ? Math.max(1, dailyXpTarget - assigned)
+      : Math.max(1, Math.floor((dailyXpTarget * weights[i]!) / totalW));
+    out.set(h.id, share);
+    assigned += share;
+  });
+  return out;
+}
+
 export function awardXpForHabit(opts: {
   baseXp: number;
+  extraXp?: number;
   isTiny: boolean;
   config?: GamificationConfig;
   fullBlock?: boolean;
@@ -25,6 +57,7 @@ export function awardXpForHabit(opts: {
   let xp = opts.baseXp;
   if (opts.isTiny) xp = Math.round(xp * config.baseMultipliers.tinyHabit);
   if (opts.fullBlock) xp = Math.round(xp * config.baseMultipliers.fullBlock);
+  xp += Math.max(0, opts.extraXp ?? 0);
   return Math.max(1, xp);
 }
 

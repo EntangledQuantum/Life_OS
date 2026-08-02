@@ -21,7 +21,12 @@ export const createHabitSchema = z.object({
   anchor: z.string().nullable().optional(),
   linkedGoalId: z.string().nullable().optional(),
   isTiny: z.boolean().default(true),
-  baseXp: z.number().int().min(1).max(500).default(15),
+  /** Ignored on create if redistribute is true — pool assigns baseXp */
+  baseXp: z.number().int().min(0).max(500).optional(),
+  extraXp: z.number().int().min(0).max(500).default(0),
+  xpWeight: z.number().int().min(1).max(100).default(1),
+  /** Default true: rebalance daily pool across all active habits */
+  redistribute: z.boolean().default(true),
   notes: z.string().nullable().optional(),
   themeColor: z.string().optional(),
   themeGraphic: z.enum(HABIT_GRAPHICS).optional(),
@@ -29,6 +34,32 @@ export const createHabitSchema = z.object({
 });
 
 export const updateHabitSchema = createHabitSchema.partial();
+
+export const createDashboardCardSchema = z.object({
+  slot: z.union([z.literal(0), z.literal(1)]).optional(),
+  title: z.string().min(1).max(200),
+  subtitle: z.string().max(300).nullable().optional(),
+  body: z.string().max(4000).nullable().optional(),
+  emoji: z.string().max(16).nullable().optional(),
+  themeColor: z.string().nullable().optional(),
+  imageUrl: z.string().max(2000).nullable().optional(),
+  imageData: z.string().max(2_000_000).nullable().optional(),
+  status: z.enum(["active", "done", "hidden"]).default("active"),
+  progress: z.number().int().min(0).max(100).default(0),
+  ctaLabel: z.string().max(80).nullable().optional(),
+  ctaLink: z.string().nullable().optional(),
+  meta: z.record(z.unknown()).nullable().optional(),
+  xpOnComplete: z.number().int().min(0).max(500).default(0),
+  webhookOnComplete: z.boolean().default(true),
+});
+
+export const updateDashboardCardSchema = createDashboardCardSchema.partial();
+
+export const completeCardSchema = z.object({
+  note: z.string().nullable().optional(),
+  source: z.enum(["user", "agent"]).default("user"),
+  progress: z.number().int().min(0).max(100).optional(),
+});
 
 export const completeHabitSchema = z.object({
   note: z.string().nullable().optional(),
@@ -146,6 +177,8 @@ export const updateSettingsSchema = z.object({
   storageMode: z.enum(["local", "supabase"]).optional(),
   supabaseUrl: z.string().nullable().optional(),
   supabaseKey: z.string().nullable().optional(),
+  agentWebhookUrl: z.string().url().nullable().optional().or(z.literal("")),
+  agentWebhookSecret: z.string().nullable().optional(),
 });
 
 export const updateGamificationConfigSchema = z.object({

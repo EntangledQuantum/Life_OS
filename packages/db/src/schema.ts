@@ -11,6 +11,10 @@ export const habits = sqliteTable("habits", {
   linkedGoalId: text("linked_goal_id"),
   isTiny: integer("is_tiny", { mode: "boolean" }).notNull().default(true),
   baseXp: integer("base_xp").notNull().default(15),
+  /** Bonus XP outside the daily redistributed pool (agent-settable) */
+  extraXp: integer("extra_xp").notNull().default(0),
+  /** Relative weight for daily XP pool redistribution (default 1) */
+  xpWeight: integer("xp_weight").notNull().default(1),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   notes: text("notes"),
   themeColor: text("theme_color").notNull().default("#5B8CFF"),
@@ -19,6 +23,36 @@ export const habits = sqliteTable("habits", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   deletedAt: text("deleted_at"),
+});
+
+/**
+ * Agent-owned front-page cards (max 2 slots: 0 and 1).
+ * Free-form content + optional image + complete → webhook to agent.
+ */
+export const dashboardCards = sqliteTable("dashboard_cards", {
+  id: text("id").primaryKey(),
+  slot: integer("slot").notNull(), // 0 or 1
+  title: text("title").notNull(),
+  subtitle: text("subtitle"),
+  body: text("body"),
+  emoji: text("emoji").default("📌"),
+  themeColor: text("theme_color").default("#5B8CFF"),
+  imageUrl: text("image_url"),
+  /** data:image/...;base64,... optional small inline image */
+  imageData: text("image_data"),
+  status: text("status").notNull().default("active"), // active | done | hidden
+  progress: integer("progress").default(0), // 0-100
+  ctaLabel: text("cta_label"),
+  ctaLink: text("cta_link"),
+  /** Freeform JSON for agent state (book slug, chapter, etc.) */
+  metaJson: text("meta_json"),
+  xpOnComplete: integer("xp_on_complete").notNull().default(0),
+  webhookOnComplete: integer("webhook_on_complete", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  completedAt: text("completed_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 export const habitLogs = sqliteTable("habit_logs", {
@@ -204,6 +238,9 @@ export const settings = sqliteTable("settings", {
   storageMode: text("storage_mode").notNull().default("local"),
   supabaseUrl: text("supabase_url"),
   supabaseKey: text("supabase_key"),
+  /** Agent webhook URL for card/habit complete triggers */
+  agentWebhookUrl: text("agent_webhook_url"),
+  agentWebhookSecret: text("agent_webhook_secret"),
   updatedAt: text("updated_at").notNull(),
 });
 

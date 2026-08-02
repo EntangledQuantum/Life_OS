@@ -12,6 +12,7 @@ import {
   loadGamificationConfig,
   nowIso,
 } from "./helpers.js";
+import { rebalanceHabitXp } from "./habits.js";
 
 export function getSettings(db: LifeOsDb): AppSettings {
   const row = getSettingsRow(db) as typeof schema.settings.$inferSelect & {
@@ -35,6 +36,10 @@ export function getSettings(db: LifeOsDb): AppSettings {
     storageMode: row.storageMode as "local" | "supabase",
     supabaseUrl: row.supabaseUrl,
     supabaseKeySet: Boolean(row.supabaseKey),
+    agentWebhookUrl: (row as { agentWebhookUrl?: string | null }).agentWebhookUrl ?? null,
+    agentWebhookSecretSet: Boolean(
+      (row as { agentWebhookSecret?: string | null }).agentWebhookSecret,
+    ),
   };
 }
 
@@ -58,14 +63,22 @@ export function updateSettings(
     storageMode: "local" | "supabase";
     supabaseUrl: string | null;
     supabaseKey: string | null;
+    agentWebhookUrl: string | null;
+    agentWebhookSecret: string | null;
   }>,
 ) {
   const row = getSettingsRow(db);
-  const { supabaseKey, ...rest } = input;
+  const { supabaseKey, agentWebhookUrl, agentWebhookSecret, ...rest } = input;
   db.update(schema.settings)
     .set({
       ...rest,
       ...(supabaseKey !== undefined ? { supabaseKey } : {}),
+      ...(agentWebhookUrl !== undefined
+        ? { agentWebhookUrl: agentWebhookUrl === "" ? null : agentWebhookUrl }
+        : {}),
+      ...(agentWebhookSecret !== undefined
+        ? { agentWebhookSecret: agentWebhookSecret || null }
+        : {}),
       updatedAt: nowIso(),
     })
     .where(eq(schema.settings.id, row.id))
@@ -105,6 +118,9 @@ export function updateGamificationConfig(
         updatedAt: nowIso(),
       })
       .run();
+  }
+  if (patch.dailyXpTarget !== undefined) {
+    rebalanceHabitXp(db);
   }
   return next;
 }

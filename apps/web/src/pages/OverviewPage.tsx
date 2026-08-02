@@ -15,6 +15,7 @@ import { celebrate } from "@/lib/celebrate";
 import { useUiStore } from "@/lib/store";
 import { cn, formatDelta, formatElapsed } from "@/lib/utils";
 import { NurtureVisual } from "@/components/graphics/NurtureVisual";
+import { AgentCard } from "@/components/AgentCard";
 import { toast } from "sonner";
 import { motion } from "motion/react";
 import { Check, ExternalLink, Undo2, X } from "lucide-react";
@@ -88,6 +89,31 @@ export function OverviewPage() {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Review complete");
     },
+  });
+
+  const completeCard = useMutation({
+    mutationFn: (id: string) =>
+      fetch((import.meta.env.VITE_API_URL ?? "") + `/api/v1/cards/${id}/complete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
+        },
+        body: JSON.stringify({ source: "user" }),
+      }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Failed");
+        return r.json();
+      }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      celebrate(intensity, "complete");
+      toast.success(
+        res.xpAwarded
+          ? `Card done · +${res.xpAwarded} XP`
+          : "Card complete · agent notified if webhook set",
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const setNurture = useMutation({
@@ -283,6 +309,25 @@ export function OverviewPage() {
           ))}
         </div>
       </section>
+
+      {(data.cards?.length ?? 0) > 0 && (
+        <section>
+          <SectionLabel>Agent cards</SectionLabel>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {[...data.cards]
+              .sort((a, b) => a.slot - b.slot)
+              .slice(0, 2)
+              .map((card) => (
+                <AgentCard
+                  key={card.id}
+                  card={card}
+                  busy={completeCard.isPending}
+                  onComplete={() => completeCard.mutate(card.id)}
+                />
+              ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <SectionLabel>Right now</SectionLabel>

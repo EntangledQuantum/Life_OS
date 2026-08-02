@@ -30,5 +30,11 @@ Auth: `Authorization: Bearer <session-or-API_TOKEN>` on all `/api/v1/*` except l
 | GET/POST | `/api/v1/achievements` | Achievements |
 | GET/PATCH | `/api/v1/settings` | Settings |
 | GET/PATCH | `/api/v1/gamification/config` | XP rules |
+| GET/POST | `/api/v1/cards` | List / create dashboard cards (max 2) |
+| GET/PATCH/DELETE | `/api/v1/cards/:id` | Read / update / delete card |
+| POST | `/api/v1/cards/:id/complete` | User complete → XP + webhook |
+| POST | `/api/v1/habits/rebalance-xp` | Redistribute daily XP pool |
 | GET | `/api/v1/export/json` | Full export |
 | GET | `/api/v1/agent/capabilities` | Capability list |
+
+Agent skill: [`docs/skills/life-os/SKILL.md`](skills/life-os/SKILL.md)

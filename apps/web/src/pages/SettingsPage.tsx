@@ -272,6 +272,40 @@ export function SettingsPage() {
         )}
       </section>
 
+      <section className="card space-y-4 p-5">
+        <h2 className="font-semibold">Agent webhook</h2>
+        <p className="text-sm text-[var(--muted)]">
+          When the user completes a card or habit, Life OS POSTs JSON to this URL
+          (Hermes / OpenClaw endpoint). Optional secret header{" "}
+          <code className="font-mono text-xs">X-LifeOS-Secret</code>.
+        </p>
+        <div>
+          <label className="label">Webhook URL</label>
+          <input
+            className="input"
+            placeholder="https://…/hooks/lifeos"
+            defaultValue={settings.agentWebhookUrl ?? ""}
+            onBlur={(e) =>
+              patch({ agentWebhookUrl: e.target.value.trim() || null })
+            }
+          />
+        </div>
+        <div>
+          <label className="label">
+            Secret {settings.agentWebhookSecretSet ? "(set)" : "(optional)"}
+          </label>
+          <input
+            className="input"
+            type="password"
+            placeholder="shared secret"
+            onBlur={(e) => {
+              if (e.target.value)
+                patch({ agentWebhookSecret: e.target.value });
+            }}
+          />
+        </div>
+      </section>
+
       <section className="card space-y-3 p-5">
         <h2 className="font-semibold">Data & agents</h2>
         <button type="button" className="btn" onClick={exportData}>
@@ -280,9 +314,9 @@ export function SettingsPage() {
         <div className="rounded-xl border border-[var(--border)] bg-black/20 p-3 font-mono text-xs text-[var(--muted)]">
           API http://127.0.0.1:8787 · MCP: pnpm mcp
           <br />
-          Agent owns habits, study blocks, daily XP target, events.
+          Skill: docs/skills/life-os/SKILL.md
           <br />
-          No levels — only efficiency % and improvement %.
+          Cards max 2 · habits rebalance daily XP · no levels
         </div>
       </section>
     </motion.div>

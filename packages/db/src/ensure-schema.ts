@@ -27,6 +27,10 @@ export function ensureSchema(dbPath?: string) {
 
   const alters: [string, string, string][] = [
     ["settings", "day_reset_time", "TEXT NOT NULL DEFAULT '04:00'"],
+    ["settings", "agent_webhook_url", "TEXT"],
+    ["settings", "agent_webhook_secret", "TEXT"],
+    ["habits", "extra_xp", "INTEGER NOT NULL DEFAULT 0"],
+    ["habits", "xp_weight", "INTEGER NOT NULL DEFAULT 1"],
     ["schedule_blocks", "status", "TEXT NOT NULL DEFAULT 'planned'"],
     ["schedule_blocks", "source", "TEXT NOT NULL DEFAULT 'agent'"],
     ["schedule_blocks", "notes", "TEXT"],
@@ -59,6 +63,32 @@ export function ensureSchema(dbPath?: string) {
         priority INTEGER NOT NULL DEFAULT 0,
         completed_at TEXT,
         created_at TEXT NOT NULL
+      );
+    `);
+  }
+
+  if (!hasTable(db, "dashboard_cards")) {
+    db.exec(`
+      CREATE TABLE dashboard_cards (
+        id TEXT PRIMARY KEY,
+        slot INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT,
+        body TEXT,
+        emoji TEXT DEFAULT '📌',
+        theme_color TEXT DEFAULT '#5B8CFF',
+        image_url TEXT,
+        image_data TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        progress INTEGER DEFAULT 0,
+        cta_label TEXT,
+        cta_link TEXT,
+        meta_json TEXT,
+        xp_on_complete INTEGER NOT NULL DEFAULT 0,
+        webhook_on_complete INTEGER NOT NULL DEFAULT 1,
+        completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       );
     `);
   }

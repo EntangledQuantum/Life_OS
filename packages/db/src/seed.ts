@@ -4,6 +4,7 @@ import {
   DEFAULT_ACHIEVEMENTS,
   DEFAULT_GAMIFICATION_CONFIG,
   DEFAULT_SEED_HABITS,
+  redistributeDailyXp,
 } from "@life-os/shared";
 import { createDb, resolveDbPath } from "./client.js";
 import { ensureSchema } from "./ensure-schema.js";
@@ -257,6 +258,53 @@ if (questCount === 0) {
       forDate: dateStr,
       completedAt: null,
       createdAt: now,
+    })
+    .run();
+}
+
+// Rebalance habit XP from daily pool (new habits don't raise the ceiling)
+{
+  const active = db
+    .select()
+    .from(schema.habits)
+    .all()
+    .filter((h) => h.active && !h.deletedAt);
+  const shares = redistributeDailyXp(
+    active.map((h) => ({ id: h.id, xpWeight: 1, active: true })),
+    DEFAULT_GAMIFICATION_CONFIG.dailyXpTarget,
+  );
+  for (const [id, baseXp] of shares) {
+    db.update(schema.habits)
+      .set({ baseXp, extraXp: 0, xpWeight: 1 })
+      .where(eq(schema.habits.id, id))
+      .run();
+  }
+}
+
+// Sample agent card (slot 0) if none
+const cardCount = db.select().from(schema.dashboardCards).all().length;
+if (cardCount === 0) {
+  db.insert(schema.dashboardCards)
+    .values({
+      id: nanoid(),
+      slot: 0,
+      title: "Currently reading",
+      subtitle: "Agent can update this anytime",
+      body: "Set book title, chapter, and mark done when finished. Completing fires your agent webhook if configured.",
+      emoji: "📖",
+      themeColor: "#A78BFA",
+      imageUrl: null,
+      imageData: null,
+      status: "active",
+      progress: 20,
+      ctaLabel: "Mark chapter done",
+      ctaLink: null,
+      metaJson: JSON.stringify({ type: "reading", book: null, chapter: 1 }),
+      xpOnComplete: 25,
+      webhookOnComplete: true,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now,
     })
     .run();
 }

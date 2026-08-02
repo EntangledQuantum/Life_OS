@@ -20,6 +20,7 @@ import { listAchievements } from "./achievements.js";
 import { listLightReviews, listQuests } from "./quests.js";
 import { listAgentEvents } from "./events.js";
 import { listStudyBlocks } from "./blocks.js";
+import { listCards } from "./cards.js";
 import {
   getConsistencySeries,
   getPulse,
@@ -153,6 +154,7 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
   return {
     date: dateStr,
     dayResetTime: resetTime,
+    cards: listCards(db).filter((c) => c.status !== "hidden"),
     habits: listHabits(db),
     progress: {
       totalXp: progressRow.totalXp,

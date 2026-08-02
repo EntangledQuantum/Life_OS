@@ -19,7 +19,12 @@ export interface Habit {
   anchor: string | null;
   linkedGoalId: string | null;
   isTiny: boolean;
+  /** Share of daily XP pool after redistribution */
   baseXp: number;
+  /** Bonus XP outside the pool (agent-set) */
+  extraXp: number;
+  /** Weight for pool redistribution */
+  xpWeight: number;
   active: boolean;
   notes: string | null;
   themeColor: string;
@@ -28,6 +33,29 @@ export interface Habit {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+}
+
+/** Agent-owned front-page card (max 2) */
+export interface DashboardCard {
+  id: string;
+  slot: 0 | 1;
+  title: string;
+  subtitle: string | null;
+  body: string | null;
+  emoji: string | null;
+  themeColor: string | null;
+  imageUrl: string | null;
+  imageData: string | null;
+  status: "active" | "done" | "hidden";
+  progress: number;
+  ctaLabel: string | null;
+  ctaLink: string | null;
+  meta: Record<string, unknown> | null;
+  xpOnComplete: number;
+  webhookOnComplete: boolean;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface HabitLog {
@@ -169,6 +197,8 @@ export interface AppSettings {
   storageMode: "local" | "supabase";
   supabaseUrl: string | null;
   supabaseKeySet: boolean;
+  agentWebhookUrl: string | null;
+  agentWebhookSecretSet: boolean;
 }
 
 export interface GamificationConfig {
@@ -209,6 +239,8 @@ export interface VsYesterday {
 export interface DashboardToday {
   date: string;
   dayResetTime: string;
+  /** Up to 2 agent custom cards for the front page */
+  cards: DashboardCard[];
   habits: HabitWithToday[];
   progress: UserProgress;
   vsYesterday: VsYesterday;

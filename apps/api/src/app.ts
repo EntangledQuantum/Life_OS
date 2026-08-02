@@ -3,7 +3,9 @@ import { cors } from "hono/cors";
 import { ensureSchema, getDb } from "@life-os/db";
 import {
   completeHabitSchema,
+  completeCardSchema,
   createAchievementSchema,
+  createDashboardCardSchema,
   createGoalSchema,
   createHabitSchema,
   createScheduleBlockSchema,
@@ -13,6 +15,7 @@ import {
   injectQuestSchema,
   loginSchema,
   setHabitThemeSchema,
+  updateDashboardCardSchema,
   updateGamificationConfigSchema,
   updateGoalSchema,
   updateHabitSchema,
@@ -32,6 +35,7 @@ import * as quests from "./services/quests.js";
 import * as snapshots from "./services/snapshots.js";
 import * as blocks from "./services/blocks.js";
 import * as events from "./services/events.js";
+import * as cards from "./services/cards.js";
 import { env } from "./env.js";
 export function createApp() {
   ensureSchema();
@@ -175,6 +179,53 @@ export function createApp() {
     c.json(events.dismissAgentEvent(getDb(), c.req.param("id"))),
   );
 
+  // Agent front-page cards (max 2)
+  api.get("/cards", (c) => c.json(cards.listCards(getDb())));
+  api.get("/cards/:id", (c) => {
+    const card = cards.getCard(getDb(), c.req.param("id"));
+    if (!card) return c.json({ error: "Not found" }, 404);
+    return c.json(card);
+  });
+  api.post("/cards", async (c) => {
+    const body = createDashboardCardSchema.parse(await c.req.json());
+    const result = cards.createCard(getDb(), {
+      ...body,
+      imageUrl: body.imageUrl || null,
+      meta: body.meta ?? null,
+    });
+    if ("error" in result) return c.json(result, 400);
+    return c.json(result.card, 201);
+  });
+  api.patch("/cards/:id", async (c) => {
+    const body = updateDashboardCardSchema.parse(await c.req.json());
+    const card = cards.updateCard(getDb(), c.req.param("id"), {
+      ...body,
+      imageUrl: body.imageUrl === "" ? null : body.imageUrl,
+      meta: body.meta ?? undefined,
+    });
+    if (!card) return c.json({ error: "Not found" }, 404);
+    return c.json(card);
+  });
+  api.delete("/cards/:id", (c) =>
+    c.json(cards.deleteCard(getDb(), c.req.param("id"))),
+  );
+  api.post("/cards/:id/complete", async (c) => {
+    let body: { note?: string | null; source?: "user" | "agent"; progress?: number } =
+      { source: "user" };
+    try {
+      body = completeCardSchema.parse(await c.req.json());
+    } catch {
+      /* empty ok */
+    }
+    const result = await cards.completeCard(getDb(), c.req.param("id"), body);
+    if ("error" in result) return c.json(result, 404);
+    return c.json(result);
+  });
+
+  api.post("/habits/rebalance-xp", (c) =>
+    c.json({ shares: habits.rebalanceHabitXp(getDb()) }),
+  );
+
   api.get("/goals", (c) => c.json(goals.listGoals(getDb())));
   api.post("/goals", async (c) => {
     const body = createGoalSchema.parse(await c.req.json());
@@ -258,10 +309,14 @@ export function createApp() {
   api.get("/agent/capabilities", (c) =>
     c.json({
       name: "Life OS",
-      version: "0.1.0",
+      version: "0.2.0",
+      maxDashboardCards: 2,
       tools: [
+        "cards.crud",
+        "cards.complete",
         "habits.crud",
         "habits.complete",
+        "habits.rebalance-xp",
         "blocks.crud",
         "blocks.start_complete",
         "events.inject",
@@ -272,11 +327,12 @@ export function createApp() {
         "gamification.config",
         "dailyXpTarget",
         "settings.dayResetTime",
+        "settings.agentWebhook",
         "dashboard.today",
         "export.json",
       ],
       notes:
-        "No levels — efficiency % & improvement %. User completes; agent customizes. Day resets at dayResetTime.",
+        "Agent owns cards (max 2), habits, blocks, XP pool redistribute. Webhooks on complete. No levels.",
     }),
   );
 
