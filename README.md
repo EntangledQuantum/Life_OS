@@ -113,7 +113,7 @@ Useful endpoints:
 - `PATCH /api/v1/settings` — `dayResetTime`, quiet hours, theme
 - `GET /api/v1/export/json` — full dump
 
-See [`docs/API.md`](docs/API.md) and [`docs/HERMES_INTEGRATION.md`](docs/HERMES_INTEGRATION.md).
+See [`docs/API.md`](docs/API.md) and the unified agent skill [`docs/skills/life-os/SKILL.md`](docs/skills/life-os/SKILL.md) (Hermes, OpenClaw, or any long-running agent).
 
 ### MCP
 

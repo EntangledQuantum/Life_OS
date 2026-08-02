@@ -8,7 +8,7 @@
 **Read this file first** if you are a new human or coding agent picking up the project. Then read:
 
 1. `docs/LIFE_OS.md` — product vision & data model (source of truth for *why*)  
-2. `docs/skills/life-os/SKILL.md` — how Hermes/agents should call the API  
+2. `docs/skills/life-os/SKILL.md` — **single** agent skill (Hermes, OpenClaw, any long-running agent)  
 3. `docs/API.md` — HTTP surface  
 4. This log — *what was actually built, divergences, and gaps*
 
@@ -48,7 +48,7 @@
 | Day boundary | Midnight | **Custom day reset** (default 04:00) |
 | Agent cards | Not in early MVP | Up to **2 agent custom front-page cards** + images + complete webhook |
 | XP model | Per-habit fixed baseXp | **Fixed daily pool** redistributed by weight; **extraXp** bonus outside pool |
-| Agent skill | HERMES_INTEGRATION.md notes | Full skill at `docs/skills/life-os/SKILL.md` |
+| Agent skill | Was split Hermes md + skill | **One** skill: `docs/skills/life-os/SKILL.md` (Hermes + OpenClaw compatible) |
 | Repo | Local only | Private GitHub under EntangledQuantum |
 
 ### 1.3 Where we are vs original goals
@@ -342,8 +342,7 @@ Migrations: Drizzle `packages/db/drizzle/` + runtime **`ensureSchema()`** for ad
 |------|---------|
 | `LIFE_OS.md` | Original full product spec (Flutter/levels may disagree with code) |
 | `API.md` | HTTP reference |
-| `HERMES_INTEGRATION.md` | End-of-day cron pattern notes |
-| `skills/life-os/SKILL.md` | **Agent skill** for Hermes/OpenClaw |
+| `skills/life-os/SKILL.md` | **Only** agent skill (HTTP + EOD + webhooks + MCP notes) |
 | `design_handoff_lifeos_dashboard/*` | Inspiration HTML prototype |
 | `icon.png` | Brand |
 | `development_log.md` | This handoff log |
@@ -443,7 +442,7 @@ pnpm dev
 - Login: `admin` / `lifeos`  
 - Agent: `Authorization: Bearer lifeos-local-agent-token`  
 
-Give Hermes: **`docs/skills/life-os/SKILL.md`**.
+Give any agent (Hermes, OpenClaw, …): **`docs/skills/life-os/SKILL.md`** only.
 
 ---
 
@@ -490,7 +489,8 @@ Give Hermes: **`docs/skills/life-os/SKILL.md`**.
 7. Quick log agent-first + flash.  
 8. Agent cards (max 2) + webhooks + XP redistrib + skill.  
 9. Private GitHub + README.  
-10. **This development log** for full handoff.
+10. **This development log** for full handoff.  
+11. Icon resync to web; collapsed Hermes md into single `SKILL.md` for all agents.
 
 ---
 
