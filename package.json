@@ -1,0 +1,22 @@
+{
+  "name": "life-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Life OS — ADHD-optimized execution layer for habits, study, XP, and agent control",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @life-os/api --filter @life-os/web dev",
+    "dev:api": "pnpm --filter @life-os/api dev",
+    "dev:web": "pnpm --filter @life-os/web dev",
+    "build": "pnpm -r build",
+    "db:generate": "pnpm --filter @life-os/db generate",
+    "db:migrate": "pnpm --filter @life-os/db migrate",
+    "db:seed": "pnpm --filter @life-os/db seed",
+    "db:studio": "pnpm --filter @life-os/db studio",
+    "mcp": "pnpm --filter @life-os/mcp start",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.18.0"
+}

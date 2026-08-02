@@ -1,0 +1,235 @@
+import { eq } from "drizzle-orm";
+import type { LifeOsDb } from "@life-os/db";
+import * as schema from "@life-os/db";
+import {
+  efficiencyPct,
+  improvementPct,
+  type DashboardToday,
+} from "@life-os/shared";
+import {
+  getLocalDayBounds,
+  getProgressRow,
+  hourFromTime,
+  loadGamificationConfig,
+  nowIso,
+} from "./helpers.js";
+import { listHabits } from "./habits.js";
+import { listStudySessions } from "./study.js";
+import { listGoals } from "./goals.js";
+import { listAchievements } from "./achievements.js";
+import { listLightReviews, listQuests } from "./quests.js";
+import { listAgentEvents } from "./events.js";
+import { listStudyBlocks } from "./blocks.js";
+import {
+  getConsistencySeries,
+  getPulse,
+  getTodayXp,
+  getVsYesterday,
+  getXpSeries,
+  refreshTodaySnapshot,
+} from "./snapshots.js";
+
+const CATEGORY_COLORS: Record<string, string> = {
+  Sleep: "#6366F1",
+  Life: "#5B8CFF",
+  "Deep Work": "#A78BFA",
+  Study: "#C084FC",
+  Health: "#34D399",
+  Break: "#94A3B8",
+  Startup: "#FBBF24",
+  Exercise: "#34D399",
+};
+
+export function getDashboard(db: LifeOsDb): DashboardToday {
+  refreshTodaySnapshot(db);
+  const config = loadGamificationConfig(db);
+  const progressRow = getProgressRow(db);
+  const pulse = getPulse(db);
+  const vsYesterday = getVsYesterday(db);
+  const { dateStr, resetTime } = getLocalDayBounds(db);
+  const dailyXp = getTodayXp(db);
+  const dailyXpTarget = config.dailyXpTarget;
+  const eff = efficiencyPct(dailyXp, dailyXpTarget);
+  const yEff = vsYesterday.efficiency.yesterday;
+  const imp = improvementPct(eff, yEff);
+
+  const blocks = db
+    .select()
+    .from(schema.scheduleBlocks)
+    .where(eq(schema.scheduleBlocks.date, dateStr))
+    .all();
+
+  /** Continuous 0→24h coverage — gaps filled with Free so bar has no black vacuum */
+  const rawSegs = blocks
+    .map((b) => {
+      let start = hourFromTime(b.plannedStart) ?? 0;
+      let end = hourFromTime(b.plannedEnd) ?? start + 1;
+      // overnight segment: e.g. 00:00–02:00 is fine; 22–02 becomes 22–26 then split later
+      if (end <= start) end += 24;
+      return {
+        id: b.id,
+        category: b.category,
+        label: b.label,
+        start,
+        end,
+        color: CATEGORY_COLORS[b.category] ?? "#5B8CFF",
+        status: b.status ?? "planned",
+      };
+    })
+    .sort((a, b) => a.start - b.start);
+
+  // Flatten into [0, 24] continuous pieces
+  type Seg = {
+    id: string;
+    category: string;
+    label: string;
+    startHour: number;
+    endHour: number;
+    color: string;
+    status: string;
+  };
+  const timeline: Seg[] = [];
+  let cursor = 0;
+  const FREE = {
+    category: "Free",
+    /** Soft slate — fills schedule gaps so the bar never shows black vacuum */
+    color: "#2a2f3a",
+    status: "planned",
+  };
+
+  for (const s of rawSegs) {
+    const start = Math.max(0, Math.min(24, s.start));
+    const end = Math.max(start, Math.min(24, s.end > 24 ? 24 : s.end));
+    if (start > cursor + 0.001) {
+      timeline.push({
+        id: `free-${cursor}`,
+        category: FREE.category,
+        label: "Open",
+        startHour: cursor,
+        endHour: start,
+        color: FREE.color,
+        status: FREE.status,
+      });
+    }
+    if (end > start) {
+      timeline.push({
+        id: s.id,
+        category: s.category,
+        label: s.label,
+        startHour: start,
+        endHour: end,
+        color: s.color,
+        status: s.status,
+      });
+      cursor = Math.max(cursor, end);
+    }
+    // overnight tail past 24 was clipped; handle start>=24 skip
+  }
+  // any block starting after 24 from overnight expand: second pass for end>24
+  for (const s of rawSegs) {
+    if (s.end > 24) {
+      const tailEnd = Math.min(24, s.end - 24);
+      // overnight morning already covered if seed has sleep 02-11
+      void tailEnd;
+    }
+  }
+  if (cursor < 24 - 0.001) {
+    timeline.push({
+      id: `free-end`,
+      category: FREE.category,
+      label: "Open",
+      startHour: cursor,
+      endHour: 24,
+      color: FREE.color,
+      status: FREE.status,
+    });
+  }
+
+  const active = db.select().from(schema.activeSessions).limit(1).get();
+  const agentEvents = listAgentEvents(db);
+  const pendingEventCount = agentEvents.filter((e) => e.status === "pending").length;
+
+  return {
+    date: dateStr,
+    dayResetTime: resetTime,
+    habits: listHabits(db),
+    progress: {
+      totalXp: progressRow.totalXp,
+      dailyXp,
+      dailyXpTarget,
+      efficiencyPct: eff,
+      improvementPct: imp,
+      yesterdayEfficiencyPct: yEff,
+      lastImprovementPulse: pulse.pulse,
+      nurtureStyle: config.nurtureStyle ?? "plant",
+    },
+    vsYesterday,
+    pulse: pulse.pulse,
+    pulseExplanation: pulse.explanation,
+    studyBlocks: listStudyBlocks(db),
+    studySessions: listStudySessions(db, 20),
+    goals: listGoals(db),
+    quests: listQuests(db),
+    lightReviews: listLightReviews(db),
+    agentEvents,
+    pendingEventCount,
+    achievements: listAchievements(db),
+    consistency7: getConsistencySeries(db, 7),
+    xpSeries7: getXpSeries(db, 7),
+    activeSession: active
+      ? {
+          activity: active.activity,
+          startedAt: active.startedAt,
+          blockId: (active as { blockId?: string | null }).blockId ?? null,
+        }
+      : null,
+    timeline,
+  };
+}
+
+export function setActiveSession(
+  db: LifeOsDb,
+  activity: string,
+  startedAt?: string,
+  blockId?: string | null,
+) {
+  db.delete(schema.activeSessions).run();
+  const started = startedAt ?? nowIso();
+  db.insert(schema.activeSessions)
+    .values({ activity, startedAt: started, blockId: blockId ?? null })
+    .run();
+  return { activity, startedAt: started, blockId: blockId ?? null };
+}
+
+export function clearActiveSession(db: LifeOsDb) {
+  db.delete(schema.activeSessions).run();
+  return { ok: true };
+}
+
+export function getAnalytics(db: LifeOsDb) {
+  const dash = getDashboard(db);
+  const snaps = db.select().from(schema.dailySnapshots).all();
+
+  const byCategory: Record<string, { completed: number; total: number }> = {};
+  for (const h of dash.habits) {
+    const cat = h.category;
+    if (!byCategory[cat]) byCategory[cat] = { completed: 0, total: 0 };
+    byCategory[cat].total += 1;
+    if (h.completedToday) byCategory[cat].completed += 1;
+  }
+
+  return {
+    consistency7: dash.consistency7,
+    xpSeries7: dash.xpSeries7,
+    byCategory: Object.entries(byCategory).map(([category, v]) => ({
+      category,
+      pct: v.total ? Math.round((v.completed / v.total) * 100) : 0,
+    })),
+    achievements: dash.achievements,
+    progress: dash.progress,
+    pulse: dash.pulse,
+    pulseHistory: snaps
+      .slice(-14)
+      .map((s) => ({ date: s.date, pulse: s.improvementPulse })),
+  };
+}

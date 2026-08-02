@@ -1,0 +1,226 @@
+@import "tailwindcss";
+/* Single UI family — no separate display/serif face */
+@import "@fontsource/figtree/400.css";
+@import "@fontsource/figtree/500.css";
+@import "@fontsource/figtree/600.css";
+@import "@fontsource/figtree/700.css";
+@import "@fontsource/figtree/800.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+@theme {
+  --font-sans: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-bg: oklch(7% 0.01 260);
+  --color-surface: oklch(12% 0.014 260);
+  --color-surface-2: oklch(18% 0.014 260);
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-text: oklch(97% 0.005 260);
+  --color-muted: oklch(65% 0.012 260);
+  --color-faint: oklch(45% 0.01 260);
+  --color-accent: oklch(76% 0.17 224);
+  --color-accent-soft: oklch(76% 0.17 224 / 0.15);
+}
+
+:root {
+  --accent-hue: 224;
+  --accent: oklch(76% 0.17 var(--accent-hue));
+  --accent-soft: oklch(76% 0.17 var(--accent-hue) / 0.16);
+  --accent-glow: oklch(76% 0.17 var(--accent-hue) / 0.25);
+  --bg: oklch(7% 0.01 260);
+  --surface: oklch(12.5% 0.014 260);
+  --surface-2: oklch(17.5% 0.014 260);
+  --border: rgba(255, 255, 255, 0.06);
+  --text: oklch(97% 0.005 260);
+  --muted: oklch(68% 0.012 260);
+  --faint: oklch(46% 0.01 260);
+}
+
+[data-theme="nebula"] {
+  --accent-hue: 224;
+}
+[data-theme="quantum"] {
+  --accent-hue: 296;
+}
+[data-theme="terminal"] {
+  --accent-hue: 150;
+}
+[data-theme="ember"] {
+  --accent-hue: 38;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--accent) 40%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+/* Headings + body share Figtree — no special display face */
+.font-semibold {
+  font-family: var(--font-sans);
+}
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Legacy .card — prefer open layout on Overview; kept for Settings forms */
+.card {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.btn:hover {
+  background: oklch(22% 0.015 260);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn-primary {
+  background: var(--accent);
+  color: oklch(12% 0.02 260);
+  border: none;
+  font-weight: 600;
+  box-shadow: none;
+}
+.btn-primary:hover {
+  filter: brightness(1.06);
+  background: var(--accent);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: oklch(9% 0.012 260);
+  color: var(--text);
+  padding: 0.7rem 0.9rem;
+  font-family: var(--font-sans);
+  outline: none;
+}
+.input:focus {
+  border-color: color-mix(in oklch, var(--accent) 50%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.pop {
+  animation: pop 0.35s ease;
+}
+
+@keyframes waveShift {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-20px);
+  }
+}
+
+/* Agent task flash in Quick log until completed */
+@keyframes quicklogPulse {
+  0%,
+  100% {
+    background: transparent;
+  }
+  50% {
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
+  }
+}
+.quicklog-flash {
+  animation: quicklogPulse 1.6s ease-in-out infinite;
+  border-radius: 8px;
+  margin-left: -0.25rem;
+  margin-right: -0.25rem;
+  padding-left: 0.75rem !important;
+  padding-right: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quicklog-flash {
+    animation: none;
+    background: color-mix(in oklch, var(--accent) 10%, transparent);
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

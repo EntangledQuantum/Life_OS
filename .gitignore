@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+.turbo
+*.local
+.env
+.env.*
+!.env.example
+data/*.db
+data/*.db-*
+*.log
+.DS_Store
+Thumbs.db
+.vite
+coverage
+.firecrawl

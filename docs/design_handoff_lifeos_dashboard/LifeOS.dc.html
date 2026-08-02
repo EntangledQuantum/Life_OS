@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#08090b;}
+  ::selection{background:rgba(255,255,255,0.15);}
+  a{color:inherit;text-decoration:none;}
+  a:hover{opacity:0.8;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes pop{0%{transform:scale(1);}40%{transform:scale(1.16) rotate(-3deg);}100%{transform:scale(1);}}
+  @keyframes pulseGlow{0%,100%{filter:drop-shadow(0 0 0px transparent);}50%{filter:drop-shadow(0 0 18px var(--glow,transparent));}}
+  @keyframes drift{0%{transform:translate(0,0);}50%{transform:translate(-2%,1.5%);}100%{transform:translate(0,0);}}
+  @keyframes leafIn{from{opacity:0;transform:scale(0.3);}to{opacity:1;transform:scale(1);}}
+  @keyframes stemGrow{from{transform:scaleY(0);}to{transform:scaleY(1);}}
+  @keyframes wave{0%{background-position:0 0;}100%{background-position:40px 0;}}
+  *{box-sizing:border-box;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:8px;}
+</style>
+</helmet>
+<div style="{{rootStyle}}">
+  <div style="{{bgGlowStyle}}"></div>
+
+  <div style="{{headerStyle}}">
+    <div style="display:flex;align-items:center;gap:13px">
+      <div style="{{logoMarkStyle}}">L</div>
+      <div style="{{wordmarkStyle}}">LIFE OS</div>
+    </div>
+    <nav style="{{navWrapStyle}}">
+      <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="5">
+        <button style="{{tab.style}}" style-hover="{{tab.hoverStyle}}" onClick="{{tab.onClick}}">{{tab.label}}</button>
+      </sc-for>
+    </nav>
+    <div style="display:flex;align-items:center;gap:18px">
+      <div style="{{swatchWrapStyle}}">
+        <sc-for list="{{themeSwatches}}" as="sw" hint-placeholder-count="4">
+          <button title="{{sw.name}}" style="{{sw.style}}" onClick="{{sw.onClick}}"></button>
+        </sc-for>
+      </div>
+      <div style="{{levelChipStyle}}">
+        <span style="{{levelChipLabelStyle}}">LV {{level}}</span>
+        <div style="{{miniBarTrackStyle}}"><div style="{{miniBarFillStyle}}"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="{{contentWrapStyle}}">
+
+    <sc-if value="{{isOverview}}" hint-placeholder-val="{{true}}">
+      <div style="{{fadeWrapStyle}}">
+        <div style="{{overviewGridStyle}}">
+
+          <div style="{{heroTileStyle}}">
+            <div style="{{tileLabelStyle}}">Today vs Yesterday</div>
+            <div style="{{deltaRowStyle}}">
+              <div><div style="{{deltaValueStyle}}">{{deltaHabitsLabel}}</div><div style="{{deltaCaptionStyle}}">habits completed</div></div>
+              <div><div style="{{deltaValueStyle}}">{{deltaXpLabel}}</div><div style="{{deltaCaptionStyle}}">XP earned</div></div>
+              <div><div style="{{deltaValueStyle}}">{{deltaStudyLabel}}</div><div style="{{deltaCaptionStyle}}">study minutes</div></div>
+              <div><div style="{{deltaValueStyle}}">{{sleepDeltaLabel}}</div><div style="{{deltaCaptionStyle}}">sleep regularity</div></div>
+            </div>
+          </div>
+
+          <div style="{{nowTileStyle}}">
+            <div style="{{tileLabelStyle}}">Right Now</div>
+            <div style="{{nowTimerStyle}}">{{elapsedLabel}}</div>
+            <div style="{{nowActivityLabelStyle}}">{{currentActivityLabel}}</div>
+            <div style="{{activityChipsRowStyle}}">
+              <sc-for list="{{activities}}" as="act" hint-placeholder-count="6">
+                <button style="{{act.chipStyle}}" onClick="{{act.onClick}}">{{act.label}}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="{{wideTileStyle}}">
+            <div style="{{timelineHeadStyle}}">
+              <div style="{{tileLabelStyle}}">Today's Timeline</div>
+              <div style="{{legendRowStyle}}">
+                <sc-for list="{{legend}}" as="l" hint-placeholder-count="6">
+                  <div style="{{legendItemStyle}}"><span style="{{l.dotStyle}}"></span><span style="{{l.textStyle}}">{{l.label}}</span></div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="{{timelineTrackStyle}}">
+              <sc-for list="{{blocks}}" as="blk" hint-placeholder-count="8">
+                <div style="{{blk.style}}"></div>
+              </sc-for>
+              <sc-for list="{{habitTicks}}" as="tk" hint-placeholder-count="6">
+                <div style="{{tk.style}}" title="{{tk.title}}"></div>
+              </sc-for>
+              <div style="{{nowLineStyle}}"></div>
+            </div>
+            <div style="{{axisRowStyle}}">
+              <sc-for list="{{axisLabels}}" as="ax" hint-placeholder-count="5">
+                <span style="{{ax.style}}">{{ax.label}}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="{{tileStyle}}">
+            <div style="{{tileLabelStyle}}">Improvement Pulse</div>
+            <div style="{{pulseWordStyle}}">{{pulseWord}}</div>
+            <div style="{{pulseDescStyle}}">{{pulseDesc}}</div>
+          </div>
+
+          <div style="{{tileStyle}}">
+            <div style="{{tileLabelStyle}}">Level Progress</div>
+            <div style="{{ringRowStyle}}">
+              <svg width="118" height="118" viewBox="0 0 118 118" style="transform:rotate(-90deg);overflow:visible">
+                <circle cx="59" cy="59" r="51" fill="none" stroke="{{ringTrackColor}}" stroke-width="9"></circle>
+                <circle cx="59" cy="59" r="51" fill="none" stroke="{{accentColor}}" stroke-width="9" stroke-linecap="round" stroke-dasharray="{{ringCircumference}}" stroke-dashoffset="{{ringOffset}}" style="{{ringStrokeStyle}}"></circle>
+              </svg>
+              <div style="{{ringCenterStyle}}">
+                <div style="{{ringXpStyle}}">{{xpTotalLabel}}</div>
+                <div style="{{ringXpCaptionStyle}}">total XP</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="{{tileStyle}}">
+            <div style="{{tileLabelStyle}}">Consistency Growth</div>
+            <div style="{{treeWrapStyle}}">
+              <div style="{{treeStemStyle}}"></div>
+              <sc-for list="{{leaves}}" as="lf" hint-placeholder-count="9">
+                <div style="{{lf.style}}"></div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="{{quickTileStyle}}">
+            <div style="{{tileLabelStyle}}">Quick Log</div>
+            <div style="{{quickLogColStyle}}">
+              <sc-for list="{{quickHabits}}" as="h" hint-placeholder-count="4">
+                <button style="{{h.quickBtnStyle}}" onClick="{{h.onToggle}}">
+                  <span style="{{h.quickIconStyle}}">{{h.initial}}</span>
+                  <span style="{{h.quickNameStyle}}">{{h.name}}</span>
+                  <span style="{{h.quickStateStyle}}">{{h.toggleLabel}}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="{{chartTileStyle}}">
+            <div style="{{tileLabelStyle}}">7-Day Consistency</div>
+            <svg viewBox="0 0 560 160" width="100%" height="160" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="{{accentColor}}" stop-opacity="0.38"></stop>
+                  <stop offset="100%" stop-color="{{accentColor}}" stop-opacity="0"></stop>
+                </linearGradient>
+              </defs>
+              <path d="{{consistencyAreaPath}}" fill="url(#areaGrad)"></path>
+              <path d="{{consistencyLinePath}}" fill="none" stroke="{{accentColor}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+              <sc-for list="{{consistencyPoints}}" as="p" hint-placeholder-count="7">
+                <circle cx="{{p.x}}" cy="{{p.y}}" r="4.5" fill="{{p.fill}}" stroke="{{bgColor}}" stroke-width="2"></circle>
+              </sc-for>
+            </svg>
+            <div style="{{chartAxisRowStyle}}">
+              <sc-for list="{{sparkDayLabels}}" as="d" hint-placeholder-count="7">
+                <span style="{{d.style}}">{{d.label}}</span>
+              </sc-for>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isHabits}}" hint-placeholder-val="{{false}}">
+      <div style="{{fadeWrapStyle}}">
+        <div style="{{sectionHeadStyle}}">
+          <div style="{{sectionTitleStyle}}">Habits</div>
+          <div style="{{sectionSubStyle}}">One tap logs it. Missing a day pauses the streak — it never erases it.</div>
+        </div>
+        <div style="{{habitGridStyle}}">
+          <sc-for list="{{habits}}" as="h" hint-placeholder-count="8">
+            <div style="{{h.rowStyle}}">
+              <div style="{{h.rowTopStyle}}">
+                <div style="{{h.iconStyle}}">{{h.initial}}</div>
+                <button style="{{h.toggleStyle}}" onClick="{{h.onToggle}}">{{h.toggleLabel}}</button>
+              </div>
+              <div style="{{h.nameStyle}}">{{h.name}}</div>
+              <div style="{{h.metaStyle}}">{{h.category}} · {{h.streakLabel}} · <span style="{{h.xpInlineStyle}}">+{{h.xp}} XP</span></div>
+              <sc-if value="{{h.isWater}}" hint-placeholder-val="{{false}}">
+                <div style="{{h.waterTrackStyle}}"><div style="{{h.waterFillStyle}}"></div></div>
+              </sc-if>
+              <sc-if value="{{h.isNotWater}}" hint-placeholder-val="{{true}}">
+                <div style="{{h.dotsRowStyle}}">
+                  <sc-for list="{{h.dots}}" as="d" hint-placeholder-count="7">
+                    <div style="{{d.style}}"></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isStudy}}" hint-placeholder-val="{{false}}">
+      <div style="{{fadeWrapStyle}}">
+        <div style="{{sectionHeadRowStyle}}">
+          <div>
+            <div style="{{sectionTitleStyle}}">Study Sessions</div>
+            <div style="{{sectionSubStyle}}">Feeds the vault. Only the special ones leave this app.</div>
+          </div>
+          <button style="{{addSessionBtnStyle}}" onClick="{{addSession}}">+ Log Session</button>
+        </div>
+        <div style="{{sessionListStyle}}">
+          <sc-for list="{{studySessions}}" as="sess" hint-placeholder-count="5">
+            <div style="{{sessionRowStyle}}">
+              <div style="flex:1;min-width:0">
+                <div style="{{sessionTitleStyle}}">{{sess.title}}</div>
+                <div style="{{sessionMetaStyle}}">{{sess.when}} · {{sess.durationLabel}}</div>
+              </div>
+              <div style="{{sess.flagStyle}}">{{sess.flagLabel}}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isGoals}}" hint-placeholder-val="{{false}}">
+      <div style="{{fadeWrapStyle}}">
+        <div style="{{sectionHeadStyle}}">
+          <div style="{{sectionTitleStyle}}">Goals</div>
+          <div style="{{sectionSubStyle}}">Progress from linked habit consistency, not vibes.</div>
+        </div>
+        <div style="{{goalGridStyle}}">
+          <sc-for list="{{goals}}" as="g" hint-placeholder-count="3">
+            <div style="{{tileStyle}}">
+              <div style="{{goalTitleStyle}}">{{g.title}}</div>
+              <div style="{{goalWhyStyle}}">{{g.why}}</div>
+              <div style="{{goalBarTrackStyle}}"><div style="{{g.barFillStyle}}"></div></div>
+              <div style="{{goalMetaRowStyle}}">
+                <span style="{{goalPctStyle}}">{{g.progressLabel}}</span>
+                <span style="{{goalDateStyle}}">{{g.targetLabel}}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isAnalytics}}" hint-placeholder-val="{{false}}">
+      <div style="{{fadeWrapStyle}}">
+        <div style="{{analyticsGridStyle}}">
+          <div style="{{catTileStyle}}">
+            <div style="{{tileLabelStyle}}">Consistency by Category</div>
+            <sc-for list="{{categoryBars}}" as="c" hint-placeholder-count="4">
+              <div style="{{c.catRowStyle}}">
+                <div style="{{c.catNameStyle}}">{{c.name}}</div>
+                <div style="{{c.catTrackStyle}}"><div style="{{c.fillStyle}}"></div></div>
+                <div style="{{c.catPctStyle}}">{{c.pctLabel}}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="{{tileStyle}}">
+            <div style="{{tileLabelStyle}}">XP This Week</div>
+            <div style="{{xpChartRowStyle}}">
+              <sc-for list="{{xpBars}}" as="b" hint-placeholder-count="7">
+                <div style="{{b.wrapStyle}}">
+                  <div style="{{b.trackStyle}}"><div style="{{b.fillStyle}}"></div></div>
+                  <div style="{{b.dayLabelStyle}}">{{b.day}}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="{{wideTileStyle}}">
+            <div style="{{tileLabelStyle}}">Achievements</div>
+            <div style="{{achGridStyle}}">
+              <sc-for list="{{achievements}}" as="a" hint-placeholder-count="6">
+                <div style="{{a.cardStyle}}">
+                  <div style="{{a.titleStyle}}">{{a.title}}</div>
+                  <div style="{{a.descStyle}}">{{a.desc}}</div>
+                  <div style="{{a.statusStyle}}">{{a.statusLabel}}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const THEMES = [
+  { key:'nebula', name:'Nebula', hue:224 },
+  { key:'quantum', name:'Quantum', hue:296 },
+  { key:'terminal', name:'Terminal', hue:150 },
+  { key:'ember', name:'Ember', hue:38 },
+];
+const FONT_HEAD = "'Space Grotesk', sans-serif";
+const FONT_MONO = "'JetBrains Mono', monospace";
+function ok(l,c,h,a){ return a===undefined ? `oklch(${l}% ${c} ${h})` : `oklch(${l}% ${c} ${h} / ${a})`; }
+function pad(n){ return n<10?'0'+n:''+n; }
+const CAT_OFFSET = { Life:0, Sleep:190, 'Deep Work':80, Study:40, Health:150, Break:230 };
+
+class Component extends DCLogic {
+  state = {
+    activeTab: 'overview',
+    themeIndex: 0,
+    poppedId: null,
+    xpTotal: 8420,
+    currentActivity: 'deepwork',
+    activityStartedAt: Date.now() - 47*60*1000,
+    nowTick: Date.now(),
+    habits: [
+      {id:'wake', name:'Wake Consistency', category:'Life', streak:12, xp:15, completed:true, history:[1,1,1,0,1,1,1], loggedMin:425},
+      {id:'sleep', name:'Sleep Protect', category:'Sleep', streak:5, xp:15, completed:false, history:[1,1,0,1,1,1,1], loggedMin:0},
+      {id:'water', name:'Hydration', category:'Health', streak:21, xp:5, completed:true, history:[1,1,1,1,1,1,1], loggedMin:520},
+      {id:'deepwork', name:'Deep Work Block', category:'Deep Work', streak:8, xp:40, completed:true, history:[1,1,1,1,0,1,1], loggedMin:540},
+      {id:'study', name:'Study Session', category:'Study', streak:15, xp:30, completed:false, history:[1,1,1,1,1,1,0], loggedMin:630},
+      {id:'move', name:'Movement', category:'Health', streak:3, xp:20, completed:false, history:[0,1,1,0,1,1,1], loggedMin:1035},
+      {id:'journal', name:'Journal', category:'Life', streak:30, xp:10, completed:true, history:[1,1,1,1,1,1,1], loggedMin:1360},
+      {id:'meditate', name:'Meditate', category:'Life', streak:0, xp:10, completed:false, history:[0,0,1,0,1,0,1], loggedMin:1200},
+    ],
+    studySessions: [
+      {id:1, title:'Thermodynamics — entropy intuition', duration:45, flag:'feynman', when:'Today, 14:20'},
+      {id:2, title:'Dune re-read: Bene Gesserit lens', duration:30, flag:'inspired', when:'Today, 11:05'},
+      {id:3, title:'Retrieval: linear algebra eigenvectors', duration:20, flag:'retrieval', when:'Yesterday, 22:40'},
+      {id:4, title:'Project Hail Mary — ch. 12', duration:25, flag:'normal', when:'Yesterday, 20:10'},
+      {id:5, title:'Kardashev scale calculations', duration:35, flag:'struggle', when:'2 days ago'},
+    ],
+  };
+
+  componentDidMount(){
+    this._clock = setInterval(()=>this.setState({nowTick:Date.now()}), 1000);
+  }
+  componentWillUnmount(){
+    clearInterval(this._clock);
+    if(this._t) clearTimeout(this._t);
+  }
+
+  setActivity(key){ this.setState({currentActivity:key, activityStartedAt:Date.now()}); }
+
+  toggleHabit(id){
+    const wasCompleted = this.state.habits.find(h=>h.id===id).completed;
+    this.setState(s=>({
+      habits: s.habits.map(h=> h.id===id ? {...h, completed: !h.completed, streak: !h.completed ? h.streak+1 : Math.max(0,h.streak-1)} : h),
+      xpTotal: s.xpTotal + (wasCompleted ? -s.habits.find(h=>h.id===id).xp : s.habits.find(h=>h.id===id).xp),
+      poppedId: !wasCompleted ? id : null,
+    }));
+    if(this._t) clearTimeout(this._t);
+    this._t = setTimeout(()=>this.setState({poppedId:null}), 550);
+  }
+
+  addSession(){
+    this.setState(s=>({
+      studySessions: [{id:Date.now(), title:'Retrieval: spaced review queue', duration:15, flag:'retrieval', when:'Just now'}, ...s.studySessions],
+    }));
+  }
+
+  setTab(tab){ this.setState({activeTab:tab}); }
+  selectTheme(i){ this.setState({themeIndex:i}); }
+
+  renderVals(){
+    const s = this.state;
+    const theme = THEMES[s.themeIndex];
+    const hue = theme.hue;
+    const accent = ok(76,0.17,hue);
+    const accentBright = ok(85,0.15,hue);
+    const accentDim = ok(76,0.17,hue,0.55);
+    const accentSoft = ok(76,0.17,hue,0.16);
+    const accentSofter = ok(76,0.17,hue,0.07);
+    const accentGhost = ok(76,0.17,hue,0.045);
+    const accentBorder = ok(76,0.17,hue,0.45);
+    const glow = ok(70,0.17,hue,0.35);
+
+    const bg = ok(6.5,0.008,260);
+    const cardBg = ok(13,0.012,260);
+    const cardBgTop = ok(15.5,0.013,260);
+    const cardBg2 = ok(17.5,0.013,260);
+    const trackBg = ok(21,0.013,260);
+    const hairline = 'rgba(255,255,255,0.055)';
+    const textPrimary = ok(97,0.005,260);
+    const textSecondary = ok(68,0.012,260);
+    const textTertiary = ok(46,0.012,260);
+
+    const catColor = (cat)=> ok(74,0.15, hue + (CAT_OFFSET[cat]||0));
+
+    const FLAG_META = {
+      feynman: {label:'Feynman', color: ok(78,0.15,150)},
+      inspired: {label:'Inspired', color: ok(78,0.15,50)},
+      retrieval: {label:'Retrieval', color: ok(78,0.15,224)},
+      normal: {label:'Normal', color: textTertiary},
+      struggle: {label:'Struggle', color: ok(74,0.17,25)},
+    };
+
+    const surface = (elevated)=>({
+      background: `linear-gradient(180deg, ${elevated?cardBgTop:cardBg2} 0%, ${cardBg} 100%)`,
+      border:`1px solid ${hairline}`,
+      borderRadius:22,
+      boxShadow:'0 1px 0 rgba(255,255,255,0.05) inset, 0 24px 48px -28px rgba(0,0,0,0.75)',
+    });
+
+    const tabDefs = [['overview','Overview'], ['habits','Habits'], ['study','Study'], ['goals','Goals'], ['analytics','Analytics']];
+    const tabs = tabDefs.map(([key,label])=>{
+      const active = s.activeTab===key;
+      return { label, key, onClick: ()=>this.setTab(key),
+        style: { padding:'10px 20px', borderRadius:12, border:'none', cursor:'pointer',
+          fontFamily:FONT_HEAD, fontWeight:600, fontSize:13.5, letterSpacing:'0.01em',
+          background: active ? `linear-gradient(135deg, ${accent}, ${accentDim})` : 'transparent',
+          color: active ? bg : textSecondary, boxShadow: active ? `0 6px 18px -4px ${glow}` : 'none',
+          transition:'all .2s cubic-bezier(.2,.8,.2,1)' },
+        hoverStyle: active ? {} : {color:textPrimary, background:'rgba(255,255,255,0.045)'} };
+    });
+
+    const themeSwatches = THEMES.map((t,i)=>({
+      name:t.name, onClick: ()=>this.selectTheme(i),
+      style:{ width:24, height:24, borderRadius:'50%', cursor:'pointer', padding:0,
+        background: `linear-gradient(135deg, ${ok(80,0.17,t.hue)}, ${ok(60,0.17,t.hue)})`,
+        border: s.themeIndex===i ? `2px solid ${textPrimary}` : '2px solid rgba(255,255,255,0.1)',
+        boxShadow: s.themeIndex===i ? `0 0 0 3px ${bg}, 0 0 16px ${ok(72,0.17,t.hue,0.7)}` : 'none',
+        transition:'all .2s ease' },
+    }));
+
+    const level = Math.floor(s.xpTotal/500)+1;
+    const xpIntoLevel = s.xpTotal%500;
+    const xpPct = Math.round(xpIntoLevel/500*100);
+    const circumference = 2*Math.PI*51;
+
+    const dotStyle = (on)=>({ width:10, height:10, borderRadius:3.5,
+      background: on ? `linear-gradient(135deg, ${accent}, ${accentDim})` : trackBg,
+      boxShadow: on ? `0 0 8px ${glow}` : 'none' });
+
+    const habits = s.habits.map(h=>{
+      const popped = s.poppedId===h.id;
+      const hc = catColor(h.category);
+      return {
+        ...h,
+        initial: h.name.charAt(0),
+        streakLabel: h.streak>0 ? `${h.streak}d streak` : 'restarting',
+        toggleLabel: h.completed ? '✓ Done' : 'Log',
+        onToggle: ()=>this.toggleHabit(h.id),
+        isWater: h.id==='water', isNotWater: h.id!=='water',
+        dots: h.history.map(v=>({style:dotStyle(!!v)})),
+        waterTrackStyle:{position:'relative', height:44, borderRadius:12, overflow:'hidden', background:trackBg, marginTop:4},
+        waterFillStyle:{position:'absolute', bottom:0, left:0, right:0, height:`${Math.min(100,Math.round(h.streak/21*100))}%`,
+          background:`linear-gradient(180deg, ${ok(80,0.15,210,0.9)}, ${ok(60,0.17,220,0.9)})`,
+          backgroundImage:`repeating-linear-gradient(90deg, ${ok(75,0.14,210,0.5)} 0 20px, ${ok(65,0.15,220,0.5)} 20px 40px)`,
+          backgroundSize:'40px 100%', animation:'wave 1.4s linear infinite', transition:'height 1s cubic-bezier(.2,.8,.2,1)',
+          boxShadow:`0 0 16px ${ok(70,0.15,215,0.4)}`},
+        rowStyle:{...surface(h.completed), padding:'20px 22px', display:'flex', flexDirection:'column', gap:12,
+          borderColor: h.completed ? accentBorder : hairline, transition:'all .2s ease'},
+        rowTopStyle:{display:'flex', alignItems:'center', justifyContent:'space-between'},
+        iconStyle:{ width:44, height:44, borderRadius:13, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center',
+          fontFamily:FONT_HEAD, fontWeight:700, fontSize:17,
+          background: h.completed ? `linear-gradient(135deg, ${hc}, ${accentDim})` : trackBg,
+          color: h.completed ? bg : textSecondary, boxShadow: h.completed ? `0 6px 16px -4px ${glow}` : 'none',
+          animation: popped ? 'pop .5s cubic-bezier(.3,1.6,.4,1)' : 'none' },
+        nameStyle:{fontFamily:FONT_HEAD, fontWeight:600, fontSize:16.5, color:textPrimary},
+        metaStyle:{fontFamily:FONT_MONO, fontSize:11.5, color:textTertiary, textTransform:'uppercase', letterSpacing:'.04em'},
+        xpInlineStyle:{color: h.completed?accent:textTertiary},
+        dotsRowStyle:{display:'flex', gap:6, marginTop:2},
+        toggleStyle:{ padding:'8px 15px', borderRadius:10, border:'none',
+          background: h.completed ? accentSoft : 'rgba(255,255,255,0.06)', color: h.completed ? accent : textSecondary,
+          fontFamily:FONT_HEAD, fontWeight:600, fontSize:12, cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s ease' },
+      };
+    });
+
+    const quickHabits = habits.slice(0,4).map(h=>({
+      ...h,
+      quickBtnStyle:{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderRadius:14,
+        background: h.completed ? accentSofter : 'rgba(255,255,255,0.035)', border:'none', cursor:'pointer', textAlign:'left', width:'100%', transition:'all .15s ease' },
+      quickIconStyle:{width:28,height:28,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
+        background: h.completed? `linear-gradient(135deg, ${accent}, ${accentDim})` : trackBg, color: h.completed?bg:textSecondary, fontFamily:FONT_HEAD, fontWeight:700, fontSize:12},
+      quickNameStyle:{fontFamily:FONT_HEAD, fontSize:13.5, color:textPrimary, flex:1},
+      quickStateStyle:{fontFamily:FONT_MONO, fontSize:11, color: h.completed?accent:textTertiary},
+    }));
+
+    // Right Now activity widget
+    const ACTS = [
+      {key:'deepwork', label:'Deep Work', category:'Deep Work'},
+      {key:'study', label:'Study', category:'Study'},
+      {key:'sleep', label:'Sleep', category:'Sleep'},
+      {key:'exercise', label:'Exercise', category:'Health'},
+      {key:'break', label:'Break', category:'Break'},
+      {key:'admin', label:'Life Admin', category:'Life'},
+    ];
+    const activeAct = ACTS.find(a=>a.key===s.currentActivity) || ACTS[0];
+    const activeColor = catColor(activeAct.category);
+    const activities = ACTS.map(a=>{
+      const on = a.key===s.currentActivity;
+      const c = catColor(a.category);
+      return { label:a.label, onClick: ()=>this.setActivity(a.key),
+        chipStyle:{ padding:'8px 14px', borderRadius:10, border:'none', cursor:'pointer',
+          fontFamily:FONT_HEAD, fontWeight:600, fontSize:12,
+          background: on ? c : 'rgba(255,255,255,0.05)', color: on ? bg : textSecondary,
+          boxShadow: on ? `0 6px 16px -4px ${ok(70,0.16,hue+(CAT_OFFSET[a.category]||0),0.5)}` : 'none', transition:'all .15s ease' } };
+    });
+    const elapsedMs = Math.max(0, s.nowTick - s.activityStartedAt);
+    const totalSec = Math.floor(elapsedMs/1000);
+    const eh = Math.floor(totalSec/3600), em = Math.floor((totalSec%3600)/60), es = totalSec%60;
+    const elapsedLabel = eh>0 ? `${eh}:${pad(em)}:${pad(es)}` : `${pad(em)}:${pad(es)}`;
+
+    // Timeline
+    const BLOCKS = [
+      {label:'Sleep', start:0, end:420, category:'Sleep'},
+      {label:'Morning', start:420, end:480, category:'Life'},
+      {label:'Deep Work', start:480, end:600, category:'Deep Work'},
+      {label:'Study', start:600, end:690, category:'Study'},
+      {label:'Break', start:690, end:750, category:'Break'},
+      {label:'Startup Work', start:750, end:1020, category:'Life'},
+      {label:'Exercise', start:1020, end:1080, category:'Health'},
+      {label:'Study', start:1080, end:1200, category:'Study'},
+      {label:'Deep Work', start:1200, end:1380, category:'Deep Work'},
+      {label:'Wind Down', start:1380, end:1440, category:'Break'},
+    ];
+    const blocks = BLOCKS.map((b,i)=>({
+      style:{ position:'absolute', left:`${b.start/1440*100}%`, width:`${(b.end-b.start)/1440*100}%`, top:0, bottom:0,
+        background: catColor(b.category), opacity:0.85, borderRight: i<BLOCKS.length-1?`1px solid ${bg}`:'none' },
+    }));
+    const habitTicks = habits.filter(h=>h.completed).map(h=>({
+      title:`${h.name} · logged`,
+      style:{ position:'absolute', left:`${h.loggedMin/1440*100}%`, top:-9, width:8, height:8, borderRadius:'50%',
+        background:textPrimary, border:`2px solid ${catColor(h.category)}`, transform:'translateX(-50%)', boxShadow:'0 2px 6px rgba(0,0,0,0.5)' },
+    }));
+    const nowMin = 21*60+15;
+    const nowLineStyle = { position:'absolute', left:`${nowMin/1440*100}%`, top:0, bottom:0, width:2, background:textPrimary, boxShadow:`0 0 8px ${textPrimary}` };
+    const axisLabels = ['12A','6A','12P','6P','12A'].map((label,i)=>({label, style:{fontFamily:FONT_MONO, fontSize:10.5, color:textTertiary, position:'absolute', left:`${i*25}%`, transform: i===0?'none':(i===4?'translateX(-100%)':'translateX(-50%)')}}));
+    const legendCats = ['Sleep','Life','Deep Work','Study','Health','Break'];
+    const legend = legendCats.map(cat=>({ label:cat,
+      dotStyle:{width:8,height:8,borderRadius:'50%',background:catColor(cat),display:'inline-block'},
+      textStyle:{fontFamily:FONT_MONO, fontSize:10.5, color:textTertiary, marginLeft:6} }));
+
+    // 7-day consistency line chart
+    const sparkVals = [62,70,58,75,80,68,88];
+    const sparkDays = ['M','T','W','T','F','S','S'];
+    const W=560,H=160,padX=12,padY=18;
+    const xAt = (i)=> padX + i*((W-padX*2)/(sparkVals.length-1));
+    const yAt = (v)=> H-padY - (v/100)*(H-padY*2);
+    const pts = sparkVals.map((v,i)=>({x:xAt(i), y:yAt(v)}));
+    const consistencyLinePath = 'M'+pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' L');
+    const consistencyAreaPath = consistencyLinePath + ` L${pts[pts.length-1].x.toFixed(1)},${H} L${pts[0].x.toFixed(1)},${H} Z`;
+    const consistencyPoints = pts.map(p=>({x:p.x.toFixed(1), y:p.y.toFixed(1), fill:accent}));
+    const sparkDayLabels = sparkDays.map(d=>({label:d, style:{fontFamily:FONT_MONO, fontSize:10.5, color:textTertiary, flex:1, textAlign:'center'}}));
+
+    const xpVals = [90,110,80,130,150,120,145];
+    const xpMax = Math.max(...xpVals);
+    const barWrap = (h)=>({wrapStyle:{display:'flex',flexDirection:'column',alignItems:'center',gap:9,flex:1},
+      trackStyle:{width:'100%', height:100, background:trackBg, borderRadius:8, display:'flex', alignItems:'flex-end', overflow:'hidden'},
+      fillStyle:{width:'100%', height:`${h}%`, background:`linear-gradient(180deg, ${accentBright}, ${accent})`, borderRadius:8, transformOrigin:'bottom', boxShadow:`0 -2px 12px ${glow}`},
+      dayLabelStyle:{fontFamily:FONT_MONO, fontSize:10.5, color:textTertiary}});
+    const xpBars = xpVals.map((v,i)=>({...barWrap(Math.round(v/xpMax*100)), day:sparkDays[i]}));
+
+    // consistency tree
+    const level9 = Math.min(9, level);
+    const leaves = Array.from({length:level9}).map((_,i)=>{
+      const side = i%2===0?1:-1;
+      const topPct = 92 - i*(80/9);
+      return { style:{ position:'absolute', left:`calc(50% + ${side*(14+ (i%3)*6)}px)`, top:`${topPct}%`, width:14, height:14, borderRadius:'50%',
+        background:`linear-gradient(135deg, ${accentBright}, ${accent})`, boxShadow:`0 0 10px ${glow}`,
+        animation:`leafIn .5s cubic-bezier(.3,1.6,.4,1) ${i*0.09}s both`, transform:'translateX(-50%)' } };
+    });
+
+    const catData = [['Study',91],['Life',82],['Deep Work',70],['Health',64]];
+    const categoryBars = catData.map(([name,pct])=>({
+      name, pctLabel:`${pct}%`,
+      catRowStyle:{display:'flex', alignItems:'center', gap:16, marginBottom:18},
+      catNameStyle:{fontFamily:FONT_HEAD, fontSize:13.5, color:textSecondary, width:100, flexShrink:0},
+      catTrackStyle:{flex:1, height:11, background:trackBg, borderRadius:7, overflow:'hidden'},
+      fillStyle:{width:`${pct}%`, height:'100%', background:`linear-gradient(90deg, ${accentDim}, ${accent})`, borderRadius:7},
+      catPctStyle:{fontFamily:FONT_MONO, fontSize:13, color:textPrimary, width:42, textAlign:'right'},
+    }));
+
+    const goalData = [
+      {title:'Ship Life OS v1', why:'Stop polluting the vault, build something real.', pct:65, target:'Sep 2026'},
+      {title:'Deep work, 4h/day average', why:'Compound toward civilization-scale work.', pct:40, target:'Ongoing'},
+      {title:'Read 24 books this year', why:'First-principles input, not summaries.', pct:50, target:'Dec 2026'},
+    ];
+    const goals = goalData.map(g=>({ title:g.title, why:g.why, progressLabel:`${g.pct}%`, targetLabel:g.target,
+      barFillStyle:{width:`${g.pct}%`, height:'100%', background:`linear-gradient(90deg, ${accentDim}, ${accent})`, borderRadius:7} }));
+
+    const achData = [
+      {title:'Tiny Habit Master', desc:'5 tiny habits sustained 14+ days', unlocked:true},
+      {title:'7-Day Wake Consistency', desc:'Wake anchor hit all week', unlocked:true},
+      {title:'First Inspired Session', desc:'A study session that changed something', unlocked:true},
+      {title:'Night Owl Who Still Studied', desc:'Deep session logged after midnight', unlocked:true},
+      {title:'30-Day Journal Streak', desc:'A full month, no pressure', unlocked:true},
+      {title:'10 Deep Work Blocks', desc:'2 more blocks to unlock', unlocked:false},
+    ];
+    const achievements = achData.map(a=>({ title:a.title, desc:a.desc, statusLabel: a.unlocked ? 'Unlocked' : 'Locked',
+      cardStyle:{padding:'18px 20px', borderRadius:16, background: a.unlocked?`linear-gradient(180deg, ${cardBgTop}, ${cardBg})`:cardBg,
+        border: a.unlocked?`1px solid ${accentBorder}`:`1px dashed ${hairline}`, opacity:a.unlocked?1:0.5, boxShadow: a.unlocked?`0 12px 28px -18px ${glow}`:'none'},
+      titleStyle:{fontFamily:FONT_HEAD, fontWeight:600, fontSize:14, color:textPrimary, marginBottom:6},
+      descStyle:{fontFamily:FONT_MONO, fontSize:11, color:textTertiary, lineHeight:1.55},
+      statusStyle:{fontFamily:FONT_MONO, fontSize:10.5, marginTop:12, color:a.unlocked?accent:textTertiary, textTransform:'uppercase', letterSpacing:'.06em'} }));
+
+    const studySessions = s.studySessions.map(sess=>{
+      const meta = FLAG_META[sess.flag];
+      return { ...sess, durationLabel:`${sess.duration} min`, flagLabel:meta.label,
+        flagStyle:{fontFamily:FONT_MONO, fontSize:11, padding:'7px 13px', borderRadius:9, color:meta.color, background:'rgba(255,255,255,0.045)', whiteSpace:'nowrap', height:'fit-content', fontWeight:600} };
+    });
+
+    const deltaHabitsCount = habits.filter(h=>h.completed).length;
+    const gradText = {backgroundImage:`linear-gradient(135deg, ${accentBright}, ${accent})`, WebkitBackgroundClip:'text', backgroundClip:'text', color:'transparent'};
+
+    return {
+      rootStyle:{position:'relative', minHeight:'100vh', background:bg, fontFamily:FONT_HEAD, color:textPrimary, overflow:'hidden'},
+      bgGlowStyle:{position:'fixed', inset:0, zIndex:0, pointerEvents:'none',
+        background:`radial-gradient(1100px circle at 12% -8%, ${accentGhost} 0%, transparent 55%), radial-gradient(900px circle at 105% 8%, ${ok(76,0.17,hue,0.05)} 0%, transparent 50%)`,
+        animation:'drift 18s ease-in-out infinite'},
+      headerStyle:{position:'sticky', top:0, zIndex:10, display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding:'18px 44px', background:ok(6.5,0.008,260,0.7), backdropFilter:'blur(16px)', borderBottom:`1px solid ${hairline}`},
+      logoMarkStyle:{width:34, height:34, borderRadius:11, background:`linear-gradient(135deg, ${accentBright}, ${accentDim})`, color:bg, display:'flex', alignItems:'center', justifyContent:'center',
+        fontFamily:FONT_HEAD, fontWeight:700, fontSize:17, boxShadow:`0 6px 18px -4px ${glow}`},
+      wordmarkStyle:{fontFamily:FONT_HEAD, fontWeight:700, fontSize:19, letterSpacing:'0.03em'},
+      navWrapStyle:{display:'flex', gap:3, background:'rgba(255,255,255,0.035)', padding:5, borderRadius:15, border:`1px solid ${hairline}`},
+      swatchWrapStyle:{display:'flex', alignItems:'center', gap:9, padding:'6px 12px', borderRadius:12, background:'rgba(255,255,255,0.03)'},
+      levelChipStyle:{display:'flex', alignItems:'center', gap:10, padding:'9px 16px', borderRadius:12, background:'rgba(255,255,255,0.035)', border:`1px solid ${hairline}`},
+      levelChipLabelStyle:{fontFamily:FONT_MONO, fontWeight:700, fontSize:12.5, color:accent},
+      miniBarTrackStyle:{width:52, height:5, background:trackBg, borderRadius:4, overflow:'hidden'},
+      miniBarFillStyle:{width:`${xpPct}%`, height:'100%', background:accent, borderRadius:4, transition:'width .6s ease'},
+
+      tabs, themeSwatches, level, xpTotalLabel: s.xpTotal.toLocaleString(), bgColor:bg,
+
+      contentWrapStyle:{position:'relative', zIndex:1, maxWidth:1360, margin:'0 auto', padding:'40px 44px 90px'},
+      fadeWrapStyle:{animation:'fadeIn .4s cubic-bezier(.2,.8,.2,1)'},
+
+      isOverview: s.activeTab==='overview', isHabits: s.activeTab==='habits', isStudy: s.activeTab==='study',
+      isGoals: s.activeTab==='goals', isAnalytics: s.activeTab==='analytics',
+
+      overviewGridStyle:{display:'grid', gridTemplateColumns:'repeat(12, 1fr)', gap:20},
+      heroTileStyle:{...surface(true), padding:'28px 32px', gridColumn:'span 7'},
+      nowTileStyle:{...surface(true), padding:'28px 32px', gridColumn:'span 5'},
+      wideTileStyle:{...surface(false), padding:'26px 30px', gridColumn:'span 12'},
+      tileStyle:{...surface(false), padding:'26px 30px', gridColumn:'span 4'},
+      quickTileStyle:{...surface(false), padding:'26px 30px', gridColumn:'span 5'},
+      chartTileStyle:{...surface(false), padding:'26px 30px', gridColumn:'span 7'},
+      catTileStyle:{...surface(false), padding:'26px 30px', gridColumn:'span 8'},
+      tileLabelStyle:{fontFamily:FONT_MONO, fontSize:11, color:textTertiary, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:20},
+
+      deltaRowStyle:{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:20},
+      deltaValueStyle:{...gradText, fontFamily:FONT_MONO, fontWeight:700, fontSize:32, letterSpacing:'-0.02em'},
+      deltaCaptionStyle:{fontFamily:FONT_HEAD, fontSize:12.5, color:textTertiary, marginTop:6},
+      deltaHabitsLabel:`${deltaHabitsCount-4>=0?'+':''}${deltaHabitsCount-4}`,
+      deltaXpLabel:'+25', deltaStudyLabel:'+15', sleepDeltaLabel:'steadier',
+
+      nowTimerStyle:{fontFamily:FONT_MONO, fontWeight:700, fontSize:44, color:activeColor, letterSpacing:'-0.02em', textShadow:`0 0 24px ${ok(70,0.16,hue+(CAT_OFFSET[activeAct.category]||0),0.4)}`},
+      currentActivityLabel: activeAct.label, nowActivityLabelStyle:{fontFamily:FONT_HEAD, fontSize:13.5, color:textSecondary, marginTop:6, marginBottom:18},
+      activities, activityChipsRowStyle:{display:'flex', flexWrap:'wrap', gap:8}, elapsedLabel,
+
+      timelineHeadStyle:{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:2},
+      legendRowStyle:{display:'flex', flexWrap:'wrap', gap:14, marginBottom:20}, legendItemStyle:{display:'flex', alignItems:'center'}, legend,
+      timelineTrackStyle:{position:'relative', height:52, borderRadius:12, overflow:'hidden', background:trackBg, marginTop:2},
+      blocks, habitTicks, nowLineStyle,
+      axisRowStyle:{position:'relative', height:16, marginTop:8}, axisLabels,
+
+      pulseWordStyle:{'--glow':glow, fontFamily:FONT_HEAD, fontWeight:700, fontSize:32, letterSpacing:'-0.01em', ...gradText, animation:'pulseGlow 3s ease-in-out infinite'},
+      pulseWord:'Improving',
+      pulseDescStyle:{fontFamily:FONT_HEAD, fontSize:13, color:textSecondary, marginTop:10, lineHeight:1.6},
+      pulseDesc:'More deep-work XP than yesterday, sleep holding steadier.',
+
+      ringRowStyle:{position:'relative', display:'flex', alignItems:'center', justifyContent:'center', marginTop:4},
+      ringTrackColor:trackBg, accentColor:accent, ringCircumference:circumference, ringOffset:circumference*(1-xpPct/100),
+      ringStrokeStyle:{transition:'stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1)', filter:`drop-shadow(0 0 8px ${glow})`},
+      ringCenterStyle:{position:'absolute', textAlign:'center'},
+      ringXpStyle:{fontFamily:FONT_MONO, fontWeight:700, fontSize:20, color:textPrimary},
+      ringXpCaptionStyle:{fontFamily:FONT_MONO, fontSize:10, color:textTertiary, marginTop:3},
+
+      treeWrapStyle:{position:'relative', height:150, marginTop:4},
+      treeStemStyle:{position:'absolute', left:'50%', bottom:0, width:3, height:'92%', background:`linear-gradient(180deg, ${accent}, ${trackBg})`, transform:'translateX(-50%)', transformOrigin:'bottom', animation:'stemGrow 1s cubic-bezier(.2,.8,.2,1)', borderRadius:2},
+      leaves,
+
+      quickHabits, quickLogColStyle:{display:'flex', flexDirection:'column', gap:10},
+
+      consistencyAreaPath, consistencyLinePath, consistencyPoints, sparkDayLabels,
+      chartAxisRowStyle:{display:'flex', marginTop:4},
+
+      sectionHeadStyle:{marginBottom:28}, sectionHeadRowStyle:{display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:28},
+      sectionTitleStyle:{fontFamily:FONT_HEAD, fontWeight:700, fontSize:26, letterSpacing:'-0.01em'}, sectionSubStyle:{fontFamily:FONT_HEAD, fontSize:13.5, color:textTertiary, marginTop:8},
+      habitGridStyle:{display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:16}, habits,
+
+      addSessionBtnStyle:{padding:'12px 20px', borderRadius:12, background:`linear-gradient(135deg, ${accent}, ${accentDim})`, color:bg, border:'none',
+        fontFamily:FONT_HEAD, fontWeight:700, fontSize:13, cursor:'pointer', boxShadow:`0 8px 20px -6px ${glow}`}, addSession: ()=>this.addSession(),
+      sessionListStyle:{display:'flex', flexDirection:'column', gap:12}, studySessions,
+      sessionRowStyle:{...surface(false), display:'flex', alignItems:'center', gap:18, padding:'18px 22px'},
+      sessionTitleStyle:{fontFamily:FONT_HEAD, fontSize:15, color:textPrimary}, sessionMetaStyle:{fontFamily:FONT_MONO, fontSize:11, color:textTertiary, marginTop:5},
+
+      goalGridStyle:{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:20}, goals,
+      goalTitleStyle:{fontFamily:FONT_HEAD, fontWeight:600, fontSize:16}, goalWhyStyle:{fontFamily:FONT_HEAD, fontSize:12.5, color:textTertiary, marginTop:9, lineHeight:1.55, minHeight:38},
+      goalBarTrackStyle:{height:9, background:trackBg, borderRadius:7, overflow:'hidden', marginTop:18},
+      goalMetaRowStyle:{display:'flex', justifyContent:'space-between', marginTop:11},
+      goalPctStyle:{fontFamily:FONT_MONO, fontSize:13.5, color:accent, fontWeight:700}, goalDateStyle:{fontFamily:FONT_MONO, fontSize:11, color:textTertiary},
+
+      analyticsGridStyle:{display:'grid', gridTemplateColumns:'repeat(12,1fr)', gap:20},
+      categoryBars, xpChartRowStyle:{display:'flex', gap:10}, xpBars,
+      achGridStyle:{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16}, achievements,
+    };
+  }
+}
+
+</script>
+</body>
+</html>
