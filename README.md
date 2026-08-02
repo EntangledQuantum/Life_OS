@@ -86,6 +86,10 @@ pnpm dev
 
 ## Agent integration
 
+**Full skill for Hermes / any agent:** [`docs/skills/life-os/SKILL.md`](docs/skills/life-os/SKILL.md)
+
+Copy or point your agent at that skill so it can create front-page cards, rebalance XP, inject reviews, and receive webhooks.
+
 ### HTTP
 
 ```bash
