@@ -69,7 +69,7 @@ export function AppShell() {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3.5">
           <div className="flex items-center gap-3.5">
             <img
-              src="/icon.png"
+              src="/icon.png?v=3"
               alt="Life OS"
               className="h-12 w-12 drop-shadow-[0_0_18px_var(--accent-glow)] sm:h-14 sm:w-14"
             />

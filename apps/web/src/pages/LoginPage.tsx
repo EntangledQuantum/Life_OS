@@ -35,7 +35,7 @@ export function LoginPage() {
       />
       <div className="card relative w-full max-w-md p-8">
         <div className="mb-8 text-center">
-          <img src="/icon.png" alt="" className="mx-auto h-24 w-24 drop-shadow-[0_0_28px_var(--accent-glow)]" />
+          <img src="/icon.png?v=3" alt="" className="mx-auto h-24 w-24" />
           <h1 className="font-semibold mt-4 text-2xl font-bold">Sign in</h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Mock admin gate — real data behind it.

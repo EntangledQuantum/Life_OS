@@ -28,7 +28,7 @@ export function LandingPage() {
 
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-3">
-          <img src="/icon.png" alt="" className="h-10 w-10" />
+          <img src="/icon.png?v=3" alt="" className="h-10 w-10" />
           <span className="text-xl font-bold tracking-tight">LIFE OS</span>
         </div>
         <Link to="/login" className="btn btn-primary">
@@ -43,9 +43,9 @@ export function LandingPage() {
           transition={{ duration: 0.5 }}
         >
           <img
-            src="/icon.png"
+            src="/icon.png?v=3"
             alt="Life OS"
-            className="mx-auto mb-8 h-40 w-40 drop-shadow-[0_0_48px_var(--accent-glow)] sm:h-48 sm:w-48"
+            className="mx-auto mb-8 h-40 w-40 sm:h-48 sm:w-48"
           />
           <h1 className="text-4xl font-extrabold leading-[1.15] tracking-tight md:text-5xl lg:text-6xl">
             Your execution layer.
