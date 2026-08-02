@@ -175,49 +175,46 @@ export function SettingsPage() {
           ))}
         </div>
         <div>
-          <label className="label">Improvement pulse visual</label>
+          <label className="label">Growth meter style</label>
           <p className="mb-2 text-xs text-[var(--muted)]">
-            Plant growth or water fill for daily XP target progress.
+            How daily XP progress is drawn. A sprout that grows, or an orb that
+            fills with light — this is about nurturing progress, not hydration.
           </p>
           <div className="flex gap-2">
-            <button
-              type="button"
-              className="btn"
-              onClick={() =>
-                fetch((import.meta.env.VITE_API_URL ?? "") + "/api/v1/gamification/config", {
-                  method: "PATCH",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
-                  },
-                  body: JSON.stringify({ nurtureStyle: "plant" }),
-                }).then(() => {
-                  qc.invalidateQueries({ queryKey: ["dashboard"] });
-                  toast.success("Using plant visual");
-                })
-              }
-            >
-              Plant
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() =>
-                fetch((import.meta.env.VITE_API_URL ?? "") + "/api/v1/gamification/config", {
-                  method: "PATCH",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
-                  },
-                  body: JSON.stringify({ nurtureStyle: "water" }),
-                }).then(() => {
-                  qc.invalidateQueries({ queryKey: ["dashboard"] });
-                  toast.success("Using water visual");
-                })
-              }
-            >
-              Water
-            </button>
+            {(
+              [
+                { id: "sprout", label: "Sprout", hint: "grows leaf by leaf" },
+                { id: "orb", label: "Orb", hint: "fills with light" },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className="btn flex-col items-start gap-0.5 text-left"
+                onClick={() =>
+                  fetch(
+                    (import.meta.env.VITE_API_URL ?? "") +
+                      "/api/v1/gamification/config",
+                    {
+                      method: "PATCH",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
+                      },
+                      body: JSON.stringify({ growthStyle: option.id }),
+                    },
+                  ).then(() => {
+                    qc.invalidateQueries({ queryKey: ["dashboard"] });
+                    toast.success(`Growth meter: ${option.label.toLowerCase()}`);
+                  })
+                }
+              >
+                <span>{option.label}</span>
+                <span className="text-[10px] text-[var(--faint)]">
+                  {option.hint}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
         <label className="flex items-center justify-between text-sm">

@@ -24,7 +24,25 @@ config({
 // re-implement thin wrappers by importing from api source is better — use dynamic imports of service modules.
 // For reliability, duplicate call surface by importing db + inlined service functions from api.
 
-import { listHabits, createHabit, updateHabit, deleteHabit, completeHabit, setHabitTheme } from "../../../apps/api/src/services/habits.js";
+import { listHabits, createHabit, updateHabit, deleteHabit, completeHabit, setHabitTheme, rebalanceHabitXp } from "../../../apps/api/src/services/habits.js";
+import {
+  listCards,
+  getCard,
+  createCard,
+  updateCard,
+  deleteCard,
+  completeCard,
+} from "../../../apps/api/src/services/cards.js";
+import {
+  listBlocks,
+  createBlock,
+  updateBlock,
+  deleteBlock,
+} from "../../../apps/api/src/services/blocks.js";
+import {
+  listAgentEvents,
+  injectAgentEvent,
+} from "../../../apps/api/src/services/events.js";
 import { createStudySession } from "../../../apps/api/src/services/study.js";
 import { getDashboard } from "../../../apps/api/src/services/dashboard.js";
 import { getVsYesterday, getPulse } from "../../../apps/api/src/services/snapshots.js";
@@ -36,7 +54,7 @@ import {
   updateGamificationConfig,
 } from "../../../apps/api/src/services/settings.js";
 import { listAchievements, createAchievement } from "../../../apps/api/src/services/achievements.js";
-import { localDateString } from "@life-os/shared";
+import { localDateString, XP_MODEL_DOC } from "@life-os/shared";
 
 const db = getDb();
 
@@ -179,14 +197,175 @@ const tools = [
   },
   {
     name: "lifeos_update_xp_rules",
-    description: "Patch live gamification multipliers / level curve",
+    description:
+      "Patch gamification config: dailyXpTarget (the fixed daily XP pool), " +
+      "growthStyle (sprout|orb), and quality multipliers. Changing dailyXpTarget " +
+      "rebalances every habit's baseXp. There are no levels.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        levelBase: { type: "number" },
-        levelExponent: { type: "number" },
+        dailyXpTarget: { type: "number" },
+        growthStyle: { type: "string", enum: ["sprout", "orb"] },
         baseMultipliers: { type: "object" },
       },
+    },
+  },
+  {
+    name: "lifeos_get_xp_model",
+    description:
+      "Explain the XP system: fixed daily pool, weighted redistribution, extraXp " +
+      "bonuses, efficiency and improvement maths, plus each habit's current share.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_rebalance_xp",
+    description:
+      "Re-slice dailyXpTarget across active habits by xpWeight. Call after bulk habit edits.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_list_cards",
+    description: "List front-page cards (2 content slots + the agent-setup card in slot 2)",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_upsert_card",
+    description:
+      "Create or replace a front-page card. slot 0/1 are content cards; " +
+      "kind:'agent-setup' targets the reserved slot 2. `svg` accepts inline SVG " +
+      "markup (sanitized, rendered sandboxed) for custom graphics.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        slot: { type: "number", enum: [0, 1, 2] },
+        kind: { type: "string", enum: ["task", "agent-setup"] },
+        title: { type: "string" },
+        subtitle: { type: "string" },
+        body: { type: "string" },
+        emoji: { type: "string" },
+        themeColor: { type: "string" },
+        imageUrl: { type: "string" },
+        svg: { type: "string" },
+        progress: { type: "number" },
+        ctaLabel: { type: "string" },
+        ctaLink: { type: "string" },
+        meta: { type: "object" },
+        xpOnComplete: { type: "number" },
+        webhookOnComplete: { type: "boolean" },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "lifeos_update_card",
+    description: "Patch an existing card by id (progress, body, svg, status…)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        subtitle: { type: "string" },
+        body: { type: "string" },
+        svg: { type: "string" },
+        progress: { type: "number" },
+        status: { type: "string", enum: ["active", "done", "hidden"] },
+        meta: { type: "object" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_delete_card",
+    description: "Delete a front-page card by id",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_complete_card",
+    description: "Mark a card complete (awards xpOnComplete and fires the webhook)",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" }, note: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_list_blocks",
+    description: "List today's schedule blocks on the day timeline",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_create_block",
+    description:
+      "Add a timeline block (agent owns the schedule; the user starts/completes it)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        category: { type: "string" },
+        label: { type: "string" },
+        plannedStart: { type: "string" },
+        plannedEnd: { type: "string" },
+        notes: { type: "string" },
+        date: { type: "string" },
+      },
+      required: ["label"],
+    },
+  },
+  {
+    name: "lifeos_update_block",
+    description: "Patch a schedule block by id",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string" },
+        label: { type: "string" },
+        category: { type: "string" },
+        plannedStart: { type: "string" },
+        plannedEnd: { type: "string" },
+        status: {
+          type: "string",
+          enum: ["planned", "active", "done", "skipped"],
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_delete_block",
+    description: "Delete a schedule block by id",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_list_events",
+    description: "List today's agent events in the Quick log queue",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_inject_event",
+    description:
+      "Push a task/review/reminder into Quick log. It flashes until the user " +
+      "completes it, and awards xpOnComplete as bonus XP outside the habit pool.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["review", "task", "life", "study", "reminder", "other"],
+        },
+        title: { type: "string" },
+        body: { type: "string" },
+        link: { type: "string" },
+        priority: { type: "number" },
+        xpOnComplete: { type: "number" },
+      },
+      required: ["title"],
     },
   },
   {
@@ -278,6 +457,63 @@ async function handleTool(name: string, args: Record<string, unknown>) {
       });
     case "lifeos_update_xp_rules":
       return updateGamificationConfig(db, args as any);
+    case "lifeos_get_xp_model": {
+      const config = getGamificationConfig(db);
+      const active = listHabits(db);
+      return {
+        ...XP_MODEL_DOC,
+        current: {
+          dailyXpTarget: config.dailyXpTarget,
+          baseMultipliers: config.baseMultipliers,
+          growthStyle: config.growthStyle,
+          activeHabitCount: active.length,
+          totalWeight: active.reduce((a, h) => a + (h.xpWeight || 1), 0),
+          shares: active.map((h) => ({
+            id: h.id,
+            name: h.name,
+            xpWeight: h.xpWeight,
+            baseXp: h.baseXp,
+            extraXp: h.extraXp,
+          })),
+        },
+      };
+    }
+    case "lifeos_rebalance_xp":
+      return { shares: rebalanceHabitXp(db) };
+    case "lifeos_list_cards":
+      return listCards(db);
+    case "lifeos_upsert_card":
+      return createCard(db, args as any);
+    case "lifeos_update_card": {
+      const { id, ...rest } = args as { id: string } & Record<string, unknown>;
+      const result = updateCard(db, id, rest as any);
+      if (!result) throw new Error(`Card not found: ${id}`);
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_delete_card":
+      return deleteCard(db, String(args.id));
+    case "lifeos_complete_card":
+      return completeCard(db, String(args.id), {
+        note: args.note as string | undefined,
+        source: "agent",
+      });
+    case "lifeos_list_blocks":
+      return listBlocks(db);
+    case "lifeos_create_block":
+      return createBlock(db, { source: "agent", ...(args as any) });
+    case "lifeos_update_block": {
+      const { id, ...rest } = args as { id: string } & Record<string, unknown>;
+      const block = updateBlock(db, id, rest as any);
+      if (!block) throw new Error(`Block not found: ${id}`);
+      return block;
+    }
+    case "lifeos_delete_block":
+      return deleteBlock(db, String(args.id));
+    case "lifeos_list_events":
+      return listAgentEvents(db);
+    case "lifeos_inject_event":
+      return injectAgentEvent(db, args as any);
     case "lifeos_create_achievement":
       return createAchievement(db, args as any);
     case "lifeos_list_achievements":
@@ -292,7 +528,7 @@ async function handleTool(name: string, args: Record<string, unknown>) {
 }
 
 const server = new Server(
-  { name: "life-os", version: "0.1.0" },
+  { name: "life-os", version: "0.3.0" },
   { capabilities: { tools: {} } },
 );
 

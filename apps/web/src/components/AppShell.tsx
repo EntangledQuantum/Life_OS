@@ -1,15 +1,15 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
   LayoutDashboard,
-  LogOut,
   Settings,
   Target,
   CheckCircle2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { api, setToken } from "@/lib/api";
+import { api } from "@/lib/api";
+import { asset } from "@/lib/deploy";
 import { useUiStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
@@ -24,7 +24,6 @@ const tabs = [
 ];
 
 export function AppShell() {
-  const navigate = useNavigate();
   const { setAccentTheme } = useUiStore();
   const { data } = useQuery({
     queryKey: ["dashboard"],
@@ -40,36 +39,30 @@ export function AppShell() {
     if (settings?.accentTheme) setAccentTheme(settings.accentTheme);
   }, [settings?.accentTheme, setAccentTheme]);
 
-  const logout = async () => {
-    try {
-      await api.logout();
-    } catch {
-      /* ignore */
-    }
-    setToken(null);
-    navigate("/login");
-  };
-
   const eff = data?.progress.efficiencyPct ?? 0;
   const pending = data?.pendingEventCount ?? 0;
 
   return (
     <div className="relative min-h-screen">
-      <div
-        className="pointer-events-none fixed inset-0 opacity-60"
-        style={{
-          background: `
-            radial-gradient(ellipse 60% 40% at 20% -10%, var(--accent-soft), transparent),
-            radial-gradient(ellipse 50% 30% at 90% 10%, oklch(40% 0.08 296 / 0.2), transparent)
-          `,
-        }}
-      />
+      {/* Layered ambient background: slow aurora + fine grain, accent-aware. */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="app-aurora app-aurora-a" />
+        <div className="app-aurora app-aurora-b" />
+        <div className="app-aurora app-aurora-c" />
+        <div className="app-grain" />
+        <div className="app-vignette" />
+      </div>
 
       <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[oklch(7%_0.01_260_/_0.85)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3.5">
-          <div className="flex items-center gap-3.5">
+          {/* Doubles as the way back out to the landing page. */}
+          <Link
+            to="/"
+            className="group flex items-center gap-3.5 rounded-xl transition-opacity hover:opacity-80"
+            title="Back to the Life OS home page"
+          >
             <img
-              src="/icon.png?v=3"
+              src={asset("icon.png?v=3")}
               alt="Life OS"
               className="h-12 w-12 drop-shadow-[0_0_18px_var(--accent-glow)] sm:h-14 sm:w-14"
             />
@@ -81,7 +74,7 @@ export function AppShell() {
                 day → {data?.dayResetTime ?? "04:00"} reset
               </div>
             </div>
-          </div>
+          </Link>
 
           <nav className="flex flex-1 flex-wrap items-center justify-center gap-1">
             {tabs.map((t) => (
@@ -118,9 +111,8 @@ export function AppShell() {
                 />
               </div>
             </div>
-            <button type="button" className="btn px-2 py-2" onClick={logout} title="Logout">
-              <LogOut className="h-4 w-4" />
-            </button>
+            {/* No sign-out: Life OS is single-user and you are the admin.
+                Multi-user auth is on hold — see Settings. */}
           </div>
         </div>
       </header>

@@ -2,9 +2,13 @@ packages:
   - "apps/*"
   - "packages/*"
 
-onlyBuiltDependencies:
-  - better-sqlite3
-  - esbuild
+# Which dependencies may run install scripts (pnpm 11 requires an explicit answer;
+# leaving the placeholder in place makes `pnpm install` fail on a fresh clone).
+#
+#   esbuild        → true.  Its postinstall fetches the platform binary Vite needs.
+#   better-sqlite3 → false. It arrives transitively via drizzle-kit but is never used
+#                    at runtime (Life OS uses Node's built-in node:sqlite), and building
+#                    it would require Visual Studio C++ on Windows.
 allowBuilds:
-  better-sqlite3: set this to true or false
-  esbuild: set this to true or false
+  esbuild: true
+  better-sqlite3: false

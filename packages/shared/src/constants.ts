@@ -38,6 +38,35 @@ export const HABIT_GRAPHICS = [
 
 export type HabitGraphic = (typeof HABIT_GRAPHICS)[number];
 
+/**
+ * Daily-progress visual styles ("Growth meter").
+ *
+ * Renamed from the old `nurtureStyle` (`plant` | `water` | `both`) because
+ * "water" read as the drinking-water habit. The concept is nurturing growth
+ * toward the daily XP target, not hydration.
+ */
+export const GROWTH_STYLES = ["sprout", "orb"] as const;
+
+export type GrowthStyle = (typeof GROWTH_STYLES)[number];
+
+/** Legacy values still accepted from older agents / stored configs. */
+export const LEGACY_GROWTH_STYLES = ["plant", "water", "both"] as const;
+
+/** Map any historical or current value onto a supported GrowthStyle. */
+export function normalizeGrowthStyle(value: unknown): GrowthStyle {
+  switch (value) {
+    case "orb":
+    case "water":
+      return "orb";
+    case "sprout":
+    case "plant":
+    case "both":
+      return "sprout";
+    default:
+      return "sprout";
+  }
+}
+
 export const IMPROVEMENT_PULSES = [
   "Improving",
   "Stable",

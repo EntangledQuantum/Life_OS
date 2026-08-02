@@ -90,16 +90,29 @@ export function getGamificationConfig(db: LifeOsDb): GamificationConfig {
   return loadGamificationConfig(db);
 }
 
+/**
+ * Every field optional, including individual multipliers — an intersection with
+ * `Partial<GamificationConfig>` would still demand a *complete* baseMultipliers.
+ */
+export type GamificationConfigPatch = {
+  dailyXpTarget?: number;
+  growthStyle?: GamificationConfig["growthStyle"];
+  baseMultipliers?: Partial<GamificationConfig["baseMultipliers"]>;
+  /** @deprecated pre-rename alias for growthStyle */
+  nurtureStyle?: GamificationConfig["growthStyle"];
+};
+
 export function updateGamificationConfig(
   db: LifeOsDb,
-  patch: Partial<GamificationConfig> & {
-    baseMultipliers?: Partial<GamificationConfig["baseMultipliers"]>;
-  },
+  patch: GamificationConfigPatch,
 ) {
   const current = loadGamificationConfig(db);
+  const { nurtureStyle, ...rest } = patch;
   const next: GamificationConfig = {
     ...current,
-    ...patch,
+    ...rest,
+    // Accept the legacy key so older agents can still switch the visual.
+    growthStyle: rest.growthStyle ?? nurtureStyle ?? current.growthStyle,
     baseMultipliers: {
       ...current.baseMultipliers,
       ...(patch.baseMultipliers ?? {}),

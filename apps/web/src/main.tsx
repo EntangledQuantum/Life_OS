@@ -14,6 +14,7 @@ import { StudyPage } from "./pages/StudyPage";
 import { GoalsPage } from "./pages/GoalsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { IS_PAGES } from "./lib/deploy";
 
 const qc = new QueryClient({
   defaultOptions: {
@@ -21,25 +22,37 @@ const qc = new QueryClient({
   },
 });
 
+/**
+ * The GitHub Pages build is the landing page and nothing else — there is no API
+ * or database behind a static host, so the app routes are not shipped at all.
+ */
+const routes = IS_PAGES ? (
+  <Routes>
+    <Route path="*" element={<LandingPage />} />
+  </Routes>
+) : (
+  <Routes>
+    <Route path="/" element={<LandingPage />} />
+    <Route path="/login" element={<LoginPage />} />
+    <Route element={<RequireAuth />}>
+      <Route path="/app" element={<AppShell />}>
+        <Route index element={<OverviewPage />} />
+        <Route path="habits" element={<HabitsPage />} />
+        <Route path="study" element={<StudyPage />} />
+        <Route path="goals" element={<GoalsPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
+    </Route>
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes>
+);
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={qc}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route element={<RequireAuth />}>
-            <Route path="/app" element={<AppShell />}>
-              <Route index element={<OverviewPage />} />
-              <Route path="habits" element={<HabitsPage />} />
-              <Route path="study" element={<StudyPage />} />
-              <Route path="goals" element={<GoalsPage />} />
-              <Route path="analytics" element={<AnalyticsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-            </Route>
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
+        {routes}
       </BrowserRouter>
       <Toaster
         theme="dark"

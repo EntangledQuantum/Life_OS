@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:pages": "node ../../scripts/build-pages.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },

@@ -1,16 +1,65 @@
 # Life OS — Development Log & Agent Handoff
 
-**Last updated:** 2026-08-02  
-**Repo:** https://github.com/EntangledQuantum/Life_OS (private)  
-**Primary implementer session:** Grok Build (xAI) with owner Sunny  
-**Status:** Phase 1 web MVP largely working locally; several Phase-2 items unfinished  
+**Last updated:** 2026-08-03  
+**Repo:** https://github.com/EntangledQuantum/Life_OS  
+**Status:** Phase 1 web MVP working locally; v0.3 pass shipped XP integrity, growth-meter rename, agent-setup cards, one-command setup, and a rebuilt landing page
 
 **Read this file first** if you are a new human or coding agent picking up the project. Then read:
 
 1. `docs/LIFE_OS.md` — product vision & data model (source of truth for *why*)  
 2. `docs/skills/life-os/SKILL.md` — **single** agent skill (Hermes, OpenClaw, any long-running agent)  
 3. `docs/API.md` — HTTP surface  
-4. This log — *what was actually built, divergences, and gaps*
+4. `docs/DATABASE.md` — how persistence works  
+5. This log — *what was actually built, divergences, and gaps*
+
+---
+
+## 0. What changed in the v0.3 pass (2026-08-03)
+
+| Area | Change |
+|------|--------|
+| **XP integrity (bug fix)** | `refreshTodaySnapshot()` only summed habit logs + study sessions. Card, agent-event, quest, and achievement XP called `addXp()` — raising lifetime `total_xp` — but **never appeared in today's XP, efficiency, the growth meter, or vs-yesterday**. All five sources now feed the daily snapshot. |
+| **Pulse target** | `computeImprovementPulse()` was called without `recentTargets`, so "target met" used the library default (200) instead of the user's configured pool. Now passes the real target. |
+| **Growth meter rename** | `nurtureStyle` (`plant`/`water`/`both`) → `growthStyle` (`sprout`/`orb`). "Water" collided with the drink-water habit. Legacy keys and values are accepted and mapped on read, write, and in `ensureSchema()` (which folds stored configs forward). |
+| **Growth animation** | `NurtureVisual.tsx` deleted, replaced by `GrowthMeter.tsx`. The 100% state is now drawn as a ghost layer behind the live state, so remaining distance is always visible. Spring motion, animated wave crests on the orb, bloom + glow at full, reduced-motion respected. |
+| **Agent-setup card** | New card `kind` (`task` \| `agent-setup`) and reserved singleton slot `2` that does **not** consume a content slot. Seeded with a "No agent connected" placeholder the agent replaces. |
+| **Card SVG** | New `svg` field on cards. Sanitized server-side (`packages/shared/src/svg.ts`) and rendered through an `<img>` data URI, so it cannot execute script. Create responses return `svgNotes` listing anything stripped. |
+| **XP discovery** | New `GET /api/v1/agent/xp-model` and MCP `lifeos_get_xp_model` return the rules **and** the live per-habit shares. `XP_MODEL_DOC` in `packages/shared/src/xp.ts` is the single source. |
+| **Event XP** | `agent_events.xp_on_complete` added; completing an agent event now awards bonus XP and refreshes the snapshot. |
+| **Status codes** | Habit complete now returns `409` for "already completed today" (was `200` with an error body) and `404` for unknown. Event complete returns `404` for unknown. |
+| **MCP parity** | Added cards (incl. SVG + agent-setup), blocks, events, rebalance, and xp-model tools. Was HTTP-only for all of these. |
+| **One-command setup** | `scripts/setup.mjs` → `pnpm setup`. Node version check, `.env` creation, install, migrate, seed. Idempotent; prompts before reseeding an existing DB and skips the prompt entirely when stdin is not a TTY. |
+| **DB bootstrap** | `packages/db/src/bootstrap.ts`; the API now migrates on boot, so `pnpm dev` works on a fresh clone with no separate migrate step. |
+| **Dashboard UI** | Agent cards are collapsible with a summary strip and persisted state (`AgentCardsSection.tsx`). Background replaced with a layered aurora + grain + vignette. |
+| **Landing page** | Rewritten as a long scroll: hero with dashboard mock, three-layer diagram, feature vignettes, an interactive growth-meter demo, agent flow diagram, XP pool explainer, quick start, database section. All hand-built SVG, no external assets. |
+| **Fresh clone was broken** | `pnpm-workspace.yaml` shipped pnpm 11's `allowBuilds` stub with the literal placeholder `set this to true or false`. On any machine without an existing install, `pnpm install` aborted with `ERR_PNPM_IGNORED_BUILDS` — so clone-and-run did not work at all. Now answered explicitly: `esbuild: true` (Vite needs its platform binary), `better-sqlite3: false` (transitive via drizzle-kit, unused at runtime, and building it needs VS C++ on Windows). Verified by copying the tree to a clean directory with no `.env` and no `data/` and running `pnpm setup` end to end. |
+| **Typecheck (was broken)** | `pnpm typecheck` failed with 150+ errors. Fixed: `QualityFlag` imported from the wrong module in `xp.ts`; `apps/api` pinned drizzle `^0.41` while `packages/db` pinned `^0.44`, producing two copies and type-identity failures; `packages/mcp` had `rootDir: src` while importing from `apps/api`; untyped Hono context; a self-referential `cursor` inference in `computeStreaks`; and an intersection type that made `baseMultipliers` accidentally required. **All five packages now typecheck clean.** |
+
+### Follow-up pass (same day)
+
+| Area | Change |
+|------|--------|
+| **Sign-in removed from the flow** | Life OS is single-user and self-hosted, so `RequireAuth` now auto-signs-in with the mock credentials and drops straight into the app. `/login` still exists as a fallback for a customised `ADMIN_USER`/`ADMIN_PASS`. The header sign-out button is gone. Multi-user auth is explicitly **on hold**, and both the README and the landing page say so. |
+| **GitHub Pages deploy** | Live at **https://entangledquantum.github.io/Life_OS/** (Pages source is set to GitHub Actions). `pnpm build:pages` builds a landing-page-only bundle (580 kB vs 1055 kB — the dashboard is not shipped) with `base=/Life_OS/`, plus `.nojekyll` and a `404.html` fallback. `.github/workflows/pages.yml` deploys it on push to `master`. Because a static host has no API or database, every "Open dashboard" affordance is hidden on that build and replaced with "Get started"; `IS_PAGES` in `apps/web/src/lib/deploy.ts` is the single switch. |
+| **Positioning rewritten** | "Your execution layer. Not another guilt app." meant nothing to a first-time reader. Headline is now "An ADHD life manager your AI agent runs for you", with a subline that names what it tracks. The `local-first · agent-native` badge was removed. README rewritten to match. |
+| **Three-layer diagram rebuilt** | Was one flat SVG with unreadable labels. Now real cards (`LayersStack.tsx`) with a proper Obsidian crystal mark, the Life OS brand icon, an agent orbit mark, colour spines, role labels, and tags. |
+| **Agent brief on the landing page** | Replaced the curl-snippet block with a literal paste-into-your-agent brief: health check, permission-gated clone, `pnpm setup`, where the skill is, the XP discovery call, per-runtime notes for Hermes / OpenClaw / Claude Code, and the hard rules. |
+| **Agent setup card shrunk** | Was a full-width card with a large graphic. Now a one-line status strip with a live/dead dot that expands on click. It sits outside the collapsible block, since status is always worth seeing. |
+| **Header logo links home** | Clicking LIFE OS in the dashboard header returns to the landing page. |
+| **Screenshots** | `pnpm screenshots` (`scripts/screenshots.mjs`) captures the README images from the running app in headless Chromium with reduced motion, so they are reproducible. Playwright is deliberately **not** a project dependency — install it only to recapture. |
+
+### Naming migration cheat-sheet
+
+| Old | New |
+|-----|-----|
+| `nurtureStyle` | `growthStyle` |
+| `plant` | `sprout` |
+| `water` | `orb` |
+| `both` | `sprout` |
+| `NurtureVisual` | `GrowthMeter` |
+
+Old values still work everywhere; the dashboard payload also mirrors `growthStyle` into a
+deprecated `nurtureStyle` field for any pre-rename client.
 
 ---
 
@@ -241,7 +290,7 @@ Core (from schema + ensure-schema additive columns):
 | `user_progress` | total_xp, pulse (level column legacy unused for UI) |
 | `quests` | Optional challenges |
 | `daily_snapshots` | Day aggregates for vs-yesterday |
-| `gamification_config` | JSON config (dailyXpTarget, nurtureStyle, multipliers) |
+| `gamification_config` | JSON config (dailyXpTarget, growthStyle, multipliers) |
 | `settings` | Day reset, quiet hours, theme, webhook, storage mode |
 | `active_sessions` | Right Now timer |
 | `auth_sessions` | Mock login tokens |
@@ -296,7 +345,12 @@ Migrations: Drizzle `packages/db/drizzle/` + runtime **`ensureSchema()`** for ad
 | `src/components/AppShell.tsx` | Nav, efficiency chip, pending badge |
 | `src/components/AgentCard.tsx` | Renders agent dashboard card |
 | `src/components/HabitCard.tsx` | Habit UI (used Habits page; Overview uses HabitRow) |
-| `src/components/graphics/NurtureVisual.tsx` | Plant/water daily efficiency meter |
+| `src/components/graphics/GrowthMeter.tsx` | Growth meter (sprout/orb) with ghosted 100% overlay |
+| `src/components/AgentCardsSection.tsx` | Collapsible agent-card block with summary strip |
+| `src/components/AgentSetupCard.tsx` | Agent-setup card (slot 2) incl. sandboxed SVG |
+| `src/components/landing/Reveal.tsx` | Scroll-reveal wrapper, section heading, copyable code block |
+| `src/components/landing/illustrations.tsx` | All landing-page SVG art |
+| `src/lib/useReveal.ts` | IntersectionObserver reveal hook |
 | `src/components/graphics/*` | Legacy ring/tree/liquid (partially superseded) |
 | `src/pages/OverviewPage.tsx` | Main open dashboard |
 | `src/pages/HabitsPage.tsx` | Habits complete-only UI |
@@ -400,10 +454,11 @@ Branch: `master` → `origin/master` on GitHub private repo.
 - [ ] Rich sleep logging UI  
 - [ ] “What went wrong” reflection flow  
 - [ ] Full goal hierarchy (Dream → projects)  
-- [ ] MCP tools parity with HTTP (cards, rebalance, webhook settings)  
 - [ ] OpenAPI machine-readable spec  
 - [ ] Unit/integration tests  
 - [ ] Mobile clients  
+
+*(MCP/HTTP parity was closed in v0.3.)*
 
 ### Technical debt
 
@@ -413,7 +468,10 @@ Branch: `master` → `origin/master` on GitHub private repo.
 - [ ] Card `imageData` size limits not enforced hard beyond Zod max  
 - [ ] Seed uses life-day date from local midnight in one place vs dayResetTime — verify for night-owl edge cases  
 - [ ] Complete card webhook is async in habits (void fire); cards await — unify pattern  
-- [ ] Typecheck not run in CI  
+- [ ] Typecheck not run in CI (it now **passes** cleanly across all 5 packages — worth wiring up)  
+- [ ] `packages/mcp` imports API service source across package boundaries; `rootDir` had to be dropped. Long term it should call the HTTP API or the services should move into a shared package  
+- [ ] `getXpSeries` uses the *current* `dailyXpTarget` for historical days rather than the target stored on each snapshot  
+- [ ] `GET /api/v1/session/active` composes the whole dashboard just to read one row  
 
 ### UX polish still soft
 
@@ -429,13 +487,12 @@ Branch: `master` → `origin/master` on GitHub private repo.
 ```bash
 git clone https://github.com/EntangledQuantum/Life_OS.git
 cd Life_OS
-cp .env.example .env
-# Node 22.5+ or 25+
-pnpm install
-pnpm db:migrate
-pnpm db:seed
+# Node 22.5+
+pnpm setup     # .env + install + database + migrations + seed (idempotent)
 pnpm dev
 ```
+
+The API also bootstraps the database on boot, so `pnpm dev` alone works on a fresh clone.
 
 - Web: http://127.0.0.1:5173  
 - API: http://127.0.0.1:8787  
@@ -448,6 +505,7 @@ Give any agent (Hermes, OpenClaw, …): **`docs/skills/life-os/SKILL.md`** only.
 
 ## 11. Conventions for future agents
 
+0. **Any new XP source must be added to `refreshTodaySnapshot()`**, not just `addXp()` — otherwise it silently misses today's efficiency and the growth meter.  
 1. **Do not reintroduce levels** or social comparison.  
 2. **Agents customize structure; users complete.** Prefer API over large user forms.  
 3. **Max 2 dashboard cards.**  
@@ -496,12 +554,12 @@ Give any agent (Hermes, OpenClaw, …): **`docs/skills/life-os/SKILL.md`** only.
 
 ## 14. Suggested next work (priority)
 
-1. Wire MCP tools for cards + rebalance + settings webhook.  
-2. Day-rollover job: reset done cards / inject tomorrow from agent.  
-3. Tests for redistributeDailyXp + timeline continuity.  
-4. Complete Supabase storage adapter or drop UI until ready.  
-5. Align LIFE_OS.md version note (Flutter/levels) with shipped product.  
-6. CI: typecheck + seed smoke on PR.
+1. Day-rollover job: reset done cards / inject tomorrow from agent.  
+2. Tests for `redistributeDailyXp`, snapshot XP aggregation, SVG sanitizing, and timeline continuity.  
+3. CI: typecheck + seed smoke on PR (typecheck is green now, so this is cheap to add).  
+4. Complete the Supabase storage adapter or remove the Settings UI until it is real.  
+5. Align `LIFE_OS.md` (still mentions Flutter and levels) with the shipped product.  
+6. Browser notifications for quiet-hours-aware reminders.
 
 ---
 

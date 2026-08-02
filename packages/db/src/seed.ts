@@ -211,6 +211,7 @@ if (eventCount === 0) {
         forDate: dateStr,
         status: "pending",
         priority: 2,
+        xpOnComplete: 15,
         completedAt: null,
         createdAt: now,
       },
@@ -223,6 +224,7 @@ if (eventCount === 0) {
         forDate: dateStr,
         status: "pending",
         priority: 1,
+        xpOnComplete: 10,
         completedAt: null,
         createdAt: now,
       },
@@ -288,6 +290,7 @@ if (cardCount === 0) {
     .values({
       id: nanoid(),
       slot: 0,
+      kind: "task",
       title: "Currently reading",
       subtitle: "Agent can update this anytime",
       body: "Set book title, chapter, and mark done when finished. Completing fires your agent webhook if configured.",
@@ -295,6 +298,7 @@ if (cardCount === 0) {
       themeColor: "#A78BFA",
       imageUrl: null,
       imageData: null,
+      svg: null,
       status: "active",
       progress: 20,
       ctaLabel: "Mark chapter done",
@@ -302,6 +306,56 @@ if (cardCount === 0) {
       metaJson: JSON.stringify({ type: "reading", book: null, chapter: 1 }),
       xpOnComplete: 25,
       webhookOnComplete: true,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+}
+
+/**
+ * Agent setup card (reserved slot 2). Ships disconnected so a fresh install
+ * explains how to attach Hermes / OpenClaw; the agent replaces it once connected.
+ */
+const setupCard = db
+  .select()
+  .from(schema.dashboardCards)
+  .all()
+  .find((c) => c.slot === 2);
+if (!setupCard) {
+  db.insert(schema.dashboardCards)
+    .values({
+      id: nanoid(),
+      slot: 2,
+      kind: "agent-setup",
+      title: "No agent connected",
+      subtitle: "Hermes · OpenClaw · Claude Code · any HTTP agent",
+      body:
+        "Point your agent at docs/skills/life-os/SKILL.md and give it this API base " +
+        "plus the API_TOKEN from .env. It can then create habits, schedule blocks, " +
+        "inject reviews, redistribute the daily XP pool, and replace this card.",
+      emoji: "🤖",
+      themeColor: "#5B8CFF",
+      imageUrl: null,
+      imageData: null,
+      svg:
+        '<svg viewBox="0 0 120 72" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent not connected">' +
+        '<rect x="6" y="20" width="38" height="32" rx="8" fill="none" stroke="#5B8CFF" stroke-width="2"/>' +
+        '<circle cx="19" cy="34" r="3.2" fill="#5B8CFF"/><circle cx="31" cy="34" r="3.2" fill="#5B8CFF"/>' +
+        '<path d="M18 43h14" stroke="#5B8CFF" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M25 20v-7" stroke="#5B8CFF" stroke-width="2" stroke-linecap="round"/>' +
+        '<circle cx="25" cy="11" r="2.4" fill="#5B8CFF"/>' +
+        '<path d="M50 36h8M62 36h8" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-dasharray="1 5"/>' +
+        '<rect x="76" y="20" width="38" height="32" rx="8" fill="none" stroke="#64748B" stroke-width="2"/>' +
+        '<path d="M86 30h18M86 36h18M86 42h11" stroke="#64748B" stroke-width="2" stroke-linecap="round"/>' +
+        "</svg>",
+      status: "active",
+      progress: 0,
+      ctaLabel: "Read the agent skill",
+      ctaLink: "https://github.com/EntangledQuantum/Life_OS/blob/master/docs/skills/life-os/SKILL.md",
+      metaJson: JSON.stringify({ connected: false }),
+      xpOnComplete: 0,
+      webhookOnComplete: false,
       completedAt: null,
       createdAt: now,
       updatedAt: now,

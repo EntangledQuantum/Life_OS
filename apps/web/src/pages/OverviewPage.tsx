@@ -9,13 +9,19 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ACTIVITIES, type AgentEvent, type HabitWithToday } from "@life-os/shared";
+import {
+  ACTIVITIES,
+  GROWTH_STYLES,
+  type GrowthStyle,
+  type HabitWithToday,
+} from "@life-os/shared";
 import { api } from "@/lib/api";
 import { celebrate } from "@/lib/celebrate";
 import { useUiStore } from "@/lib/store";
 import { cn, formatDelta, formatElapsed } from "@/lib/utils";
-import { NurtureVisual } from "@/components/graphics/NurtureVisual";
+import { GrowthMeter } from "@/components/graphics/GrowthMeter";
 import { AgentCard } from "@/components/AgentCard";
+import { AgentCardsSection } from "@/components/AgentCardsSection";
 import { toast } from "sonner";
 import { motion } from "motion/react";
 import { Check, ExternalLink, Undo2, X } from "lucide-react";
@@ -116,22 +122,22 @@ export function OverviewPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const setNurture = useMutation({
-    mutationFn: (nurtureStyle: "plant" | "water") =>
+  const setGrowthStyle = useMutation({
+    mutationFn: (growthStyle: GrowthStyle) =>
       fetch((import.meta.env.VITE_API_URL ?? "") + "/api/v1/gamification/config", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
         },
-        body: JSON.stringify({ nurtureStyle }),
+        body: JSON.stringify({ growthStyle }),
       }).then(async (r) => {
-        if (!r.ok) throw new Error("Failed to update nurture style");
+        if (!r.ok) throw new Error("Failed to update growth style");
         return r.json();
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Pulse visual updated");
+      toast.success("Growth meter updated");
     },
   });
 
@@ -166,8 +172,7 @@ export function OverviewPage() {
           : "var(--accent)";
 
   const p = data.progress;
-  const nurtureMode =
-    p.nurtureStyle === "water" || p.nurtureStyle === "both" ? "water" : "plant";
+  const growthMode: GrowthStyle = p.growthStyle === "orb" ? "orb" : "sprout";
 
   const pendingEvents = data.agentEvents.filter((e) => e.status === "pending");
   const pendingReviews = (data.lightReviews ?? []).filter((r) => !r.completedAt);
@@ -310,24 +315,11 @@ export function OverviewPage() {
         </div>
       </section>
 
-      {(data.cards?.length ?? 0) > 0 && (
-        <section>
-          <SectionLabel>Agent cards</SectionLabel>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {[...data.cards]
-              .sort((a, b) => a.slot - b.slot)
-              .slice(0, 2)
-              .map((card) => (
-                <AgentCard
-                  key={card.id}
-                  card={card}
-                  busy={completeCard.isPending}
-                  onComplete={() => completeCard.mutate(card.id)}
-                />
-              ))}
-          </div>
-        </section>
-      )}
+      <AgentCardsSection
+        cards={data.cards ?? []}
+        busy={completeCard.isPending}
+        onComplete={(id) => completeCard.mutate(id)}
+      />
 
       <section>
         <SectionLabel>Right now</SectionLabel>
@@ -411,16 +403,16 @@ export function OverviewPage() {
       <div className="grid gap-12 lg:grid-cols-12">
         <section className="lg:col-span-5">
           <div className="flex items-center justify-between gap-2">
-            <SectionLabel className="mb-0">Nurture</SectionLabel>
+            <SectionLabel className="mb-0">Growth</SectionLabel>
             <div className="flex gap-1 text-xs">
-              {(["plant", "water"] as const).map((mode) => (
+              {GROWTH_STYLES.map((mode) => (
                 <button
                   key={mode}
                   type="button"
-                  onClick={() => setNurture.mutate(mode)}
+                  onClick={() => setGrowthStyle.mutate(mode)}
                   className={cn(
                     "rounded-full px-3 py-1 capitalize transition-colors",
-                    nurtureMode === mode
+                    growthMode === mode
                       ? "bg-white/[0.1] text-[var(--text)]"
                       : "text-[var(--faint)] hover:text-[var(--muted)]",
                   )}
@@ -431,9 +423,9 @@ export function OverviewPage() {
             </div>
           </div>
           <div className="mt-4">
-            <NurtureVisual
+            <GrowthMeter
               efficiencyPct={p.efficiencyPct}
-              style={nurtureMode}
+              style={growthMode}
               dailyXp={p.dailyXp}
               dailyXpTarget={p.dailyXpTarget}
             />

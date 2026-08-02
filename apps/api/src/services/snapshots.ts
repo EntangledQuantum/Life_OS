@@ -45,9 +45,49 @@ export function refreshTodaySnapshot(db: LifeOsDb) {
       ? 0
       : Math.round((completedIds.size / habitsActive.length) * 1000) / 10;
 
+  /**
+   * Every XP source that calls addXp() must also land here, or bonus XP would
+   * raise lifetime total_xp while leaving today's efficiency, the growth meter,
+   * and vs-yesterday untouched.
+   */
+  const inDay = (ts: string | null | undefined) =>
+    Boolean(ts && ts >= start && ts <= end);
+
+  const cardXp = db
+    .select()
+    .from(schema.dashboardCards)
+    .all()
+    .filter((c) => inDay(c.completedAt))
+    .reduce((a, c) => a + (c.xpOnComplete ?? 0), 0);
+
+  const eventXp = db
+    .select()
+    .from(schema.agentEvents)
+    .all()
+    .filter((e) => e.status === "done" && inDay(e.completedAt))
+    .reduce((a, e) => a + ((e as { xpOnComplete?: number }).xpOnComplete ?? 0), 0);
+
+  const questXp = db
+    .select()
+    .from(schema.quests)
+    .all()
+    .filter((q) => inDay(q.completedAt))
+    .reduce((a, q) => a + (q.xpBonus ?? 0), 0);
+
+  const achievementXp = db
+    .select()
+    .from(schema.achievements)
+    .all()
+    .filter((a) => inDay(a.unlockedAt))
+    .reduce((a, ach) => a + (ach.xpBonus ?? 0), 0);
+
   const totalXpEarned =
     habitLogs.reduce((a, l) => a + l.xpAwarded, 0) +
-    study.reduce((a, s) => a + s.xpAwarded, 0);
+    study.reduce((a, s) => a + s.xpAwarded, 0) +
+    cardXp +
+    eventXp +
+    questXp +
+    achievementXp;
 
   const studyMinutes = study.reduce((a, s) => a + (s.durationMinutes ?? 0), 0);
 
@@ -73,9 +113,12 @@ export function refreshTodaySnapshot(db: LifeOsDb) {
   consistencySeries.push(consistencyPct);
   xpSeries.push(totalXpEarned);
 
+  // Pass the configured pool so "target met" reflects this user's target,
+  // not the library default.
   const { pulse, explanation } = computeImprovementPulse(
     consistencySeries,
     xpSeries,
+    xpSeries.map(() => config.dailyXpTarget),
   );
 
   const existing = db

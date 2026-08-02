@@ -14,3 +14,5 @@ Thumbs.db
 .vite
 coverage
 .firecrawl
+*.tsbuildinfo
+dist-pages

@@ -212,10 +212,237 @@ body {
   padding-right: 0.5rem;
 }
 
+/* ---------------------------------------------------------------- ambient */
+/* Slow drifting aurora behind the app shell. Cheap: three blurred radials
+   animated on transform only, so it never triggers layout or paint storms. */
+
+.app-aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+
+.app-aurora-a {
+  top: -22vh;
+  left: -10vw;
+  width: 62vw;
+  height: 62vw;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--accent) 30%, transparent),
+    transparent 68%
+  );
+  animation: auroraDriftA 34s ease-in-out infinite alternate;
+}
+
+.app-aurora-b {
+  top: -14vh;
+  right: -16vw;
+  width: 52vw;
+  height: 52vw;
+  background: radial-gradient(
+    circle,
+    oklch(52% 0.16 306 / 0.24),
+    transparent 68%
+  );
+  animation: auroraDriftB 42s ease-in-out infinite alternate;
+}
+
+.app-aurora-c {
+  bottom: -28vh;
+  left: 22vw;
+  width: 58vw;
+  height: 58vw;
+  background: radial-gradient(
+    circle,
+    oklch(56% 0.13 190 / 0.16),
+    transparent 70%
+  );
+  animation: auroraDriftC 50s ease-in-out infinite alternate;
+}
+
+@keyframes auroraDriftA {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(6vw, 5vh, 0) scale(1.12);
+  }
+}
+@keyframes auroraDriftB {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.08);
+  }
+  to {
+    transform: translate3d(-7vw, 7vh, 0) scale(1);
+  }
+}
+@keyframes auroraDriftC {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4vw, -6vh, 0) scale(1.15);
+  }
+}
+
+/* Fine grain kills the banding that large blurred gradients produce. */
+.app-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.app-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 120% 80% at 50% 0%,
+    transparent 35%,
+    var(--bg) 100%
+  );
+}
+
+/* Faint measured grid — structure without chrome. */
+.app-grid-lines {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 0%, black 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(
+    ellipse at 50% 0%,
+    black 10%,
+    transparent 70%
+  );
+}
+
+/* ------------------------------------------------------------ collapsible */
+/* Grid-rows collapse: animating 0fr → 1fr needs no height measurement and
+   cannot be left half-open if a transition is interrupted. */
+
+.collapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.25s ease;
+  opacity: 1;
+}
+
+.collapsible[data-collapsed="true"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.collapsible-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Keep collapsed content out of the tab order and off screen readers. */
+.collapsible[data-collapsed="true"] .collapsible-inner {
+  visibility: hidden;
+}
+
+/* ---------------------------------------------------------------- landing */
+
+/* Scroll-reveal: sections start lowered and fade up as they enter view. */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.section-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.panel {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 18px;
+  background: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, 0.045),
+    rgba(255, 255, 255, 0.012)
+  );
+  backdrop-filter: blur(6px);
+}
+
+.panel-accent {
+  border-color: color-mix(in oklch, var(--accent) 26%, transparent);
+  background: linear-gradient(
+    150deg,
+    color-mix(in oklch, var(--accent) 11%, transparent),
+    transparent 62%
+  );
+}
+
+.code-block {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.85;
+  background: oklch(9% 0.012 260);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* Dashed connector paths in the integration diagram. */
+@keyframes dashFlow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.flow-line {
+  stroke-dasharray: 5 7;
+  animation: dashFlow 1.4s linear infinite;
+}
+
+@keyframes floatSlow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-9px);
+  }
+}
+.float-slow {
+  animation: floatSlow 7s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .quicklog-flash {
     animation: none;
     background: color-mix(in oklch, var(--accent) 10%, transparent);
+  }
+  .app-aurora,
+  .flow-line,
+  .float-slow {
+    animation: none !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
   *,
   *::before,

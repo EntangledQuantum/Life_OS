@@ -164,7 +164,9 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
       improvementPct: imp,
       yesterdayEfficiencyPct: yEff,
       lastImprovementPulse: pulse.pulse,
-      nurtureStyle: config.nurtureStyle ?? "plant",
+      growthStyle: config.growthStyle,
+      // Mirrored for any pre-rename client still reading nurtureStyle.
+      nurtureStyle: config.growthStyle,
     },
     vsYesterday,
     pulse: pulse.pulse,

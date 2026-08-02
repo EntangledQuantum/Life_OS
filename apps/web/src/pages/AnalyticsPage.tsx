@@ -10,7 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "@/lib/api";
-import { NurtureVisual } from "@/components/graphics/NurtureVisual";
+import { GrowthMeter } from "@/components/graphics/GrowthMeter";
 import { motion } from "motion/react";
 import { formatDelta } from "@/lib/utils";
 
@@ -41,9 +41,9 @@ export function AnalyticsPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card flex flex-col items-center p-5">
-          <NurtureVisual
+          <GrowthMeter
             efficiencyPct={p.efficiencyPct}
-            style={p.nurtureStyle === "water" ? "water" : "plant"}
+            style={p.growthStyle}
             dailyXp={p.dailyXp}
             dailyXpTarget={p.dailyXpTarget}
           />

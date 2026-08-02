@@ -1,9 +1,16 @@
 import { serve } from "@hono/node-server";
-import { ensureSchema, getDb } from "@life-os/db";
+import { bootstrapDatabase, getDb } from "@life-os/db";
 import { createApp } from "./app.js";
 import { env } from "./env.js";
 
-ensureSchema();
+// Provision + migrate before anything touches the DB, so `pnpm dev` works on a
+// fresh clone without a separate migrate step.
+const boot = bootstrapDatabase();
+console.log(
+  `Life OS database ${boot.created ? "created" : "ready"} at ${boot.dbPath}`,
+);
+if (boot.note) console.warn(`  migration note: ${boot.note}`);
+
 getDb();
 
 const app = createApp();

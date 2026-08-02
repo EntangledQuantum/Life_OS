@@ -2,6 +2,7 @@ import type {
   AccentThemeId,
   Activity,
   Category,
+  GrowthStyle,
   HabitGraphic,
   ImprovementPulse,
   QualityFlag,
@@ -35,10 +36,20 @@ export interface Habit {
   deletedAt: string | null;
 }
 
-/** Agent-owned front-page card (max 2) */
+/**
+ * Card slots. `0` and `1` are the two agent content cards; `2` is the reserved
+ * singleton slot for the agent setup card, which does not consume a content slot.
+ */
+export type CardSlot = 0 | 1 | 2;
+
+/** `task` = normal agent content card. `agent-setup` = connection/setup card. */
+export type DashboardCardKind = "task" | "agent-setup";
+
+/** Agent-owned front-page card (max 2 content cards + 1 setup card) */
 export interface DashboardCard {
   id: string;
-  slot: 0 | 1;
+  slot: CardSlot;
+  kind: DashboardCardKind;
   title: string;
   subtitle: string | null;
   body: string | null;
@@ -46,6 +57,8 @@ export interface DashboardCard {
   themeColor: string | null;
   imageUrl: string | null;
   imageData: string | null;
+  /** Sanitized inline SVG markup supplied by the agent (rendered sandboxed) */
+  svg: string | null;
   status: "active" | "done" | "hidden";
   progress: number;
   ctaLabel: string | null;
@@ -162,6 +175,8 @@ export interface AgentEvent {
   forDate: string;
   status: "pending" | "done" | "dismissed";
   priority: number;
+  /** Bonus XP on complete, outside the habit pool */
+  xpOnComplete: number;
   completedAt: string | null;
   createdAt: string;
 }
@@ -175,7 +190,10 @@ export interface UserProgress {
   improvementPct: number;
   yesterdayEfficiencyPct: number;
   lastImprovementPulse: ImprovementPulse;
-  nurtureStyle: "plant" | "water" | "both";
+  /** Growth-meter style (renamed from nurtureStyle) */
+  growthStyle: GrowthStyle;
+  /** @deprecated mirror of growthStyle for pre-rename clients */
+  nurtureStyle: GrowthStyle;
 }
 
 export interface AppSettings {
@@ -209,8 +227,10 @@ export interface GamificationConfig {
     tinyHabit: number;
     fullBlock: number;
   };
+  /** Fixed daily XP pool redistributed across active habits by weight */
   dailyXpTarget: number;
-  nurtureStyle: "plant" | "water" | "both";
+  /** Growth-meter style (renamed from nurtureStyle) */
+  growthStyle: GrowthStyle;
 }
 
 export interface DailySnapshot {

@@ -1,11 +1,21 @@
 import { z } from "zod";
 import {
   CATEGORIES,
+  GROWTH_STYLES,
   HABIT_GRAPHICS,
+  LEGACY_GROWTH_STYLES,
   QUALITY_FLAGS,
   ACTIVITIES,
   ACCENT_THEMES,
+  normalizeGrowthStyle,
+  type GrowthStyle,
 } from "./constants.js";
+import { MAX_SVG_LENGTH } from "./svg.js";
+
+/** Accepts `sprout`/`orb` plus the legacy `plant`/`water`/`both`, always yielding a GrowthStyle. */
+const growthStyleSchema = z
+  .enum([...GROWTH_STYLES, ...LEGACY_GROWTH_STYLES])
+  .transform((v): GrowthStyle => normalizeGrowthStyle(v));
 
 export const loginSchema = z.object({
   username: z.string().min(1),
@@ -36,7 +46,9 @@ export const createHabitSchema = z.object({
 export const updateHabitSchema = createHabitSchema.partial();
 
 export const createDashboardCardSchema = z.object({
-  slot: z.union([z.literal(0), z.literal(1)]).optional(),
+  /** 0 and 1 are content slots. Slot 2 is implied by kind:"agent-setup". */
+  slot: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+  kind: z.enum(["task", "agent-setup"]).default("task"),
   title: z.string().min(1).max(200),
   subtitle: z.string().max(300).nullable().optional(),
   body: z.string().max(4000).nullable().optional(),
@@ -44,6 +56,8 @@ export const createDashboardCardSchema = z.object({
   themeColor: z.string().nullable().optional(),
   imageUrl: z.string().max(2000).nullable().optional(),
   imageData: z.string().max(2_000_000).nullable().optional(),
+  /** Inline SVG markup; sanitized server-side and rendered sandboxed. */
+  svg: z.string().max(MAX_SVG_LENGTH).nullable().optional(),
   status: z.enum(["active", "done", "hidden"]).default("active"),
   progress: z.number().int().min(0).max(100).default(0),
   ctaLabel: z.string().max(80).nullable().optional(),
@@ -150,6 +164,8 @@ export const injectAgentEventSchema = z.object({
   link: z.string().nullable().optional(),
   forDate: z.string().optional(),
   priority: z.number().int().default(0),
+  /** Bonus XP awarded when the user completes it — outside the habit pool. */
+  xpOnComplete: z.number().int().min(0).max(500).default(0),
 });
 
 export const updateSettingsSchema = z.object({
@@ -191,8 +207,10 @@ export const updateGamificationConfigSchema = z.object({
       fullBlock: z.number().positive().optional(),
     })
     .optional(),
-  dailyXpTarget: z.number().positive().optional(),
-  nurtureStyle: z.enum(["plant", "water", "both"]).optional(),
+  dailyXpTarget: z.number().int().positive().max(10_000).optional(),
+  growthStyle: growthStyleSchema.optional(),
+  /** @deprecated pre-rename alias; folded into growthStyle server-side */
+  nurtureStyle: growthStyleSchema.optional(),
 });
 
 export const createAchievementSchema = z.object({

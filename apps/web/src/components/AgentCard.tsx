@@ -1,4 +1,4 @@
-import type { DashboardCard } from "@life-os/shared";
+import { svgToDataUri, type DashboardCard } from "@life-os/shared";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,9 @@ export function AgentCard({
   const done = card.status === "done";
   const color = card.themeColor ?? "#5B8CFF";
   const img = card.imageData || card.imageUrl;
+  // Agent-supplied SVG is sanitized server-side and rendered via <img>,
+  // so it is inert even if something slipped through.
+  const svg = card.svg ? svgToDataUri(card.svg) : null;
 
   return (
     <article
@@ -23,15 +26,20 @@ export function AgentCard({
       )}
       style={{ borderColor: `${color}44` }}
     >
-      {img && (
-        <div className="relative h-36 w-full overflow-hidden bg-black/30">
-          <img
-            src={img}
-            alt=""
-            className="h-full w-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[oklch(7%_0.01_260)] to-transparent" />
+      {svg ? (
+        <div
+          className="flex h-32 w-full items-center justify-center overflow-hidden"
+          style={{ background: `linear-gradient(160deg, ${color}1A, transparent)` }}
+        >
+          <img src={svg} alt="" className="max-h-24 w-auto max-w-[70%]" />
         </div>
+      ) : (
+        img && (
+          <div className="relative h-36 w-full overflow-hidden bg-black/30">
+            <img src={img} alt="" className="h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[oklch(7%_0.01_260)] to-transparent" />
+          </div>
+        )
       )}
       <div className="space-y-3 p-4">
         <div className="flex items-start gap-3">

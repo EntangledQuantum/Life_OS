@@ -1,0 +1,2 @@
+# Keeps the data directory in git.
+# The SQLite database itself is gitignored — each install gets its own.

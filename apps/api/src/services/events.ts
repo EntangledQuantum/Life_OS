@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
 import type { AgentEvent } from "@life-os/shared";
-import { getLocalDayBounds, nowIso } from "./helpers.js";
+import { addXp, getLocalDayBounds, nowIso } from "./helpers.js";
+import { refreshTodaySnapshot } from "./snapshots.js";
 
 function mapEvent(e: typeof schema.agentEvents.$inferSelect): AgentEvent {
   return {
@@ -15,6 +16,7 @@ function mapEvent(e: typeof schema.agentEvents.$inferSelect): AgentEvent {
     forDate: e.forDate,
     status: e.status as AgentEvent["status"],
     priority: e.priority,
+    xpOnComplete: (e as { xpOnComplete?: number }).xpOnComplete ?? 0,
     completedAt: e.completedAt,
     createdAt: e.createdAt,
   };
@@ -40,6 +42,7 @@ export function injectAgentEvent(
     link?: string | null;
     forDate?: string;
     priority?: number;
+    xpOnComplete?: number;
   },
 ) {
   const id = nanoid();
@@ -54,6 +57,7 @@ export function injectAgentEvent(
       forDate,
       status: "pending",
       priority: input.priority ?? 0,
+      xpOnComplete: input.xpOnComplete ?? 0,
       completedAt: null,
       createdAt: nowIso(),
     })
@@ -64,13 +68,35 @@ export function injectAgentEvent(
 }
 
 export function completeAgentEvent(db: LifeOsDb, id: string) {
+  const existing = db
+    .select()
+    .from(schema.agentEvents)
+    .where(eq(schema.agentEvents.id, id))
+    .get();
+  if (!existing) return { error: "Event not found" as const };
+  if (existing.status === "done") {
+    return { event: mapEvent(existing), xpAwarded: 0, alreadyDone: true };
+  }
+
   db.update(schema.agentEvents)
     .set({ status: "done", completedAt: nowIso() })
     .where(eq(schema.agentEvents.id, id))
     .run();
-  return mapEvent(
-    db.select().from(schema.agentEvents).where(eq(schema.agentEvents.id, id)).get()!,
-  );
+
+  // Bonus XP outside the habit pool, only when the agent attached a value.
+  const xp = (existing as { xpOnComplete?: number }).xpOnComplete ?? 0;
+  if (xp > 0) {
+    addXp(db, xp);
+    refreshTodaySnapshot(db);
+  }
+
+  return {
+    event: mapEvent(
+      db.select().from(schema.agentEvents).where(eq(schema.agentEvents.id, id)).get()!,
+    ),
+    xpAwarded: xp,
+    alreadyDone: false,
+  };
 }
 
 export function dismissAgentEvent(db: LifeOsDb, id: string) {

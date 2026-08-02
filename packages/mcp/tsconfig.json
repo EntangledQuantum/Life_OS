@@ -7,8 +7,8 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "types": ["node"],
-    "outDir": "dist",
-    "rootDir": "src"
+    "outDir": "dist"
   },
+  "//": "No rootDir: this package runs via tsx and imports API service modules directly from apps/api, which sit outside src.",
   "include": ["src"]
 }

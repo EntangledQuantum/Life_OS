@@ -37,6 +37,9 @@ export function ensureSchema(dbPath?: string) {
     ["schedule_blocks", "completed_at", "TEXT"],
     ["light_reviews", "link", "TEXT"],
     ["active_sessions", "block_id", "TEXT"],
+    ["dashboard_cards", "kind", "TEXT NOT NULL DEFAULT 'task'"],
+    ["dashboard_cards", "svg", "TEXT"],
+    ["agent_events", "xp_on_complete", "INTEGER NOT NULL DEFAULT 0"],
   ];
 
   for (const [table, col, def] of alters) {
@@ -61,6 +64,7 @@ export function ensureSchema(dbPath?: string) {
         for_date TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         priority INTEGER NOT NULL DEFAULT 0,
+        xp_on_complete INTEGER NOT NULL DEFAULT 0,
         completed_at TEXT,
         created_at TEXT NOT NULL
       );
@@ -72,6 +76,7 @@ export function ensureSchema(dbPath?: string) {
       CREATE TABLE dashboard_cards (
         id TEXT PRIMARY KEY,
         slot INTEGER NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'task',
         title TEXT NOT NULL,
         subtitle TEXT,
         body TEXT,
@@ -79,6 +84,7 @@ export function ensureSchema(dbPath?: string) {
         theme_color TEXT DEFAULT '#5B8CFF',
         image_url TEXT,
         image_data TEXT,
+        svg TEXT,
         status TEXT NOT NULL DEFAULT 'active',
         progress INTEGER DEFAULT 0,
         cta_label TEXT,
@@ -91,6 +97,31 @@ export function ensureSchema(dbPath?: string) {
         updated_at TEXT NOT NULL
       );
     `);
+  }
+
+  /**
+   * Fold the pre-rename gamification key (`nurtureStyle`: plant|water|both)
+   * onto `growthStyle` (sprout|orb) so existing local DBs keep working.
+   */
+  if (hasTable(db, "gamification_config")) {
+    const rows = db
+      .prepare("SELECT id, config_json FROM gamification_config")
+      .all() as { id: number; config_json: string }[];
+    for (const row of rows) {
+      try {
+        const cfg = JSON.parse(row.config_json) as Record<string, unknown>;
+        if (cfg.growthStyle !== undefined) continue;
+        const legacy = cfg.nurtureStyle;
+        cfg.growthStyle = legacy === "water" ? "orb" : "sprout";
+        delete cfg.nurtureStyle;
+        db.prepare("UPDATE gamification_config SET config_json = ? WHERE id = ?").run(
+          JSON.stringify(cfg),
+          row.id,
+        );
+      } catch {
+        /* leave malformed config alone — loadGamificationConfig falls back */
+      }
+    }
   }
 
   db.close();

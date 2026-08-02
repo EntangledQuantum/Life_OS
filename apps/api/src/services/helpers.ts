@@ -3,6 +3,7 @@ import * as schema from "@life-os/db";
 import {
   DEFAULT_GAMIFICATION_CONFIG,
   getDayBounds,
+  normalizeGrowthStyle,
   type GamificationConfig,
   type HabitGraphic,
 } from "@life-os/shared";
@@ -69,7 +70,15 @@ export function loadGamificationConfig(db: LifeOsDb): GamificationConfig {
     .all();
   if (!rows[0]) return DEFAULT_GAMIFICATION_CONFIG;
   try {
-    return { ...DEFAULT_GAMIFICATION_CONFIG, ...JSON.parse(rows[0].configJson) };
+    const stored = JSON.parse(rows[0].configJson) as Record<string, unknown>;
+    const merged = { ...DEFAULT_GAMIFICATION_CONFIG, ...stored };
+    // Configs written before the rename carry `nurtureStyle` (plant|water|both).
+    return {
+      ...merged,
+      growthStyle: normalizeGrowthStyle(
+        stored.growthStyle ?? stored.nurtureStyle ?? merged.growthStyle,
+      ),
+    };
   } catch {
     return DEFAULT_GAMIFICATION_CONFIG;
   }
@@ -140,14 +149,16 @@ export function computeStreaks(
   const yBounds = getDayBounds(resetTime, new Date(Date.now() - 86400000));
   const yday = yBounds.dateStr;
   let current = 0;
-  let cursor = days.has(today) ? today : days.has(yday) ? yday : null;
-  if (cursor) {
-    while (days.has(cursor)) {
-      current += 1;
-      const d = new Date(cursor + "T12:00:00");
-      d.setDate(d.getDate() - 1);
-      cursor = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
+  let cursor: string | null = days.has(today)
+    ? today
+    : days.has(yday)
+      ? yday
+      : null;
+  while (cursor && days.has(cursor)) {
+    current += 1;
+    const d = new Date(`${cursor}T12:00:00`);
+    d.setDate(d.getDate() - 1);
+    cursor = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
   return { current, longest: Math.max(longest, current) };

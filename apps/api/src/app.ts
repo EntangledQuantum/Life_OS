@@ -22,8 +22,9 @@ import {
   updateScheduleBlockSchema,
   updateSettingsSchema,
   activeSessionSchema,
+  XP_MODEL_DOC,
 } from "@life-os/shared";
-import { requireAuth } from "./middleware/auth.js";
+import { requireAuth, type AuthVars } from "./middleware/auth.js";
 import * as auth from "./services/auth.js";
 import * as habits from "./services/habits.js";
 import * as study from "./services/study.js";
@@ -37,9 +38,12 @@ import * as blocks from "./services/blocks.js";
 import * as events from "./services/events.js";
 import * as cards from "./services/cards.js";
 import { env } from "./env.js";
+/** Typed context so `c.get("username")` is checked rather than inferred as never. */
+type AppEnv = { Variables: AuthVars };
+
 export function createApp() {
   ensureSchema();
-  const app = new Hono();
+  const app = new Hono<AppEnv>();
 
   app.use(
     "*",
@@ -82,11 +86,11 @@ export function createApp() {
   });
 
   app.get("/api/v1/auth/me", requireAuth, (c) => {
-    return c.json(auth.me(c.get("username") as string));
+    return c.json(auth.me(c.get("username")));
   });
 
   // Protected API
-  const api = new Hono();
+  const api = new Hono<AppEnv>();
   api.use("*", requireAuth);
 
   api.get("/habits", (c) => c.json(habits.listHabits(getDb())));
@@ -110,15 +114,19 @@ export function createApp() {
     return c.json({ ok: true });
   });
   api.post("/habits/:id/complete", async (c) => {
-    let body = { source: "user" as const, note: null as string | null };
+    let body: { source: "user" | "agent"; note: string | null } = {
+      source: "user",
+      note: null,
+    };
     try {
       body = { ...body, ...completeHabitSchema.parse(await c.req.json()) };
     } catch {
       /* empty body ok */
     }
     const result = habits.completeHabit(getDb(), c.req.param("id"), body);
-    if ("error" in result && result.error === "Habit not found") {
-      return c.json(result, 404);
+    if ("error" in result) {
+      // 404 unknown habit, 409 duplicate — agents need to tell these apart.
+      return c.json(result, result.error === "Habit not found" ? 404 : 409);
     }
     return c.json(result);
   });
@@ -172,9 +180,11 @@ export function createApp() {
     const body = injectAgentEventSchema.parse(await c.req.json());
     return c.json(events.injectAgentEvent(getDb(), body), 201);
   });
-  api.post("/events/:id/complete", (c) =>
-    c.json(events.completeAgentEvent(getDb(), c.req.param("id"))),
-  );
+  api.post("/events/:id/complete", (c) => {
+    const result = events.completeAgentEvent(getDb(), c.req.param("id"));
+    if ("error" in result) return c.json(result, 404);
+    return c.json(result);
+  });
   api.post("/events/:id/dismiss", (c) =>
     c.json(events.dismissAgentEvent(getDb(), c.req.param("id"))),
   );
@@ -194,17 +204,19 @@ export function createApp() {
       meta: body.meta ?? null,
     });
     if ("error" in result) return c.json(result, 400);
-    return c.json(result.card, 201);
+    // svgNotes lists anything the sanitizer stripped, so agents can self-correct.
+    return c.json({ ...result.card, svgNotes: result.svgNotes }, 201);
   });
   api.patch("/cards/:id", async (c) => {
     const body = updateDashboardCardSchema.parse(await c.req.json());
-    const card = cards.updateCard(getDb(), c.req.param("id"), {
+    const result = cards.updateCard(getDb(), c.req.param("id"), {
       ...body,
       imageUrl: body.imageUrl === "" ? null : body.imageUrl,
       meta: body.meta ?? undefined,
     });
-    if (!card) return c.json({ error: "Not found" }, 404);
-    return c.json(card);
+    if (!result) return c.json({ error: "Not found" }, 404);
+    if ("error" in result) return c.json(result, 400);
+    return c.json(result);
   });
   api.delete("/cards/:id", (c) =>
     c.json(cards.deleteCard(getDb(), c.req.param("id"))),
@@ -309,17 +321,24 @@ export function createApp() {
   api.get("/agent/capabilities", (c) =>
     c.json({
       name: "Life OS",
-      version: "0.2.0",
+      version: "0.3.0",
       maxDashboardCards: 2,
+      agentSetupCard: { slot: 2, kind: "agent-setup", singleton: true },
+      cardGraphics: ["emoji", "imageUrl", "imageData", "svg"],
+      growthStyles: ["sprout", "orb"],
+      legacyGrowthStyles: { plant: "sprout", water: "orb", both: "sprout" },
       tools: [
         "cards.crud",
         "cards.complete",
+        "cards.svg",
+        "cards.agent-setup",
         "habits.crud",
         "habits.complete",
         "habits.rebalance-xp",
         "blocks.crud",
         "blocks.start_complete",
         "events.inject",
+        "events.xpOnComplete",
         "study.log",
         "goals.crud",
         "quests.inject",
@@ -329,12 +348,37 @@ export function createApp() {
         "settings.dayResetTime",
         "settings.agentWebhook",
         "dashboard.today",
+        "agent.xp-model",
         "export.json",
       ],
       notes:
-        "Agent owns cards (max 2), habits, blocks, XP pool redistribute. Webhooks on complete. No levels.",
+        "Agent owns 2 content cards + 1 setup card, habits, blocks, and the XP pool. " +
+        "Webhooks fire on complete. No levels. See GET /api/v1/agent/xp-model.",
     }),
   );
+
+  // Self-describing XP rules so agents never have to guess the maths.
+  api.get("/agent/xp-model", (c) => {
+    const config = settings.getGamificationConfig(getDb());
+    const activeHabits = habits.listHabits(getDb());
+    return c.json({
+      ...XP_MODEL_DOC,
+      current: {
+        dailyXpTarget: config.dailyXpTarget,
+        baseMultipliers: config.baseMultipliers,
+        growthStyle: config.growthStyle,
+        activeHabitCount: activeHabits.length,
+        totalWeight: activeHabits.reduce((a, h) => a + (h.xpWeight || 1), 0),
+        shares: activeHabits.map((h) => ({
+          id: h.id,
+          name: h.name,
+          xpWeight: h.xpWeight,
+          baseXp: h.baseXp,
+          extraXp: h.extraXp,
+        })),
+      },
+    });
+  });
 
   app.route("/api/v1", api);
 

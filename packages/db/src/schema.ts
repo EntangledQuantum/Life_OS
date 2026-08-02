@@ -26,12 +26,16 @@ export const habits = sqliteTable("habits", {
 });
 
 /**
- * Agent-owned front-page cards (max 2 slots: 0 and 1).
- * Free-form content + optional image + complete → webhook to agent.
+ * Agent-owned front-page cards.
+ * Slots 0 and 1 are content cards; slot 2 is the reserved singleton
+ * agent-setup card, which does not consume a content slot.
+ * Free-form content + optional image/SVG + complete → webhook to agent.
  */
 export const dashboardCards = sqliteTable("dashboard_cards", {
   id: text("id").primaryKey(),
-  slot: integer("slot").notNull(), // 0 or 1
+  slot: integer("slot").notNull(), // 0, 1, or 2 (agent-setup)
+  /** task | agent-setup */
+  kind: text("kind").notNull().default("task"),
   title: text("title").notNull(),
   subtitle: text("subtitle"),
   body: text("body"),
@@ -40,6 +44,8 @@ export const dashboardCards = sqliteTable("dashboard_cards", {
   imageUrl: text("image_url"),
   /** data:image/...;base64,... optional small inline image */
   imageData: text("image_data"),
+  /** Sanitized inline SVG markup supplied by the agent */
+  svg: text("svg"),
   status: text("status").notNull().default("active"), // active | done | hidden
   progress: integer("progress").default(0), // 0-100
   ctaLabel: text("cta_label"),
@@ -151,6 +157,8 @@ export const agentEvents = sqliteTable("agent_events", {
   forDate: text("for_date").notNull(),
   status: text("status").notNull().default("pending"),
   priority: integer("priority").notNull().default(0),
+  /** Bonus XP awarded on complete — outside the daily habit pool */
+  xpOnComplete: integer("xp_on_complete").notNull().default(0),
   completedAt: text("completed_at"),
   createdAt: text("created_at").notNull(),
 });

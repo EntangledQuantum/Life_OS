@@ -2,11 +2,21 @@ import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
 import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
-import type { DashboardCard } from "@life-os/shared";
+import {
+  sanitizeSvg,
+  type CardSlot,
+  type DashboardCard,
+  type DashboardCardKind,
+} from "@life-os/shared";
 import { addXp, nowIso } from "./helpers.js";
 import { fireAgentWebhook } from "./webhook.js";
 
-const MAX_CARDS = 2;
+type WebhookResult = Awaited<ReturnType<typeof fireAgentWebhook>>;
+
+/** Content cards the agent may show on the front page. */
+const MAX_CONTENT_CARDS = 2;
+/** Reserved singleton slot for the agent setup card — not a content slot. */
+const SETUP_SLOT = 2 as const;
 
 function mapCard(row: typeof schema.dashboardCards.$inferSelect): DashboardCard {
   let meta: Record<string, unknown> | null = null;
@@ -17,9 +27,14 @@ function mapCard(row: typeof schema.dashboardCards.$inferSelect): DashboardCard 
       meta = null;
     }
   }
+  const slot = (row.slot === 2 ? 2 : row.slot === 1 ? 1 : 0) as CardSlot;
   return {
     id: row.id,
-    slot: (row.slot === 1 ? 1 : 0) as 0 | 1,
+    slot,
+    kind: ((row as { kind?: string }).kind === "agent-setup"
+      ? "agent-setup"
+      : "task") as DashboardCardKind,
+    svg: (row as { svg?: string | null }).svg ?? null,
     title: row.title,
     subtitle: row.subtitle,
     body: row.body,
@@ -58,9 +73,14 @@ export function getCard(db: LifeOsDb, id: string) {
   return row ? mapCard(row) : null;
 }
 
-function nextSlot(db: LifeOsDb): 0 | 1 | null {
+function nextContentSlot(db: LifeOsDb): 0 | 1 | null {
   const used = new Set(
-    db.select().from(schema.dashboardCards).all().map((c) => c.slot),
+    db
+      .select()
+      .from(schema.dashboardCards)
+      .all()
+      .filter((c) => c.slot !== SETUP_SLOT)
+      .map((c) => c.slot),
   );
   if (!used.has(0)) return 0;
   if (!used.has(1)) return 1;
@@ -70,7 +90,8 @@ function nextSlot(db: LifeOsDb): 0 | 1 | null {
 export function createCard(
   db: LifeOsDb,
   input: {
-    slot?: 0 | 1;
+    slot?: CardSlot;
+    kind?: DashboardCardKind;
     title: string;
     subtitle?: string | null;
     body?: string | null;
@@ -78,6 +99,7 @@ export function createCard(
     themeColor?: string | null;
     imageUrl?: string | null;
     imageData?: string | null;
+    svg?: string | null;
     status?: "active" | "done" | "hidden";
     progress?: number;
     ctaLabel?: string | null;
@@ -88,18 +110,31 @@ export function createCard(
   },
 ) {
   const existing = db.select().from(schema.dashboardCards).all();
-  if (existing.length >= MAX_CARDS && input.slot === undefined) {
-    return { error: `Max ${MAX_CARDS} dashboard cards` as const };
-  }
+  const kind: DashboardCardKind =
+    input.kind === "agent-setup" || input.slot === SETUP_SLOT
+      ? "agent-setup"
+      : "task";
 
-  let slot = input.slot;
-  if (slot === undefined) {
-    const n = nextSlot(db);
-    if (n === null) return { error: `Max ${MAX_CARDS} dashboard cards` as const };
+  // The setup card is a singleton living outside the two content slots.
+  let slot: CardSlot;
+  if (kind === "agent-setup") {
+    slot = SETUP_SLOT;
+  } else if (input.slot === 0 || input.slot === 1) {
+    slot = input.slot;
+  } else {
+    const n = nextContentSlot(db);
+    if (n === null) {
+      return {
+        error:
+          `Max ${MAX_CONTENT_CARDS} content cards — pass slot 0 or 1 to replace one` as const,
+      };
+    }
     slot = n;
   }
-  if (slot !== 0 && slot !== 1) {
-    return { error: "slot must be 0 or 1" as const };
+
+  const sanitized = sanitizeSvg(input.svg);
+  if (input.svg && !sanitized.svg) {
+    return { error: `Invalid svg: ${sanitized.notes.join("; ")}` as const };
   }
 
   // Replace same slot if occupied
@@ -121,13 +156,15 @@ export function createCard(
     .values({
       id,
       slot,
+      kind,
       title: input.title,
       subtitle: input.subtitle ?? null,
       body: input.body ?? null,
-      emoji: input.emoji ?? "📌",
+      emoji: input.emoji ?? (kind === "agent-setup" ? "🤖" : "📌"),
       themeColor: input.themeColor ?? "#5B8CFF",
       imageUrl,
       imageData: input.imageData ?? null,
+      svg: sanitized.svg,
       status: input.status ?? "active",
       progress: input.progress ?? 0,
       ctaLabel: input.ctaLabel ?? null,
@@ -141,14 +178,15 @@ export function createCard(
     })
     .run();
 
-  return { card: getCard(db, id)! };
+  return { card: getCard(db, id)!, svgNotes: sanitized.notes };
 }
 
 export function updateCard(
   db: LifeOsDb,
   id: string,
   input: Partial<{
-    slot: 0 | 1;
+    slot: CardSlot;
+    kind: DashboardCardKind;
     title: string;
     subtitle: string | null;
     body: string | null;
@@ -156,6 +194,7 @@ export function updateCard(
     themeColor: string | null;
     imageUrl: string | null;
     imageData: string | null;
+    svg: string | null;
     status: "active" | "done" | "hidden";
     progress: number;
     ctaLabel: string | null;
@@ -172,10 +211,25 @@ export function updateCard(
     .get();
   if (!existing) return null;
 
-  const { meta, imageUrl, ...rest } = input;
+  const { meta, imageUrl, svg, ...rest } = input;
+
+  let svgPatch: { svg: string | null } | Record<string, never> = {};
+  if (svg !== undefined) {
+    if (svg === null || svg === "") {
+      svgPatch = { svg: null };
+    } else {
+      const sanitized = sanitizeSvg(svg);
+      if (!sanitized.svg) {
+        return { error: `Invalid svg: ${sanitized.notes.join("; ")}` as const };
+      }
+      svgPatch = { svg: sanitized.svg };
+    }
+  }
+
   db.update(schema.dashboardCards)
     .set({
       ...rest,
+      ...svgPatch,
       ...(imageUrl !== undefined
         ? { imageUrl: imageUrl === "" ? null : imageUrl }
         : {}),
@@ -224,7 +278,7 @@ export async function completeCard(
     .run();
 
   const card = getCard(db, id)!;
-  let webhook = { sent: false as boolean, status: undefined as number | undefined, error: undefined as string | undefined };
+  let webhook: WebhookResult = { sent: false, error: "webhook_disabled" };
 
   if (row.webhookOnComplete) {
     webhook = await fireAgentWebhook(db, "card.complete", {
