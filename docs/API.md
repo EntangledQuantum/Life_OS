@@ -8,6 +8,10 @@ Reaching it from a phone or another machine on your network: see
 [`docs/NETWORK.md`](NETWORK.md). Loopback and private-LAN origins are allowed by CORS on any
 port; public origins must be listed in `CORS_ORIGINS`.
 
+**Building a second frontend** (mobile app, widget, TUI)? Start with
+[`docs/CLIENT_GUIDE.md`](CLIENT_GUIDE.md) — this file is the endpoint reference, that one is
+what to render and which behaviours are contracts rather than styling.
+
 ## Endpoints
 
 | Method | Path | Description |

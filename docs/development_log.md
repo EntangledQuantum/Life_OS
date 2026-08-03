@@ -11,7 +11,8 @@
 3. `docs/API.md` — HTTP surface  
 4. `docs/DATABASE.md` — how persistence works  
 5. `docs/NETWORK.md` — LAN access and what it exposes  
-6. This log — *what was actually built, divergences, and gaps*
+6. `docs/CLIENT_GUIDE.md` — building a second frontend (mobile app, widget, TUI)  
+7. This log — *what was actually built, divergences, and gaps*
 
 ---
 
@@ -32,6 +33,7 @@ to be reachable from a phone.
 | **`/health` reports its reach** | Now returns `host` and `lan`, so a phone or a future native client can confirm it hit the right box. |
 | **`VITE_API_URL` must be empty** | `.env.example` used to hard-code `http://127.0.0.1:8787`, which breaks LAN access silently — the phone tries *its own* loopback and the app looks dead. Now empty by default with the reason written down. |
 | **`docs/NETWORK.md`** | How to turn it on, why `VITE_API_URL` stays empty, the CORS table, firewall notes, and an honest section on what LAN exposure actually means (one shared token, no rate limiting, plain HTTP — fine for home Wi-Fi, not for anything else, use a VPN for remote). |
+| **`docs/CLIENT_GUIDE.md`** | Written for an agent building a *second* frontend — a native app, widget, TUI. Connect + auth, the `dashboard/today` payload field by field, what each surface means, and the five behavioural contracts a client can silently break: the life-day boundary, celebration-before-achieved, fire-once reminders, the fixed XP pool with no levels, and honouring `reducedMotion` / `celebrationIntensity`. Ends with a parity checklist and an explicit "what not to build" (no goal-creation UI, no leaderboards, no telemetry, no vault writes). |
 
 Verified live: the API bound `0.0.0.0` and printed `192.168.29.131:8787`; a preflight from
 `http://192.168.29.131:5173` came back with a matching `access-control-allow-origin`, while one

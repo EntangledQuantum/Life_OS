@@ -435,6 +435,7 @@ data/              Your SQLite database (gitignored)
 | [`docs/API.md`](docs/API.md) | The full HTTP surface |
 | [`docs/DATABASE.md`](docs/DATABASE.md) | Where your data lives, how to back it up |
 | [`docs/NETWORK.md`](docs/NETWORK.md) | Opening it up to your phone, and what that exposes |
+| [`docs/CLIENT_GUIDE.md`](docs/CLIENT_GUIDE.md) | **Building another client** — a mobile app, a widget, anything |
 | [`docs/development_log.md`](docs/development_log.md) | **Contributors** — what was built and why |
 | [`docs/LIFE_OS.md`](docs/LIFE_OS.md) | The original product spec |
 
