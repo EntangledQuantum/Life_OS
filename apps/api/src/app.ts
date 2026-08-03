@@ -5,9 +5,17 @@ import {
   completeHabitSchema,
   completeCardSchema,
   createAchievementSchema,
+  createAgentPropertySchema,
   createDashboardCardSchema,
   createGoalSchema,
   createHabitSchema,
+  incrementAgentPropertySchema,
+  updateAgentPropertySchema,
+  agentSetupSchema,
+  ACTIVITIES,
+  CARD_KINDS,
+  GOAL_CONDITION_SYNTAX,
+  REPEAT_RULES,
   createScheduleBlockSchema,
   createStudySessionSchema,
   injectAgentEventSchema,
@@ -37,6 +45,10 @@ import * as snapshots from "./services/snapshots.js";
 import * as blocks from "./services/blocks.js";
 import * as events from "./services/events.js";
 import * as cards from "./services/cards.js";
+import * as properties from "./services/properties.js";
+import * as backups from "./services/backups.js";
+import * as setup from "./services/setup.js";
+import { isAllowedOrigin, isExposed } from "./net.js";
 import { env } from "./env.js";
 /** Typed context so `c.get("username")` is checked rather than inferred as never. */
 type AppEnv = { Variables: AuthVars };
@@ -48,14 +60,28 @@ export function createApp() {
   app.use(
     "*",
     cors({
-      origin: ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173"],
+      /**
+       * Loopback and private-LAN origins are allowed on any port, so the app
+       * works from a phone on the same Wi-Fi without hand-listing its address.
+       * Public origins must be named in CORS_ORIGINS — an open policy would let
+       * any page the user happens to be browsing talk to their instance.
+       */
+      origin: (origin) =>
+        isAllowedOrigin(origin, env.corsOrigins) ? origin : null,
       credentials: true,
       allowHeaders: ["Content-Type", "Authorization"],
     }),
   );
 
   app.get("/health", (c) =>
-    c.json({ ok: true, service: "life-os-api", storage: env.storageMode }),
+    c.json({
+      ok: true,
+      service: "life-os-api",
+      storage: env.storageMode,
+      // Lets a phone or a future native client confirm it reached the right box.
+      host: env.apiHost,
+      lan: isExposed(env.apiHost),
+    }),
   );
 
   // Auth
@@ -92,6 +118,23 @@ export function createApp() {
   // Protected API
   const api = new Hono<AppEnv>();
   api.use("*", requireAuth);
+
+  /**
+   * Re-check every goal after any successful write.
+   *
+   * "Any change in the database" is the contract agents are given, so the hook
+   * lives here rather than being sprinkled through the services — a new
+   * endpoint gets goal checking for free instead of silently not having it.
+   */
+  api.use("*", async (c, next) => {
+    await next();
+    if (c.req.method === "GET" || c.res.status >= 400) return;
+    try {
+      goals.evaluateGoals(getDb());
+    } catch (error) {
+      console.warn("[goals] evaluation failed:", error);
+    }
+  });
 
   api.get("/habits", (c) => c.json(habits.listHabits(getDb())));
   api.get("/habits/:id", (c) => {
@@ -189,8 +232,12 @@ export function createApp() {
     c.json(events.dismissAgentEvent(getDb(), c.req.param("id"))),
   );
 
-  // Agent front-page cards (max 2)
+  // Agent cards: 2 pinned content slots + the setup card + scheduled event/reminder cards
   api.get("/cards", (c) => c.json(cards.listCards(getDb())));
+  api.get("/cards/upcoming", (c) => c.json(cards.listUpcomingCards(getDb())));
+  /** Only what is about to happen — within 15 minutes, overdue, or pinged. */
+  api.get("/cards/imminent", (c) => c.json(cards.listImminentCards(getDb())));
+  api.get("/cards/due", (c) => c.json(cards.listDueReminders(getDb())));
   api.get("/cards/:id", (c) => {
     const card = cards.getCard(getDb(), c.req.param("id"));
     if (!card) return c.json({ error: "Not found" }, 404);
@@ -221,6 +268,22 @@ export function createApp() {
   api.delete("/cards/:id", (c) =>
     c.json(cards.deleteCard(getDb(), c.req.param("id"))),
   );
+  /** Client confirms it actually chimed, so the reminder fires exactly once. */
+  api.post("/cards/:id/notified", (c) => {
+    const result = cards.markCardNotified(getDb(), c.req.param("id"));
+    if ("error" in result) return c.json(result, 404);
+    return c.json(result);
+  });
+
+  /** Start a scheduled card — it takes over the timeline under its activity tag. */
+  api.post("/cards/:id/start", (c) => {
+    const result = cards.startCard(getDb(), c.req.param("id"));
+    if ("error" in result) {
+      return c.json(result, result.error === "Card not found" ? 404 : 409);
+    }
+    return c.json(result);
+  });
+
   api.post("/cards/:id/complete", async (c) => {
     let body: { note?: string | null; source?: "user" | "agent"; progress?: number } =
       { source: "user" };
@@ -239,19 +302,96 @@ export function createApp() {
   );
 
   api.get("/goals", (c) => c.json(goals.listGoals(getDb())));
+  /** Goals whose condition is true but whose celebration has not been watched. */
+  api.get("/goals/pending-celebration", (c) =>
+    c.json(goals.pendingCelebrations(getDb())),
+  );
   api.post("/goals", async (c) => {
     const body = createGoalSchema.parse(await c.req.json());
-    return c.json(goals.createGoal(getDb(), body), 201);
+    const result = goals.createGoal(getDb(), body);
+    if ("error" in result) return c.json(result, 400);
+    return c.json(result.goal, 201);
   });
   api.patch("/goals/:id", async (c) => {
     const body = updateGoalSchema.parse(await c.req.json());
     const g = goals.updateGoal(getDb(), c.req.param("id"), body);
     if (!g) return c.json({ error: "Not found" }, 404);
+    if ("error" in g) return c.json(g, 400);
     return c.json(g);
   });
+  /**
+   * The user watched the celebration — the only way a goal becomes `achieved`.
+   * A met-but-unwitnessed goal stays active on purpose.
+   */
+  api.post("/goals/:id/celebration-seen", (c) => {
+    const result = goals.markCelebrationSeen(getDb(), c.req.param("id"));
+    if (!result) return c.json({ error: "Not found" }, 404);
+    if ("error" in result) return c.json(result, 409);
+    return c.json(result.goal);
+  });
+  /** Force a re-check without waiting for the next write. */
+  api.post("/goals/evaluate", (c) =>
+    c.json({ evaluated: goals.evaluateGoals(getDb()) }),
+  );
   api.delete("/goals/:id", (c) => {
     goals.deleteGoal(getDb(), c.req.param("id"));
     return c.json({ ok: true });
+  });
+
+  // Agent-defined internal properties — the counters goal conditions read.
+  api.get("/properties", (c) => c.json(properties.listProperties(getDb())));
+  api.get("/properties/:key", (c) => {
+    const prop = properties.getProperty(getDb(), c.req.param("key"));
+    if (!prop) return c.json({ error: "Not found" }, 404);
+    return c.json(prop);
+  });
+  api.post("/properties", async (c) => {
+    const body = createAgentPropertySchema.parse(await c.req.json());
+    const result = properties.createProperty(getDb(), body);
+    if ("error" in result) return c.json(result, 409);
+    return c.json(result.property, 201);
+  });
+  api.patch("/properties/:key", async (c) => {
+    const body = updateAgentPropertySchema.parse(await c.req.json());
+    const prop = properties.updateProperty(getDb(), c.req.param("key"), body);
+    if (!prop) return c.json({ error: "Not found" }, 404);
+    return c.json(prop);
+  });
+  api.post("/properties/:key/increment", async (c) => {
+    let body = { by: 1 };
+    try {
+      body = incrementAgentPropertySchema.parse(await c.req.json());
+    } catch {
+      /* empty body means +1 */
+    }
+    const result = properties.incrementProperty(
+      getDb(),
+      c.req.param("key"),
+      body.by,
+    );
+    if ("error" in result) return c.json(result, 400);
+    return c.json(result);
+  });
+  api.delete("/properties/:key", (c) =>
+    c.json(properties.deleteProperty(getDb(), c.req.param("key"))),
+  );
+
+  // Database snapshots
+  api.get("/backups", (c) =>
+    c.json({
+      backups: backups.listDatabaseBackups(),
+      settings: {
+        backupsEnabled: settings.getSettings(getDb()).backupsEnabled,
+        backupIntervalHours: settings.getSettings(getDb()).backupIntervalHours,
+        backupKeep: settings.getSettings(getDb()).backupKeep,
+        lastBackupAt: settings.getSettings(getDb()).lastBackupAt,
+      },
+    }),
+  );
+  api.post("/backups", (c) => {
+    const result = backups.runBackup(getDb(), { force: true });
+    if (!result.ok) return c.json(result, 500);
+    return c.json(result, 201);
   });
 
   api.get("/dashboard/today", (c) => c.json(dashboard.getDashboard(getDb())));
@@ -321,17 +461,34 @@ export function createApp() {
   api.get("/agent/capabilities", (c) =>
     c.json({
       name: "Life OS",
-      version: "0.3.0",
-      maxDashboardCards: 2,
+      version: "0.4.0",
+      maxPinnedCards: 2,
       agentSetupCard: { slot: 2, kind: "agent-setup", singleton: true },
+      cardKinds: CARD_KINDS,
       cardGraphics: ["emoji", "imageUrl", "imageData", "svg"],
+      /** The closed set of day buckets. Invent any content; map it onto one of these. */
+      activityTags: ACTIVITIES,
+      repeatRules: REPEAT_RULES,
+      scheduleRule:
+        "showAt <= remindAt < eventAt. The user is always told about a thing before the thing; " +
+        "a card whose reminder lands at or after its own event is rejected with 400.",
       growthStyles: ["sprout", "orb"],
       legacyGrowthStyles: { plant: "sprout", water: "orb", both: "sprout" },
+      settings:
+        "Every field of GET /api/v1/settings is agent-writable via PATCH, including " +
+        "day reset, quiet hours, sleep window, theme, celebration intensity, webhooks and backups.",
+      goals:
+        "Goals are yours to set, not the user's. Write a condition, push data into properties, " +
+        "and the system re-checks after every write. See GET /api/v1/agent/goal-syntax.",
       tools: [
         "cards.crud",
         "cards.complete",
         "cards.svg",
         "cards.agent-setup",
+        "cards.schedule",
+        "cards.reminders",
+        "cards.start",
+        "cards.repeat.spaced",
         "habits.crud",
         "habits.complete",
         "habits.rebalance-xp",
@@ -341,19 +498,44 @@ export function createApp() {
         "events.xpOnComplete",
         "study.log",
         "goals.crud",
+        "goals.conditions",
+        "goals.celebration",
+        "properties.crud",
+        "properties.increment",
         "quests.inject",
         "reviews.inject",
         "gamification.config",
         "dailyXpTarget",
-        "settings.dayResetTime",
+        "settings.all",
         "settings.agentWebhook",
+        "backups.run",
         "dashboard.today",
         "agent.xp-model",
         "export.json",
       ],
       notes:
-        "Agent owns 2 content cards + 1 setup card, habits, blocks, and the XP pool. " +
+        "Agent owns 2 pinned cards + 1 setup card + unlimited scheduled event/reminder cards, " +
+        "habits, blocks, goals, internal properties, settings and the XP pool. " +
         "Webhooks fire on complete. No levels. See GET /api/v1/agent/xp-model.",
+    }),
+  );
+
+  /** Reshape the whole instance in one call — habits, hours, XP pool, setup card. */
+  api.post("/agent/setup", async (c) => {
+    const body = agentSetupSchema.parse(await c.req.json());
+    return c.json(setup.runInitialSetup(getDb(), body));
+  });
+
+  /** Copy-pasteable goal + property syntax, so agents never have to guess. */
+  api.get("/agent/goal-syntax", (c) =>
+    c.json({
+      ...GOAL_CONDITION_SYNTAX,
+      celebration:
+        "When a condition first comes true the goal gets conditionMetAt and appears in " +
+        "GET /api/v1/goals/pending-celebration. It stays status:'active' until the user has " +
+        "seen the animation and the client calls POST /api/v1/goals/<id>/celebration-seen. " +
+        "An unwitnessed goal is not a finished goal.",
+      liveProperties: properties.listProperties(getDb()),
     }),
   );
 

@@ -1,12 +1,15 @@
 ---
 name: life-os
 description: >
-  Control the Life OS execution app via HTTP (habits, study blocks, dashboard
-  cards, the fixed daily XP pool, reviews, webhooks). Use when any long-running
-  agent (Hermes, OpenClaw, Claude Code, or similar) should read the user's day,
-  customize structure, inject tasks, react to completions, or help the user
-  install and start Life OS when no server is running.
-version: 2.0.0
+  Control the Life OS execution app via HTTP or MCP (habits, study blocks,
+  dashboard cards, scheduled reminders and spaced repetition, the fixed daily XP
+  pool, agent-set goals with machine-checkable conditions, agent-defined
+  counters, every instance setting, and database backups). Use when any
+  long-running agent (Hermes, OpenClaw, Claude Code, or similar) should read the
+  user's day, reshape the instance, schedule things, set goals, react to
+  completions, or help the user install and start Life OS when no server is
+  running.
+version: 3.0.0
 license: MIT
 platforms: [macos, linux, windows]
 metadata:
@@ -43,10 +46,14 @@ required_environment_variables:
 **One skill for every long-running agent** (Hermes, OpenClaw, Cursor, Claude Code, cron bots).
 Load this `SKILL.md` and drive the HTTP API (or MCP, if it is running).
 
-You operate **Life OS**: the execution layer for habits, schedule, study blocks, front-page
-cards, and personal progress.
+You operate **Life OS**: the execution layer for habits, schedule, study blocks, cards,
+reminders, goals, and personal progress.
 
-> **The user completes. You customize.**
+> **The user completes. You decide everything else.**
+
+That is not a slogan, it is the division of labour. You own the settings, the habit set, the
+schedule, the cards, the reminders, the XP pool, and — importantly — **the goals**. The user
+taps things. Anything that requires sitting down and deciding is yours.
 
 | | |
 |--|--|
@@ -114,14 +121,91 @@ Tell the user the login is `admin` / `lifeos` (from `.env`), their database is a
 
 ```bash
 GET /health
-GET /api/v1/agent/capabilities   # slots, tools, growth styles
+GET /api/v1/agent/capabilities   # card kinds, activity tags, repeat rules, tool list
 GET /api/v1/agent/xp-model       # the XP rules, plus this user's live numbers
+GET /api/v1/agent/goal-syntax    # goal condition language + live counters
 GET /api/v1/dashboard/today      # primary read
 GET /api/v1/export/json          # full dump
 ```
 
-`dashboard/today` is the one call you usually want: habits, cards, timeline, efficiency,
-agent events, light reviews, and pulse in a single payload.
+`dashboard/today` is the one call you usually want. It returns, in one payload:
+
+| Field | What it holds |
+|-------|---------------|
+| `habits` · `progress` · `vsYesterday` · `pulse` | The day's numbers |
+| `cards` | The pinned front-page cards (slots 0, 1, and the setup card) |
+| `upcoming` | Only what is **imminent** — due within 15 min, overdue, or already pinged |
+| `scheduled` | Every visible scheduled card (this is what the Timeline tab shows) |
+| `dueReminders` | Reminders that should chime **now** and have not yet |
+| `pendingCelebrations` | Goals that are met but that the user has not yet *seen* |
+| `properties` | Your own counters, with live values |
+| `timeline` · `studyBlocks` · `agentEvents` · `lightReviews` | The rest of the day |
+
+---
+
+## 1a. You own the settings
+
+**Every field of `GET /api/v1/settings` is yours to change**, and you do not need to ask
+before tuning the instance to fit the person in front of you.
+
+```bash
+GET   /api/v1/settings
+PATCH /api/v1/settings
+{
+  "dayResetTime": "04:00",
+  "plannedWake": "11:00",
+  "plannedSleepStart": "02:00",
+  "plannedSleepEnd": "03:00",
+  "quietHoursStart": "03:30",
+  "quietHoursEnd": "10:30",
+  "accentTheme": "nebula",
+  "celebrationIntensity": "full",
+  "reducedMotion": false,
+  "gamificationEnabled": true,
+  "streaksEnabled": true,
+  "pointsEnabled": true,
+  "achievementsEnabled": true,
+  "questsEnabled": true,
+  "agentWebhookUrl": "https://your-host/hooks/lifeos",
+  "agentWebhookSecret": "shared-secret",
+  "backupsEnabled": true,
+  "backupIntervalHours": 6,
+  "backupKeep": 24
+}
+```
+
+Themes: `nebula` | `quantum` | `terminal` | `ember`. Times are `HH:mm`, local.
+
+### First contact with a fresh clone
+
+A new install ships demo habits and default hours. Reshape it in one call rather than a
+dozen round-trips:
+
+```bash
+POST /api/v1/agent/setup
+{
+  "replaceHabits": true,
+  "habits": [
+    { "name": "Wake window", "emoji": "🌅", "category": "Life", "isTiny": true,
+      "anchor": "when I leave bed", "xpWeight": 2 },
+    { "name": "Deep work block", "emoji": "🎯", "category": "Deep Work",
+      "isTiny": false, "anchor": "after first coffee", "xpWeight": 4 }
+  ],
+  "dailyXpTarget": 220,
+  "growthStyle": "sprout",
+  "settings": { "dayResetTime": "04:00", "plannedWake": "09:30" },
+  "agentName": "Hermes",
+  "agentSetupCard": {
+    "title": "Hermes connected",
+    "subtitle": "Morning review 07:30 · EOD 23:30"
+  }
+}
+```
+
+Everything is optional — send only what you know, come back for the rest. The response
+returns the resulting habit set, the new XP shares, and the full settings.
+
+MCP equivalent: `lifeos_setup_instance`, `lifeos_update_settings`, `lifeos_get_settings`.
 
 ---
 
@@ -261,7 +345,21 @@ habits actually stick, and the UI surfaces them.
 
 ---
 
-## 4. Front-page cards
+## 4. Cards
+
+There are two families:
+
+| Family | Kinds | Where it lives | How many |
+|--------|-------|----------------|----------|
+| **Pinned** | `task`, `agent-setup` | The front page | 2 content slots + 1 setup card |
+| **Scheduled** | `event`, `reminder` | The Upcoming rail | Effectively unlimited (200 live) |
+
+Scheduled cards **never consume a pinned slot**, so you can queue a week of spaced-repetition
+reviews without evicting whatever the user actually needs to look at today. If you send a card
+with `eventAt` or `remindAt` and forget to set `kind`, it is treated as scheduled — the server
+will not silently throw away a pinned card for you.
+
+### 4.1 Pinned cards
 
 Two **content** slots (`0`, `1`) plus one reserved **agent-setup** card (slot `2`, singleton).
 The setup card does not consume a content slot. Creating into an occupied slot **replaces** it.
@@ -307,6 +405,125 @@ POST   /api/v1/cards/:id/complete
 | `xpOnComplete` | Bonus XP (outside the habit pool) |
 | `webhookOnComplete` | POST to your webhook on complete |
 | `status` | `active` \| `done` \| `hidden` |
+
+---
+
+## 4a. Scheduled cards: events and reminders
+
+This is how you put things in the future — a review to do at 7pm, a spaced-repetition prompt
+three days out, a nudge before a call.
+
+### The ordering rule (the server enforces this)
+
+```
+showAt      <=      remindAt      <      eventAt
+(appears)          (chimes)             (happens)
+```
+
+**The user is always told about a thing before the thing.** A card whose reminder lands at or
+after its own event is rejected with `400` and a message saying why — you find out
+immediately, not at 3am when the chime never came. `remindAt` without an `eventAt` to point
+at is also rejected.
+
+All three are ISO 8601 instants. All three are optional; a card with none of them is just an
+always-visible item in the rail.
+
+### Activity tags — a closed set
+
+```
+Deep Work · Study · Sleep · Exercise · Break · Life Admin · Exploration
+```
+
+`activityTag` must be one of these. This is deliberate: **invent any content you like, but map
+it onto a day shape the timeline already understands.** "Read one chapter of Project Hail Mary"
+is content; `Study` is its shape. Anything outside the set is rejected with `400`.
+
+`Exploration` is the creative / curiosity bucket — side quests, tinkering, art, wandering
+research. Use it instead of forcing play into `Deep Work`.
+
+Because the tag is already part of the daily timeline, **starting a tagged card auto-activates
+that bucket**: the app creates a block, makes it the running session, and the time counts
+toward the day without anyone having to teach it what a book is.
+
+### Creating one
+
+```bash
+POST /api/v1/cards
+{
+  "kind": "event",
+  "title": "Read one chapter",
+  "purpose": "Spaced-repetition reading block",
+  "activityTag": "Study",
+  "showAt":   "2026-08-04T17:00:00Z",
+  "remindAt": "2026-08-04T18:50:00Z",
+  "eventAt":  "2026-08-04T19:00:00Z",
+  "durationMinutes": 60,
+  "repeatRule": "spaced",
+  "sound": true,
+  "flash": true,
+  "emoji": "📖",
+  "xpOnComplete": 25
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `kind` | `event` (startable, has a duration) or `reminder` (just chimes) |
+| `purpose` | What this card is *for*, in your own words. Free text. |
+| `activityTag` | Which day bucket it belongs to — see the closed set above |
+| `showAt` | Card stays hidden until this instant |
+| `remindAt` | Chime fires here. Must be strictly before `eventAt`. |
+| `eventAt` | When the thing actually happens |
+| `durationMinutes` | Length of the block created when started |
+| `repeatRule` | `none` \| `daily` \| `weekly` \| `spaced` |
+| `repeatOffsetsDays` | Custom spaced ladder; omit for `1, 3, 7, 14, 30, 60` |
+| `sound` | Play the chime (default `true`) |
+| `flash` | Flash the card and the tab until dealt with (default `true`) |
+
+### Spaced repetition
+
+`repeatRule: "spaced"` is the whole feature in one field. Each time the user completes the
+card, the next occurrence is scheduled further out along the ladder — 1 day, then 3, 7, 14,
+30, 60 — and the lead times you chose are preserved (a card that showed 2h early and pinged
+10min early keeps doing that). When the ladder is exhausted the card stops repeating.
+
+The completed card stays in history as `done`; the next occurrence is a **new** card with its
+own id, returned as `nextOccurrence` on the complete response. Nothing is silently rewound.
+
+### Reminders in practice
+
+```bash
+GET  /api/v1/cards/upcoming        # visible scheduled cards, soonest first
+GET  /api/v1/cards/imminent        # only the next 15 minutes (+ anything overdue)
+GET  /api/v1/cards/due             # reminders that should chime now
+POST /api/v1/cards/:id/notified    # the client confirms it chimed (fires once)
+POST /api/v1/cards/:id/start       # take over the timeline under the activity tag
+POST /api/v1/cards/:id/complete    # done; schedules the next rung if repeating
+```
+
+### Where a scheduled card actually shows up
+
+Schedule freely — the UI splits it for you:
+
+| Where | What lands there |
+|-------|------------------|
+| **Dashboard → Up next** | Only the imminent ones: due within 15 minutes, overdue, or already pinged. A compact one-line list. |
+| **Timeline tab** | Everything, grouped by day, against the clock. |
+
+The dashboard answers "what am I doing *now*". A card three hours out is planning, not doing,
+so it stays on the Timeline tab. This means you can queue a whole week without making the
+dashboard unusable — schedule as far ahead as you like.
+
+The line under a card's title is yours: it shows `subtitle` if set, otherwise `purpose`. Keep
+it under ~60 characters; it truncates on one line. `body` shows on the Timeline tab.
+
+When a reminder comes due the web app plays a chime, washes the screen in the accent colour,
+flashes the tab title, and raises an OS notification if the user has granted permission. The
+card keeps pulsing until it is actually dealt with — being told about a thing is not the same
+as doing it.
+
+You normally do not call `/notified` yourself; the browser does. Call `/start` on the user's
+behalf only if they asked you to.
 
 ---
 
@@ -431,6 +648,150 @@ reads much better than three blocks stretched across 24 hours.
 
 ---
 
+## 8a. Internal properties — your own counters
+
+Life OS does not know what a book is. It does not need to. You can invent a value, push to it
+whenever something happens on your side, and write goals against it.
+
+```bash
+GET    /api/v1/properties
+GET    /api/v1/properties/:key
+POST   /api/v1/properties
+PATCH  /api/v1/properties/:key
+POST   /api/v1/properties/:key/increment
+DELETE /api/v1/properties/:key
+```
+
+Define one:
+
+```bash
+POST /api/v1/properties
+{
+  "key": "books_read",
+  "label": "Books finished",
+  "kind": "counter",
+  "unit": "books",
+  "description": "Incremented when the user finishes a book"
+}
+```
+
+Response includes a **stable `uid`**. Key your own records to that, not to `key` — the label
+and even the meaning may drift, the uid never does.
+
+Push data:
+
+```bash
+POST /api/v1/properties/books_read/increment
+{ "by": 1 }
+```
+
+- `key` must be `lower_snake_case`, starting with a letter.
+- `kind` is `counter` | `number` | `text` | `json`. Counters start at `0`.
+- Incrementing an **undefined** key auto-defines it as a counter rather than failing. A
+  forgotten setup call should never lose an increment and leave a goal quietly never firing.
+- Redefining an existing key returns `409`, not a silent overwrite. `PATCH` instead.
+- Every write re-checks every goal immediately.
+
+---
+
+## 8b. Goals — yours to set, not the user's
+
+**The user does not decide goals. You do.** Deciding what to want is exactly the
+executive-function tax this app exists to remove. The Goals page is read-only.
+
+A goal is a title plus a **machine-checkable condition**. The system re-evaluates every goal
+after *any* change to the database — HTTP, MCP, or the user tapping a habit — so a goal fires
+the moment the thing that completes it is recorded.
+
+```bash
+GET    /api/v1/agent/goal-syntax          # the language + live counters. Read this first.
+GET    /api/v1/goals
+POST   /api/v1/goals
+PATCH  /api/v1/goals/:id
+DELETE /api/v1/goals/:id
+GET    /api/v1/goals/pending-celebration
+POST   /api/v1/goals/:id/celebration-seen
+POST   /api/v1/goals/evaluate             # force a re-check
+```
+
+```bash
+POST /api/v1/goals
+{
+  "title": "Read 10 books this year",
+  "whyItMatters": "You said you missed reading.",
+  "emoji": "📚",
+  "themeColor": "#A78BFA",
+  "condition": { "type": "property", "key": "books_read", "op": ">=", "value": 10 }
+}
+```
+
+### The condition language
+
+Four node types:
+
+```jsonc
+// A counter you maintain
+{ "type": "property", "key": "books_read", "op": ">=", "value": 10 }
+
+// Something the app already tracks
+{ "type": "metric", "metric": "habit_streak", "habitId": "…", "op": ">=", "value": 30 }
+{ "type": "metric", "metric": "study_minutes", "window": "30d", "op": ">=", "value": 2400 }
+
+// Combinators
+{ "type": "all", "of": [ … ] }   // every leg must hold
+{ "type": "any", "of": [ … ] }   // one leg is enough
+```
+
+| | Values |
+|--|--|
+| `op` | `>=` `>` `<=` `<` `==` `!=` |
+| `metric` | `total_xp` · `habit_completions` · `habit_streak` · `study_minutes` · `cards_completed` · `days_active` |
+| `window` | `all` (default) · `7d` · `30d` · `90d` · `year` |
+
+`habitId` is required for `habit_completions` and `habit_streak`. Invalid conditions are
+rejected with **every** problem listed at once, so one round-trip is enough to fix them.
+
+Progress is computed for you: `>=` and `>` give a real ratio, `all` reports its weakest leg,
+`any` its strongest. `conditionDetail` carries a human-readable trace of each leaf, which is
+what the UI shows.
+
+### Met is not finished
+
+This is the important part.
+
+1. The condition comes true → `conditionMetAt` is stamped and the goal appears in
+   `pendingCelebrations` on the dashboard.
+2. **The goal stays `status: "active"`.** It is *met*, not *achieved*.
+3. The dashboard plays a full-screen celebration. The only way out is the claim button.
+4. Claiming calls `POST /api/v1/goals/:id/celebration-seen`, which is the **only** path to
+   `status: "achieved"`.
+
+Close the tab instead of claiming and the celebration is waiting next time. A goal the user
+never saw completed did not, as far as this product is concerned, complete.
+
+Do not try to set `status: "achieved"` yourself — the create/update schemas do not accept it.
+
+---
+
+## 8c. Database backups
+
+The SQLite file is snapshotted into `data/backups/` on a timer using SQLite's own consistent
+copy path, so a snapshot is safe to take while the app is running. Old snapshots are pruned
+oldest-first.
+
+```bash
+GET  /api/v1/backups     # list + current policy
+POST /api/v1/backups     # snapshot now (ignores the enabled flag)
+
+PATCH /api/v1/settings
+{ "backupsEnabled": true, "backupIntervalHours": 6, "backupKeep": 24 }
+```
+
+Take one before any risky restructure — replacing the habit set, bulk-deleting cards, changing
+the XP pool wholesale. `POST /api/v1/backups` costs a fraction of a second.
+
+---
+
 ## 9. Webhooks
 
 ```bash
@@ -544,7 +905,22 @@ the same SQLite file. Prefer HTTP when in doubt.
 | `lifeos_list_events` / `lifeos_inject_event` | Quick log |
 | `lifeos_inject_quest` / `lifeos_inject_light_review` | Quests and reviews |
 | `lifeos_update_xp_rules` | `dailyXpTarget`, `growthStyle`, multipliers |
-| `lifeos_update_settings` / `lifeos_get_settings` | Day reset, webhook, theme |
+| `lifeos_get_capabilities` | Card kinds, activity tags, repeat rules, tool list |
+| `lifeos_setup_instance` | Reshape a fresh clone in one call |
+| `lifeos_update_settings` / `lifeos_get_settings` | **Every** setting, not a subset |
+| `lifeos_schedule_card` | Events and reminders, with the ordering rule enforced |
+| `lifeos_list_upcoming_cards` / `lifeos_list_due_reminders` | The rail and the chime queue |
+| `lifeos_start_card` / `lifeos_mark_card_notified` | Take over the timeline · confirm a chime |
+| `lifeos_start_block` / `lifeos_complete_block` | Timeline sessions |
+| `lifeos_list_properties` / `lifeos_define_property` / `lifeos_set_property` / `lifeos_increment_property` / `lifeos_delete_property` | Your own counters |
+| `lifeos_get_goal_syntax` | The condition language + worked examples |
+| `lifeos_list_goals` / `lifeos_create_goal` / `lifeos_update_goal` / `lifeos_delete_goal` | Goals |
+| `lifeos_evaluate_goals` | Force a re-check; lists goals awaiting celebration |
+| `lifeos_backup_now` / `lifeos_list_backups` | Database snapshots |
+| `lifeos_export_json` | Full dump |
+
+Any mutating MCP call re-checks goals, exactly like the HTTP API. If a goal came due, the
+response carries `goalsAwaitingCelebration` alongside your result.
 
 ---
 
@@ -552,8 +928,12 @@ the same SQLite file. Prefer HTTP when in doubt.
 
 | Limit | Value |
 |-------|--------|
-| Content cards | **2** (slots 0 and 1) |
+| Pinned content cards | **2** (slots 0 and 1) |
 | Agent setup card | **1** (slot 2, does not consume a content slot) |
+| Scheduled cards | 200 live (`event` / `reminder`, unpinned) |
+| Card schedule ordering | `showAt <= remindAt < eventAt`, enforced with `400` |
+| Activity tags | Closed set of 7 — you may not invent day buckets |
+| Goal status `achieved` | Only reachable via `celebration-seen` |
 | Inline SVG | 64 KB, single root `<svg>`, no script or external refs |
 | Auth | Mock admin or `API_TOKEN` |
 | Levels / social comparison | **None** |
@@ -571,6 +951,12 @@ the same SQLite file. Prefer HTTP when in doubt.
 - Keep `imageData` small; prefer `svg` or `imageUrl`.
 - SVG containing `<script>`, `<use>`, or any `href` is silently stripped — read `svgNotes`.
 - Never clone or install Life OS without asking the user first.
+- A reminder at or after its own event is a `400`. Put `remindAt` genuinely earlier.
+- Do not invent activity tags. Map your content onto one of the seven day buckets.
+- Do not try to mark a goal `achieved`. Only the user seeing the animation does that.
+- Do not ask the user what their goals should be. That is your job — read their data and set one.
+- Key your records to a property's `uid`, not its `key`.
+- Take a backup before restructuring anything in bulk.
 
 ---
 
@@ -601,14 +987,25 @@ moves the growth meter.
 | Is it running? | `GET /health` |
 | Understand XP | `GET /api/v1/agent/xp-model` |
 | Read the day | `GET /api/v1/dashboard/today` |
+| Set up a fresh clone | `POST /api/v1/agent/setup` |
+| Change literally any setting | `PATCH /api/v1/settings` |
 | Reading card | `POST /api/v1/cards` slot 0 |
 | Describe yourself | `POST /api/v1/cards` `kind: "agent-setup"` |
 | Card artwork | `svg` field on any card |
+| Schedule something | `POST /api/v1/cards` `kind: "event"` + `eventAt` |
+| Remind before it | `remindAt` — strictly earlier than `eventAt` |
+| Spaced repetition | `repeatRule: "spaced"` on a scheduled card |
+| Creative time | `activityTag: "Exploration"` |
+| Track your own number | `POST /api/v1/properties` then `/increment` |
+| Set a goal | `POST /api/v1/goals` with a `condition` |
+| Learn the condition language | `GET /api/v1/agent/goal-syntax` |
+| See what is waiting on the user | `GET /api/v1/goals/pending-celebration` |
 | New habit | `POST /api/v1/habits` + `redistribute: true` |
 | Bigger day | `PATCH /api/v1/gamification/config` `{ dailyXpTarget }` |
 | Bonus XP | `extraXp` on a habit, `xpOnComplete` on a card or event |
 | Growth visual | `PATCH /api/v1/gamification/config` `{ growthStyle }` |
 | Webhook | `PATCH /api/v1/settings` `{ agentWebhookUrl }` |
+| Snapshot the DB | `POST /api/v1/backups` |
 
 Keep friction low and dopamine honest.
 Full product context: `docs/LIFE_OS.md` · Database: `docs/DATABASE.md` ·

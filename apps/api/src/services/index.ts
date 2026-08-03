@@ -7,3 +7,8 @@ export * as achievements from "./achievements.js";
 export * as quests from "./quests.js";
 export * as snapshots from "./snapshots.js";
 export * as auth from "./auth.js";
+export * as cards from "./cards.js";
+export * as blocks from "./blocks.js";
+export * as events from "./events.js";
+export * as properties from "./properties.js";
+export * as backups from "./backups.js";

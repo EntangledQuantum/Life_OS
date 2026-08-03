@@ -13,6 +13,7 @@ export const CATEGORIES = [
   "Study",
   "Deep Work",
   "Startup",
+  "Exploration",
   "Custom",
 ] as const;
 
@@ -67,6 +68,33 @@ export function normalizeGrowthStyle(value: unknown): GrowthStyle {
   }
 }
 
+/**
+ * Card kinds.
+ * - `task`        pinned content card (slots 0/1, max two)
+ * - `agent-setup` reserved singleton connection card (slot 2)
+ * - `event`       something that happens at a time and can be *started*
+ * - `reminder`    something that only needs to fire a notification
+ *
+ * `event` and `reminder` cards are unpinned (slot -1) and live in the Upcoming
+ * rail, so they never eat one of the two precious front-page slots.
+ */
+export const CARD_KINDS = ["task", "agent-setup", "event", "reminder"] as const;
+export type CardKind = (typeof CARD_KINDS)[number];
+
+/** Slot used by unpinned scheduled cards (events and reminders). */
+export const UNPINNED_SLOT = -1;
+
+/** How a card repeats after it is completed. */
+export const REPEAT_RULES = ["none", "daily", "weekly", "spaced"] as const;
+export type RepeatRule = (typeof REPEAT_RULES)[number];
+
+/**
+ * Default expanding-interval ladder (days) for `repeatRule: "spaced"`.
+ * Completing occurrence *n* schedules the next one `SPACED_OFFSETS[n]` days out;
+ * once the ladder is exhausted the card stops repeating.
+ */
+export const SPACED_OFFSETS_DAYS = [1, 3, 7, 14, 30, 60] as const;
+
 export const IMPROVEMENT_PULSES = [
   "Improving",
   "Stable",
@@ -76,6 +104,15 @@ export const IMPROVEMENT_PULSES = [
 
 export type ImprovementPulse = (typeof IMPROVEMENT_PULSES)[number];
 
+/**
+ * The abstract shape of a day. Everything schedulable — timeline blocks, the
+ * "Right now" switcher, and agent event cards — is tagged with one of these.
+ *
+ * This list is deliberately closed: an agent may invent any *content* it likes
+ * but must map it onto one of these buckets, so the timeline and the daily
+ * stats stay comparable across days. `Exploration` is the creative /
+ * curiosity-driven bucket (side quests, tinkering, art, wandering research).
+ */
 export const ACTIVITIES = [
   "Deep Work",
   "Study",
@@ -83,9 +120,25 @@ export const ACTIVITIES = [
   "Exercise",
   "Break",
   "Life Admin",
+  "Exploration",
 ] as const;
 
 export type Activity = (typeof ACTIVITIES)[number];
+
+/**
+ * Tags an agent may attach to a schedulable card. Identical to ACTIVITIES —
+ * named separately because it is the *contract* agents code against, and
+ * because a card carrying one of these auto-activates the matching timeline
+ * bucket when the user starts it.
+ */
+export const CARD_ACTIVITY_TAGS = ACTIVITIES;
+export type CardActivityTag = Activity;
+
+export function isActivityTag(value: unknown): value is Activity {
+  return (
+    typeof value === "string" && (ACTIVITIES as readonly string[]).includes(value)
+  );
+}
 
 /** Distinct accent colors for new habits */
 export const HABIT_COLOR_PALETTE = [

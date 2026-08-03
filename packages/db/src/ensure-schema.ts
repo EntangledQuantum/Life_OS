@@ -40,6 +40,34 @@ export function ensureSchema(dbPath?: string) {
     ["dashboard_cards", "kind", "TEXT NOT NULL DEFAULT 'task'"],
     ["dashboard_cards", "svg", "TEXT"],
     ["agent_events", "xp_on_complete", "INTEGER NOT NULL DEFAULT 0"],
+    // Scheduling / reminders on cards
+    ["dashboard_cards", "purpose", "TEXT"],
+    ["dashboard_cards", "activity_tag", "TEXT"],
+    ["dashboard_cards", "show_at", "TEXT"],
+    ["dashboard_cards", "remind_at", "TEXT"],
+    ["dashboard_cards", "event_at", "TEXT"],
+    ["dashboard_cards", "duration_minutes", "INTEGER"],
+    ["dashboard_cards", "repeat_rule", "TEXT NOT NULL DEFAULT 'none'"],
+    ["dashboard_cards", "repeat_index", "INTEGER NOT NULL DEFAULT 0"],
+    ["dashboard_cards", "repeat_offsets_json", "TEXT"],
+    ["dashboard_cards", "sound", "INTEGER NOT NULL DEFAULT 1"],
+    ["dashboard_cards", "flash", "INTEGER NOT NULL DEFAULT 1"],
+    ["dashboard_cards", "notified_at", "TEXT"],
+    ["dashboard_cards", "linked_block_id", "TEXT"],
+    // Agent-authored goal conditions + the seen-it-or-it-didn't-happen fields
+    ["goals", "owner_kind", "TEXT NOT NULL DEFAULT 'agent'"],
+    ["goals", "condition_json", "TEXT"],
+    ["goals", "auto_check", "INTEGER NOT NULL DEFAULT 1"],
+    ["goals", "condition_met_at", "TEXT"],
+    ["goals", "celebration_seen_at", "TEXT"],
+    ["goals", "condition_detail_json", "TEXT"],
+    ["goals", "emoji", "TEXT NOT NULL DEFAULT '🎯'"],
+    ["goals", "theme_color", "TEXT NOT NULL DEFAULT '#A78BFA'"],
+    // Periodic database snapshots
+    ["settings", "backups_enabled", "INTEGER NOT NULL DEFAULT 1"],
+    ["settings", "backup_interval_hours", "INTEGER NOT NULL DEFAULT 6"],
+    ["settings", "backup_keep", "INTEGER NOT NULL DEFAULT 24"],
+    ["settings", "last_backup_at", "TEXT"],
   ];
 
   for (const [table, col, def] of alters) {
@@ -93,6 +121,24 @@ export function ensureSchema(dbPath?: string) {
         xp_on_complete INTEGER NOT NULL DEFAULT 0,
         webhook_on_complete INTEGER NOT NULL DEFAULT 1,
         completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  }
+
+  if (!hasTable(db, "agent_properties")) {
+    db.exec(`
+      CREATE TABLE agent_properties (
+        id TEXT PRIMARY KEY,
+        key TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'counter',
+        value REAL,
+        text_value TEXT,
+        unit TEXT,
+        description TEXT,
+        created_by TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );

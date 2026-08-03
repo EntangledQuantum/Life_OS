@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
+  CalendarClock,
   LayoutDashboard,
   Settings,
   Target,
@@ -16,6 +17,7 @@ import { useEffect } from "react";
 
 const tabs = [
   { to: "/app", end: true, label: "Overview", icon: LayoutDashboard },
+  { to: "/app/timeline", label: "Timeline", icon: CalendarClock },
   { to: "/app/habits", label: "Habits", icon: CheckCircle2 },
   { to: "/app/study", label: "Study", icon: BookOpen },
   { to: "/app/goals", label: "Goals", icon: Target },

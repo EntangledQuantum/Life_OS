@@ -14,7 +14,8 @@ repo gets their own private database automatically.
 | Configured by | `DATABASE_PATH` in `.env` |
 | Engine | SQLite via Node's built-in `node:sqlite` |
 | Journal mode | WAL — you will also see `lifeos.db-wal` and `lifeos.db-shm` |
-| In git? | **No.** `data/*.db` is gitignored; only `data/.gitkeep` is tracked |
+| In git? | **No.** `data/*.db` and `data/backups/` are gitignored; only `data/.gitkeep` is tracked |
+| Snapshots | `data/backups/lifeos-*.db`, written automatically — see [Backing up](#backing-up) |
 
 The path is resolved to an absolute path at startup, so it does not matter which
 directory you launch from. An absolute `DATABASE_PATH` is used as-is, which is how
@@ -60,9 +61,10 @@ database keeps working after an upgrade.
 |-------|-------|
 | `habits`, `habit_logs` | Habit definitions, themes, XP weights, and every completion |
 | `schedule_blocks`, `study_sessions` | The agent-owned day timeline and logged study |
-| `dashboard_cards` | Front-page cards (2 content slots + the agent-setup card) |
+| `dashboard_cards` | Pinned cards (2 content slots + the agent-setup card) **and** scheduled event/reminder cards, with their `show_at` / `remind_at` / `event_at` instants and repeat ladder |
 | `agent_events`, `light_reviews`, `quests` | The Quick log queue injected by agents |
-| `goals`, `goal_habit_links` | Goals and their linked habits |
+| `goals`, `goal_habit_links` | Agent-set goals: the serialized condition, when it was met, and whether the user has seen the celebration |
+| `agent_properties` | Counters the agent invented and maintains (`books_read`, …), each with a stable uid that goal conditions read |
 | `daily_snapshots` | Per-day aggregates that power "you vs yesterday" |
 | `user_progress` | Lifetime XP and the latest improvement pulse |
 | `gamification_config` | Daily XP pool, multipliers, growth-meter style |
@@ -75,6 +77,33 @@ only what is genuinely special into the vault themselves.
 ---
 
 ## Backing up
+
+### Automatic snapshots
+
+Life OS backs itself up. While the API is running it snapshots the database into
+`data/backups/lifeos-YYYYMMDD-HHMMSS.db` every `backupIntervalHours` (default **6**),
+keeping the most recent `backupKeep` copies (default **24**) and pruning the rest.
+
+| | |
+|--|--|
+| Where | `data/backups/` — gitignored |
+| How | SQLite `VACUUM INTO`, which is consistent while the database is open |
+| Controls | Settings → Database backups, or `PATCH /api/v1/settings` |
+| On demand | `POST /api/v1/backups`, or the `lifeos_backup_now` MCP tool |
+| List | `GET /api/v1/backups` |
+
+The scheduler polls every 15 minutes rather than sleeping for the full interval, because a
+laptop that suspends never fires a long timer. It compares against `lastBackupAt`, so a
+machine that was asleep for two days takes **one** snapshot on wake, not the dozen it
+"missed".
+
+Restoring is a file copy: stop the app, replace `data/lifeos.db` with a snapshot, delete any
+`-wal` / `-shm` sidecars, and start again.
+
+Agents should take a snapshot before any bulk restructure — replacing the habit set, mass
+card deletion, changing the XP pool wholesale. It costs a fraction of a second.
+
+### Manual copies
 
 The database is one file. Copy it while the app is stopped:
 

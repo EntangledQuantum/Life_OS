@@ -176,6 +176,58 @@ you complete something.
 
 </td>
 </tr>
+<tr>
+<td valign="top">
+
+**🔔 Reminders that land**
+
+Your agent schedules something and a nudge before it. It chimes, flashes, and
+keeps pulsing until you deal with it.
+
+</td>
+<td valign="top">
+
+**📆 A real timeline**
+
+Everything scheduled lives on its own tab. The dashboard only shows the next
+fifteen minutes, so it stays a dashboard.
+
+</td>
+<td valign="top">
+
+**🔁 Spaced repetition**
+
+Mark a review done and the next one lands further out — 1 day, 3, 7, 14, 30.
+Built in, not bolted on.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**🏆 Goals you didn't have to invent**
+
+Your agent sets them and writes the finish condition. It's checked after every
+change, and celebrated the moment you next look.
+
+</td>
+<td valign="top">
+
+**💾 Backs itself up**
+
+A consistent snapshot every few hours, pruned automatically. Your data is one
+file and it keeps copies.
+
+</td>
+<td valign="top">
+
+**📱 Works on your phone**
+
+Flip one line in `.env` and the whole thing is reachable from anything on your
+Wi-Fi.
+
+</td>
+</tr>
 </table>
 
 ![Growth meter](docs/screenshots/growth-meter.png)
@@ -320,9 +372,14 @@ Agents discover all of this at runtime via `GET /api/v1/agent/xp-model`.
 One SQLite file at `data/lifeos.db`. Created on first run, survives restarts and
 `git pull`, and gitignored — so pushing the repo never pushes your life.
 
+**It backs itself up.** Every 6 hours (configurable in Settings) it writes a
+consistent snapshot to `data/backups/`, keeping the last 24 and pruning the rest.
+Restoring is a file copy.
+
 ```bash
-# Back it up. It's one file.
-cp data/lifeos.db ~/backups/lifeos-$(date +%F).db
+# Take one right now
+curl -s -X POST http://127.0.0.1:8787/api/v1/backups \
+  -H "Authorization: Bearer lifeos-local-agent-token"
 
 # Or export the lot as JSON
 curl -s http://127.0.0.1:8787/api/v1/export/json \
@@ -377,6 +434,7 @@ data/              Your SQLite database (gitignored)
 | [`docs/skills/life-os/SKILL.md`](docs/skills/life-os/SKILL.md) | **Agents** — the only file they need |
 | [`docs/API.md`](docs/API.md) | The full HTTP surface |
 | [`docs/DATABASE.md`](docs/DATABASE.md) | Where your data lives, how to back it up |
+| [`docs/NETWORK.md`](docs/NETWORK.md) | Opening it up to your phone, and what that exposes |
 | [`docs/development_log.md`](docs/development_log.md) | **Contributors** — what was built and why |
 | [`docs/LIFE_OS.md`](docs/LIFE_OS.md) | The original product spec |
 
@@ -384,15 +442,17 @@ data/              Your SQLite database (gitignored)
 
 ## 🚧 Where it's at
 
-**Working now** — habits, study blocks, the day timeline, goals, analytics,
-settings, agent cards, webhooks, the full HTTP API, and the MCP server.
+**Working now** — habits, study blocks, the day timeline, scheduled cards with
+reminders and spaced repetition, agent-set goals with auto-checked conditions,
+agent-defined counters, analytics, settings, agent cards, webhooks, automatic
+database backups, the full HTTP API, and the MCP server.
 
 **Not yet**
 
 - [ ] Multi-user accounts and real authentication — *on hold, single-user for now*
 - [ ] Optional hosted Postgres storage — *scaffolded, not wired up*
-- [ ] Browser notifications
-- [ ] Mobile clients
+- [ ] Quiet hours are not yet respected by reminder chimes
+- [ ] Native mobile client — *the API is LAN-ready for one*
 - [ ] Automated tests
 
 <br />

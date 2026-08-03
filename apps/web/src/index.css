@@ -212,6 +212,135 @@ body {
   padding-right: 0.5rem;
 }
 
+/* ------------------------------------------------------------- reminders */
+/* One-shot accent wash when a reminder fires. Fixed + pointer-events:none so
+   it can never intercept the click the user is in the middle of making. */
+
+@keyframes reminderFlash {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.5;
+  }
+  40% {
+    opacity: 0.12;
+  }
+  60% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.reminder-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  animation: reminderFlash 1.4s ease-out forwards;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in oklch, var(--accent) 26%, transparent) 0%,
+    transparent 70%
+  );
+  box-shadow: inset 0 0 140px color-mix(in oklch, var(--accent) 45%, transparent);
+}
+
+/* A due reminder keeps pulsing until it is dealt with — being told about a
+   thing is not the same as doing it. */
+@keyframes reminderCardPulse {
+  0%,
+  100% {
+    border-color: color-mix(in oklch, var(--accent) 30%, transparent);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    border-color: var(--accent);
+    box-shadow: 0 0 22px -4px color-mix(in oklch, var(--accent) 70%, transparent);
+  }
+}
+
+.reminder-due {
+  animation: reminderCardPulse 1.5s ease-in-out infinite;
+}
+
+/* List-row variant: a soft wash rather than a border glow, because the rows in
+   the Up next list have no border of their own to light up. */
+@keyframes reminderRowPulse {
+  0%,
+  100% {
+    background: color-mix(in oklch, var(--accent) 5%, transparent);
+  }
+  50% {
+    background: color-mix(in oklch, var(--accent) 13%, transparent);
+  }
+}
+
+.reminder-due-row {
+  animation: reminderRowPulse 1.8s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------ celebration */
+/* Goal completion. Deliberately big: this is the one moment the app is allowed
+   to be loud, and the goal does not count as finished until it has been seen. */
+
+@keyframes goalBurst {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes goalRing {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+@keyframes goalRaySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes goalGlow {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.goal-burst {
+  animation: goalBurst 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.goal-ring {
+  animation: goalRing 2.4s ease-out infinite;
+}
+.goal-rays {
+  animation: goalRaySpin 24s linear infinite;
+}
+.goal-glow {
+  animation: goalGlow 2.6s ease-in-out infinite;
+}
+
 /* ---------------------------------------------------------------- ambient */
 /* Slow drifting aurora behind the app shell. Cheap: three blurred radials
    animated on transform only, so it never triggers layout or paint storms. */
@@ -434,10 +563,27 @@ body {
     animation: none;
     background: color-mix(in oklch, var(--accent) 10%, transparent);
   }
+  /* Still visibly "due", just not moving. */
+  .reminder-due {
+    animation: none;
+    border-color: var(--accent);
+  }
+  .reminder-due-row {
+    animation: none;
+    background: color-mix(in oklch, var(--accent) 10%, transparent);
+  }
   .app-aurora,
   .flow-line,
-  .float-slow {
+  .float-slow,
+  .goal-ring,
+  .goal-rays,
+  .goal-glow {
     animation: none !important;
+  }
+  .goal-burst {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
   .reveal {
     opacity: 1;

@@ -303,6 +303,57 @@ export function SettingsPage() {
         </div>
       </section>
 
+      <section className="card space-y-4 p-5">
+        <h2 className="font-semibold">Database backups</h2>
+        <p className="text-sm text-[var(--muted)]">
+          Life OS snapshots its SQLite file into{" "}
+          <code className="font-mono text-xs">data/backups/</code> on a timer,
+          keeping the most recent copies and pruning the rest. Snapshots are
+          taken with SQLite's own consistent-copy path, so one is safe to take
+          while the app is running.
+        </p>
+        <label className="flex items-center justify-between gap-4">
+          <span className="text-sm">Automatic backups</span>
+          <input
+            type="checkbox"
+            defaultChecked={settings.backupsEnabled}
+            onChange={(e) => patch({ backupsEnabled: e.target.checked })}
+          />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label">Every (hours)</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={168}
+              defaultValue={settings.backupIntervalHours}
+              onBlur={(e) =>
+                patch({ backupIntervalHours: Number(e.target.value) || 6 })
+              }
+            />
+          </div>
+          <div>
+            <label className="label">Snapshots to keep</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={500}
+              defaultValue={settings.backupKeep}
+              onBlur={(e) => patch({ backupKeep: Number(e.target.value) || 24 })}
+            />
+          </div>
+        </div>
+        <p className="font-mono text-xs text-[var(--faint)]">
+          last backup{" "}
+          {settings.lastBackupAt
+            ? new Date(settings.lastBackupAt).toLocaleString()
+            : "— none yet"}
+        </p>
+      </section>
+
       <section className="card space-y-3 p-5">
         <h2 className="font-semibold">Data & agents</h2>
         <button type="button" className="btn" onClick={exportData}>
@@ -313,7 +364,9 @@ export function SettingsPage() {
           <br />
           Skill: docs/skills/life-os/SKILL.md
           <br />
-          Cards max 2 · habits rebalance daily XP · no levels
+          2 pinned cards + unlimited scheduled cards · agents own every setting
+          <br />
+          Goals are agent-set and auto-checked · no levels
         </div>
       </section>
     </motion.div>

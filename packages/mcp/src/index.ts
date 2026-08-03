@@ -27,18 +27,45 @@ config({
 import { listHabits, createHabit, updateHabit, deleteHabit, completeHabit, setHabitTheme, rebalanceHabitXp } from "../../../apps/api/src/services/habits.js";
 import {
   listCards,
+  listUpcomingCards,
+  listDueReminders,
   getCard,
   createCard,
   updateCard,
   deleteCard,
   completeCard,
+  startCard,
+  markCardNotified,
 } from "../../../apps/api/src/services/cards.js";
 import {
   listBlocks,
   createBlock,
   updateBlock,
   deleteBlock,
+  startBlock,
+  completeBlock,
 } from "../../../apps/api/src/services/blocks.js";
+import {
+  listGoals,
+  createGoal,
+  updateGoal,
+  deleteGoal,
+  evaluateGoals,
+  pendingCelebrations,
+} from "../../../apps/api/src/services/goals.js";
+import {
+  listProperties,
+  getProperty,
+  createProperty,
+  updateProperty,
+  incrementProperty,
+  deleteProperty,
+} from "../../../apps/api/src/services/properties.js";
+import { runInitialSetup } from "../../../apps/api/src/services/setup.js";
+import {
+  listDatabaseBackups,
+  runBackup,
+} from "../../../apps/api/src/services/backups.js";
 import {
   listAgentEvents,
   injectAgentEvent,
@@ -52,9 +79,18 @@ import {
   updateSettings,
   getGamificationConfig,
   updateGamificationConfig,
+  exportAll,
 } from "../../../apps/api/src/services/settings.js";
 import { listAchievements, createAchievement } from "../../../apps/api/src/services/achievements.js";
-import { localDateString, XP_MODEL_DOC } from "@life-os/shared";
+import {
+  ACTIVITIES,
+  CARD_KINDS,
+  GOAL_CONDITION_SYNTAX,
+  GOAL_METRICS,
+  REPEAT_RULES,
+  localDateString,
+  XP_MODEL_DOC,
+} from "@life-os/shared";
 
 const db = getDb();
 
@@ -231,14 +267,18 @@ const tools = [
   {
     name: "lifeos_upsert_card",
     description:
-      "Create or replace a front-page card. slot 0/1 are content cards; " +
+      "Create or replace a pinned front-page card. slot 0/1 are the two content cards; " +
       "kind:'agent-setup' targets the reserved slot 2. `svg` accepts inline SVG " +
-      "markup (sanitized, rendered sandboxed) for custom graphics.",
+      "markup (sanitized, rendered sandboxed) for custom graphics. " +
+      "For anything with a time on it use lifeos_schedule_card instead — scheduled cards " +
+      "are unpinned and never eat one of the two precious front-page slots.",
     inputSchema: {
       type: "object" as const,
       properties: {
         slot: { type: "number", enum: [0, 1, 2] },
-        kind: { type: "string", enum: ["task", "agent-setup"] },
+        kind: { type: "string", enum: [...CARD_KINDS] },
+        purpose: { type: "string" },
+        activityTag: { type: "string", enum: [...ACTIVITIES] },
         title: { type: "string" },
         subtitle: { type: "string" },
         body: { type: "string" },
@@ -390,14 +430,19 @@ const tools = [
   },
   {
     name: "lifeos_update_settings",
-    description: "Update quiet hours, gamification toggles, theme, storage mode",
+    description:
+      "Change ANY instance setting. Every field here is yours to set — day reset time, " +
+      "sleep window, quiet hours, theme, celebration intensity, reduced motion, the " +
+      "gamification toggles, the agent webhook, and the database backup policy. " +
+      "You do not need to ask before tuning these; reshape the instance to fit the user.",
     inputSchema: {
       type: "object" as const,
       properties: {
         gamificationEnabled: { type: "boolean" },
-        quietHoursStart: { type: "string" },
-        quietHoursEnd: { type: "string" },
-        plannedWake: { type: "string" },
+        streaksEnabled: { type: "boolean" },
+        pointsEnabled: { type: "boolean" },
+        achievementsEnabled: { type: "boolean" },
+        questsEnabled: { type: "boolean" },
         celebrationIntensity: {
           type: "string",
           enum: ["full", "minimal", "off"],
@@ -406,12 +451,321 @@ const tools = [
           type: "string",
           enum: ["nebula", "quantum", "terminal", "ember"],
         },
+        reducedMotion: { type: "boolean" },
+        plannedWake: { type: "string", description: "HH:mm" },
+        plannedSleepStart: { type: "string", description: "HH:mm" },
+        plannedSleepEnd: { type: "string", description: "HH:mm" },
+        quietHoursStart: { type: "string", description: "HH:mm" },
+        quietHoursEnd: { type: "string", description: "HH:mm" },
+        dayResetTime: {
+          type: "string",
+          description: "HH:mm — the life-day boundary, not midnight",
+        },
+        agentWebhookUrl: { type: "string" },
+        agentWebhookSecret: { type: "string" },
+        backupsEnabled: { type: "boolean" },
+        backupIntervalHours: { type: "number" },
+        backupKeep: { type: "number" },
       },
     },
   },
   {
     name: "lifeos_get_settings",
-    description: "Read current settings",
+    description: "Read current settings (every field is writable via lifeos_update_settings)",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_get_capabilities",
+    description:
+      "What this instance lets you do: card kinds, the closed set of day activity tags, " +
+      "repeat rules, the scheduling ordering rule, and the full tool list.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_setup_instance",
+    description:
+      "Reshape the whole instance in one call: replace or add habits, set the daily XP pool, " +
+      "the growth style, wake/sleep/quiet hours, and publish your setup card. " +
+      "Use this when you first connect to a fresh clone.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        replaceHabits: {
+          type: "boolean",
+          description: "Delete the seeded habits before adding yours",
+        },
+        habits: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              emoji: { type: "string" },
+              category: { type: "string" },
+              isTiny: { type: "boolean" },
+              anchor: { type: "string" },
+              xpWeight: { type: "number" },
+              themeColor: { type: "string" },
+              themeGraphic: {
+                type: "string",
+                enum: ["ring", "liquid", "tree", "flame", "none"],
+              },
+            },
+            required: ["name"],
+          },
+        },
+        dailyXpTarget: { type: "number" },
+        growthStyle: { type: "string", enum: ["sprout", "orb"] },
+        settings: { type: "object", description: "Any lifeos_update_settings fields" },
+        agentName: { type: "string" },
+        agentSetupCard: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            subtitle: { type: "string" },
+            body: { type: "string" },
+            svg: { type: "string" },
+            themeColor: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: "lifeos_schedule_card",
+    description:
+      "Schedule an event or reminder card. RULE: showAt <= remindAt < eventAt — the user must be " +
+      "told about a thing before the thing, so a reminder at or after its own event is rejected. " +
+      `Tag it with one of ${ACTIVITIES.join(" | ")}; starting the card takes over the day ` +
+      "timeline under that tag. repeatRule 'spaced' walks an expanding ladder (1/3/7/14/30/60 " +
+      "days by default) on each completion — that is how you build spaced repetition.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        kind: { type: "string", enum: ["event", "reminder"] },
+        title: { type: "string" },
+        purpose: {
+          type: "string",
+          description: "What this card is for, in your own words",
+        },
+        activityTag: { type: "string", enum: [...ACTIVITIES] },
+        showAt: { type: "string", description: "ISO 8601 — card appears" },
+        remindAt: { type: "string", description: "ISO 8601 — chime fires" },
+        eventAt: { type: "string", description: "ISO 8601 — the thing happens" },
+        durationMinutes: { type: "number" },
+        repeatRule: { type: "string", enum: [...REPEAT_RULES] },
+        repeatOffsetsDays: { type: "array", items: { type: "number" } },
+        sound: { type: "boolean" },
+        flash: { type: "boolean" },
+        subtitle: { type: "string" },
+        body: { type: "string" },
+        emoji: { type: "string" },
+        themeColor: { type: "string" },
+        svg: { type: "string" },
+        meta: { type: "object" },
+        xpOnComplete: { type: "number" },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "lifeos_list_upcoming_cards",
+    description: "Scheduled event/reminder cards currently on screen, soonest first",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_list_due_reminders",
+    description: "Reminders whose time has passed and which have not chimed yet",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_start_card",
+    description:
+      "Start a scheduled card on the user's behalf — creates a timeline block under the card's " +
+      "activity tag and makes it the running session",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_mark_card_notified",
+    description: "Record that a reminder has chimed, so it fires only once",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_start_block",
+    description: "Start a timeline block as the running session",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_complete_block",
+    description: "Complete a timeline block (study blocks also log a study session)",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_list_properties",
+    description:
+      "List agent-defined internal properties with their live values and stable uids. " +
+      "These are the counters goal conditions read.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_define_property",
+    description:
+      "Define an internal property you will push data into, e.g. {key:'books_read', " +
+      "label:'Books finished', kind:'counter'}. Returns a stable uid you can store against " +
+      "your own records. Goals then reference it by key.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        key: { type: "string", description: "lower_snake_case, e.g. books_read" },
+        label: { type: "string" },
+        kind: { type: "string", enum: ["counter", "number", "text", "json"] },
+        value: { type: "number" },
+        textValue: { type: "string" },
+        unit: { type: "string" },
+        description: { type: "string" },
+        createdBy: { type: "string" },
+      },
+      required: ["key", "label"],
+    },
+  },
+  {
+    name: "lifeos_set_property",
+    description: "Set a property's value outright (any kind)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        key: { type: "string" },
+        value: { type: "number" },
+        textValue: { type: "string" },
+        label: { type: "string" },
+        unit: { type: "string" },
+        description: { type: "string" },
+      },
+      required: ["key"],
+    },
+  },
+  {
+    name: "lifeos_increment_property",
+    description:
+      "Add to a counter — the normal way to push data. Auto-defines the property on first use, " +
+      "so a forgotten setup call never loses an increment. Any goal watching it is re-checked " +
+      "immediately.",
+    inputSchema: {
+      type: "object" as const,
+      properties: { key: { type: "string" }, by: { type: "number" } },
+      required: ["key"],
+    },
+  },
+  {
+    name: "lifeos_delete_property",
+    description: "Delete an internal property by key",
+    inputSchema: {
+      type: "object" as const,
+      properties: { key: { type: "string" } },
+      required: ["key"],
+    },
+  },
+  {
+    name: "lifeos_get_goal_syntax",
+    description:
+      "The goal condition language, worked examples, and how to push data into properties. " +
+      "Read this before writing your first goal.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_list_goals",
+    description: "List goals with live progress, condition traces, and celebration state",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_create_goal",
+    description:
+      "Set a goal. Goals are YOUR job — the user should not have to decide what to want. " +
+      "Give it a machine-checkable condition reading a property you push to, or a built-in " +
+      `metric (${GOAL_METRICS.join(" | ")}). The condition is re-checked after every database ` +
+      "change. When it comes true the goal is MET but not finished: it only becomes 'achieved' " +
+      "after the user has watched the celebration on screen.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        title: { type: "string" },
+        description: { type: "string" },
+        whyItMatters: { type: "string" },
+        targetDate: { type: "string" },
+        emoji: { type: "string" },
+        themeColor: { type: "string" },
+        autoCheck: { type: "boolean" },
+        condition: {
+          type: "object",
+          description:
+            "e.g. {type:'property', key:'books_read', op:'>=', value:10} or " +
+            "{type:'all', of:[...]} — see lifeos_get_goal_syntax",
+        },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "lifeos_update_goal",
+    description: "Patch a goal by id (title, condition, status, autoCheck…)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        description: { type: "string" },
+        status: { type: "string", enum: ["active", "paused", "abandoned"] },
+        condition: { type: "object" },
+        autoCheck: { type: "boolean" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_delete_goal",
+    description: "Delete a goal by id",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_evaluate_goals",
+    description:
+      "Force a goal re-check now and return each goal's progress and condition trace. " +
+      "Also lists goals waiting for the user to see their celebration.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_backup_now",
+    description: "Snapshot the SQLite database into data/backups/ and prune old snapshots",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_list_backups",
+    description: "List database snapshots, newest first",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_export_json",
+    description: "Full JSON export of every table — useful before a risky restructure",
     inputSchema: { type: "object" as const, properties: {} },
   },
 ];
@@ -522,13 +876,153 @@ async function handleTool(name: string, args: Record<string, unknown>) {
       return updateSettings(db, args as any);
     case "lifeos_get_settings":
       return getSettings(db);
+
+    case "lifeos_get_capabilities":
+      return {
+        name: "Life OS",
+        version: "0.4.0",
+        maxPinnedCards: 2,
+        cardKinds: CARD_KINDS,
+        activityTags: ACTIVITIES,
+        repeatRules: REPEAT_RULES,
+        scheduleRule: "showAt <= remindAt < eventAt",
+        settings:
+          "Every field of lifeos_get_settings is writable via lifeos_update_settings.",
+        goals:
+          "Goals are agent-set. Write a condition, push data into properties, and the " +
+          "system re-checks after every database change. See lifeos_get_goal_syntax.",
+        tools: tools.map((t) => t.name),
+      };
+    case "lifeos_setup_instance":
+      return runInitialSetup(db, args as any);
+
+    case "lifeos_schedule_card": {
+      const kind =
+        args.kind === "reminder" || args.kind === "event"
+          ? args.kind
+          : args.durationMinutes
+            ? "event"
+            : "reminder";
+      const result = createCard(db, { ...(args as any), kind });
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_list_upcoming_cards":
+      return listUpcomingCards(db);
+    case "lifeos_list_due_reminders":
+      return listDueReminders(db);
+    case "lifeos_start_card": {
+      const result = startCard(db, String(args.id));
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_mark_card_notified": {
+      const result = markCardNotified(db, String(args.id));
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+
+    case "lifeos_start_block": {
+      const result = startBlock(db, String(args.id));
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_complete_block": {
+      const result = completeBlock(db, String(args.id));
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+
+    case "lifeos_list_properties":
+      return listProperties(db);
+    case "lifeos_define_property": {
+      const result = createProperty(db, args as any);
+      if ("error" in result) throw new Error(result.error);
+      return result.property;
+    }
+    case "lifeos_set_property": {
+      const { key, ...rest } = args as { key: string } & Record<string, unknown>;
+      const prop = updateProperty(db, key, rest as any);
+      if (!prop) throw new Error(`Unknown property: ${key}`);
+      return prop;
+    }
+    case "lifeos_increment_property": {
+      const result = incrementProperty(
+        db,
+        String(args.key),
+        typeof args.by === "number" ? args.by : 1,
+        "mcp",
+      );
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_delete_property":
+      return deleteProperty(db, String(args.key));
+
+    case "lifeos_get_goal_syntax":
+      return { ...GOAL_CONDITION_SYNTAX, liveProperties: listProperties(db) };
+    case "lifeos_list_goals":
+      return listGoals(db);
+    case "lifeos_create_goal": {
+      const result = createGoal(db, args as any);
+      if ("error" in result) throw new Error(result.error);
+      return result.goal;
+    }
+    case "lifeos_update_goal": {
+      const { id, ...rest } = args as { id: string } & Record<string, unknown>;
+      const result = updateGoal(db, id, rest as any);
+      if (!result) throw new Error(`Goal not found: ${id}`);
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_delete_goal":
+      return deleteGoal(db, String(args.id));
+    case "lifeos_evaluate_goals":
+      return {
+        evaluated: evaluateGoals(db),
+        // Met but unwitnessed: the user still has to see the animation.
+        awaitingCelebration: pendingCelebrations(db),
+      };
+
+    case "lifeos_backup_now": {
+      const result = runBackup(db, { force: true });
+      if (!result.ok) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_list_backups":
+      return listDatabaseBackups();
+    case "lifeos_export_json":
+      return exportAll(db);
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
 }
 
+/** Tools that only read — everything else triggers a goal re-check. */
+const READ_ONLY_TOOLS = new Set([
+  "lifeos_list_habits",
+  "lifeos_get_today",
+  "lifeos_get_vs_yesterday",
+  "lifeos_get_pulse",
+  "lifeos_get_xp_model",
+  "lifeos_get_capabilities",
+  "lifeos_get_settings",
+  "lifeos_get_goal_syntax",
+  "lifeos_list_cards",
+  "lifeos_list_upcoming_cards",
+  "lifeos_list_due_reminders",
+  "lifeos_list_blocks",
+  "lifeos_list_events",
+  "lifeos_list_achievements",
+  "lifeos_list_properties",
+  "lifeos_list_goals",
+  "lifeos_list_backups",
+  "lifeos_export_json",
+]);
+
 const server = new Server(
-  { name: "life-os", version: "0.3.0" },
+  { name: "life-os", version: "0.4.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -538,8 +1032,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   try {
     const result = await handleTool(name, (args ?? {}) as Record<string, unknown>);
+
+    // Same contract as the HTTP API: any change to the database re-checks every
+    // goal, so a goal fires the moment the thing that completes it is recorded.
+    let celebrationsPending: ReturnType<typeof pendingCelebrations> = [];
+    if (!READ_ONLY_TOOLS.has(name)) {
+      try {
+        evaluateGoals(db);
+        celebrationsPending = pendingCelebrations(db);
+      } catch (error) {
+        console.error("[goals] evaluation failed:", error);
+      }
+    }
+
+    const payload = celebrationsPending.length
+      ? {
+          result,
+          goalsAwaitingCelebration: celebrationsPending.map((g) => ({
+            id: g.id,
+            title: g.title,
+            conditionMetAt: g.conditionMetAt,
+            note: "Met — waiting for the user to see the animation on the dashboard.",
+          })),
+        }
+      : result;
+
     return {
-      content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+      content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

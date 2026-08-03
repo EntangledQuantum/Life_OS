@@ -1,12 +1,15 @@
 import type {
   AccentThemeId,
   Activity,
+  CardKind,
   Category,
   GrowthStyle,
   HabitGraphic,
   ImprovementPulse,
   QualityFlag,
+  RepeatRule,
 } from "./constants.js";
+import type { GoalCondition } from "./conditions.js";
 
 export type Source = "user" | "agent";
 
@@ -38,18 +41,49 @@ export interface Habit {
 
 /**
  * Card slots. `0` and `1` are the two agent content cards; `2` is the reserved
- * singleton slot for the agent setup card, which does not consume a content slot.
+ * singleton slot for the agent setup card, which does not consume a content
+ * slot; `-1` marks an unpinned scheduled card (event/reminder) living in the
+ * Upcoming rail rather than on the front page.
  */
-export type CardSlot = 0 | 1 | 2;
+export type CardSlot = -1 | 0 | 1 | 2;
 
-/** `task` = normal agent content card. `agent-setup` = connection/setup card. */
-export type DashboardCardKind = "task" | "agent-setup";
+/** @see CardKind — kept as an alias because it is part of the public API surface. */
+export type DashboardCardKind = CardKind;
 
-/** Agent-owned front-page card (max 2 content cards + 1 setup card) */
+/** Agent-owned card: pinned content, the setup card, or a scheduled event/reminder. */
 export interface DashboardCard {
   id: string;
   slot: CardSlot;
   kind: DashboardCardKind;
+  /**
+   * What this card is *for*, in the agent's own words ("spaced-repetition
+   * review", "evening wind-down nudge"). Free text — it is the card's function,
+   * not its category; `activityTag` carries the category.
+   */
+  purpose: string | null;
+  /** Which bucket of the day this belongs to; starting the card activates it. */
+  activityTag: Activity | null;
+  /** Card is hidden until this instant. Null = visible now. */
+  showAt: string | null;
+  /** Notification fires at this instant. Always strictly before `eventAt`. */
+  remindAt: string | null;
+  /** When the thing actually happens. */
+  eventAt: string | null;
+  /** How long it takes once started — drives the timeline block. */
+  durationMinutes: number | null;
+  repeatRule: RepeatRule;
+  /** Position on the spaced-repetition ladder. */
+  repeatIndex: number;
+  /** Custom spaced ladder in days; null uses SPACED_OFFSETS_DAYS. */
+  repeatOffsetsDays: number[] | null;
+  /** Play a chime when the reminder fires. */
+  sound: boolean;
+  /** Flash the card (and the tab) until it is dealt with. */
+  flash: boolean;
+  /** Set once the client has actually fired the notification. */
+  notifiedAt: string | null;
+  /** Timeline block created when the user started this card. */
+  linkedBlockId: string | null;
   title: string;
   subtitle: string | null;
   body: string | null;
@@ -126,10 +160,55 @@ export interface Goal {
   id: string;
   title: string;
   description: string | null;
+  /**
+   * `achieved` is only reached *after the user has seen the celebration*.
+   * A goal whose condition is already true but whose animation has not played
+   * stays `active` with `conditionMetAt` set — see `celebrationPending`.
+   */
   status: "active" | "paused" | "achieved" | "abandoned";
   targetDate: string | null;
   whyItMatters: string | null;
   progressPct: number;
+  /** Goals are the agent's job; `user` only appears on hand-written legacy rows. */
+  ownerKind: "agent" | "user";
+  /** Machine-checkable completion rule. Null = manual progress only. */
+  condition: GoalCondition | null;
+  /** Re-check after every database change (default true). */
+  autoCheck: boolean;
+  /** First instant the condition evaluated true. */
+  conditionMetAt: string | null;
+  /** When the user actually watched the celebration. */
+  celebrationSeenAt: string | null;
+  /** Condition met but not yet witnessed — the dashboard must show the animation. */
+  celebrationPending: boolean;
+  /** Leaf-by-leaf trace from the last evaluation. */
+  conditionDetail: string[];
+  emoji: string;
+  themeColor: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * An agent-defined internal property: a named value the agent maintains itself
+ * (books read, chapters revised, gym sessions) that goals can be written
+ * against. Every property has a stable `uid` so agents can key their own
+ * records to it even if the human-readable `key` is later relabelled.
+ */
+export interface AgentProperty {
+  /** Stable unique id, never reused. */
+  uid: string;
+  /** Human-typed slug used in conditions, e.g. "books_read". */
+  key: string;
+  label: string;
+  kind: "counter" | "number" | "text" | "json";
+  /** Numeric value for counter/number kinds. */
+  value: number | null;
+  /** Raw value for text/json kinds. */
+  textValue: string | null;
+  unit: string | null;
+  description: string | null;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -168,7 +247,14 @@ export interface LightReview {
 /** Hermes-injected live task / review / reminder */
 export interface AgentEvent {
   id: string;
-  kind: "review" | "task" | "life" | "study" | "reminder" | "other";
+  kind:
+    | "review"
+    | "task"
+    | "life"
+    | "study"
+    | "reminder"
+    | "exploration"
+    | "other";
   title: string;
   body: string | null;
   link: string | null;
@@ -217,6 +303,12 @@ export interface AppSettings {
   supabaseKeySet: boolean;
   agentWebhookUrl: string | null;
   agentWebhookSecretSet: boolean;
+  /** Periodic snapshots of the SQLite file into data/backups/. */
+  backupsEnabled: boolean;
+  backupIntervalHours: number;
+  /** How many snapshots to keep before the oldest is pruned. */
+  backupKeep: number;
+  lastBackupAt: string | null;
 }
 
 export interface GamificationConfig {
@@ -259,8 +351,25 @@ export interface VsYesterday {
 export interface DashboardToday {
   date: string;
   dayResetTime: string;
-  /** Up to 2 agent custom cards for the front page */
+  /** Up to 2 agent custom cards for the front page (plus the setup card) */
   cards: DashboardCard[];
+  /**
+   * Scheduled cards about to happen — within 15 minutes, overdue, or already
+   * pinged. This is what the dashboard shows; everything further out is
+   * planning and belongs on the Timeline tab.
+   */
+  upcoming: DashboardCard[];
+  /** Every visible scheduled card, soonest first. Powers the Timeline tab. */
+  scheduled: DashboardCard[];
+  /** Reminders whose remindAt has passed and that have not chimed yet. */
+  dueReminders: DashboardCard[];
+  /**
+   * Goals whose condition is true but whose celebration the user has not seen.
+   * The dashboard must play the animation; the goal is not finished until it has.
+   */
+  pendingCelebrations: Goal[];
+  /** Agent-defined counters, so the UI (and agents) can see the live values. */
+  properties: AgentProperty[];
   habits: HabitWithToday[];
   progress: UserProgress;
   vsYesterday: VsYesterday;

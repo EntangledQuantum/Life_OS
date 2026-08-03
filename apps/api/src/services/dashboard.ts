@@ -15,12 +15,18 @@ import {
 } from "./helpers.js";
 import { listHabits } from "./habits.js";
 import { listStudySessions } from "./study.js";
-import { listGoals } from "./goals.js";
+import { listGoals, pendingCelebrations } from "./goals.js";
+import { listProperties } from "./properties.js";
 import { listAchievements } from "./achievements.js";
 import { listLightReviews, listQuests } from "./quests.js";
 import { listAgentEvents } from "./events.js";
 import { listStudyBlocks } from "./blocks.js";
-import { listCards } from "./cards.js";
+import {
+  listDueReminders,
+  listImminentCards,
+  listPinnedCards,
+  listUpcomingCards,
+} from "./cards.js";
 import {
   getConsistencySeries,
   getPulse,
@@ -33,12 +39,14 @@ import {
 const CATEGORY_COLORS: Record<string, string> = {
   Sleep: "#6366F1",
   Life: "#5B8CFF",
+  "Life Admin": "#5B8CFF",
   "Deep Work": "#A78BFA",
   Study: "#C084FC",
   Health: "#34D399",
   Break: "#94A3B8",
   Startup: "#FBBF24",
   Exercise: "#34D399",
+  Exploration: "#F472B6",
 };
 
 export function getDashboard(db: LifeOsDb): DashboardToday {
@@ -154,7 +162,13 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
   return {
     date: dateStr,
     dayResetTime: resetTime,
-    cards: listCards(db).filter((c) => c.status !== "hidden"),
+    cards: listPinnedCards(db).filter((c) => c.status !== "hidden"),
+    // Dashboard shows only what is about to happen; the Timeline tab has the rest.
+    upcoming: listImminentCards(db),
+    scheduled: listUpcomingCards(db),
+    dueReminders: listDueReminders(db),
+    pendingCelebrations: pendingCelebrations(db),
+    properties: listProperties(db),
     habits: listHabits(db),
     progress: {
       totalXp: progressRow.totalXp,

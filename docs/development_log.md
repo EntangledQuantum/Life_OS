@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-03  
 **Repo:** https://github.com/EntangledQuantum/Life_OS  
-**Status:** Phase 1 web MVP working locally; v0.3 pass shipped XP integrity, growth-meter rename, agent-setup cards, one-command setup, and a rebuilt landing page
+**Status:** Phase 1 web MVP working locally; v0.4 shipped the flexible agentic pipeline — agent-owned settings and setup, scheduled/reminder cards with spaced repetition, agent-defined properties, condition-driven goals with must-be-seen celebrations, and automatic database backups. v0.4.1 added the Timeline tab, compacted the dashboard, and made the whole thing reachable over the LAN
 
 **Read this file first** if you are a new human or coding agent picking up the project. Then read:
 
@@ -10,11 +10,160 @@
 2. `docs/skills/life-os/SKILL.md` — **single** agent skill (Hermes, OpenClaw, any long-running agent)  
 3. `docs/API.md` — HTTP surface  
 4. `docs/DATABASE.md` — how persistence works  
-5. This log — *what was actually built, divergences, and gaps*
+5. `docs/NETWORK.md` — LAN access and what it exposes  
+6. This log — *what was actually built, divergences, and gaps*
 
 ---
 
-## 0. What changed in the v0.3 pass (2026-08-03)
+## 0. What changed in the v0.4.1 pass (2026-08-03)
+
+Follow-up to v0.4, driven by using it: the Upcoming section was too heavy, and the app needed
+to be reachable from a phone.
+
+| Area | Change |
+|------|--------|
+| **Up next is a list, not a grid** | Scheduled cards were tall panels stacked two-across, which turned the dashboard back into a to-do list. Now one compact row each: emoji, title + tag, time, XP, actions. |
+| **The left glow is gone** | Each card had a coloured spine glowing down its left edge. Colour now lives in the tag text and (on the Timeline) a hairline rail, not a wash behind the row. |
+| **"Done · +25 XP" was a lie** | It looked like a second primary button competing with Start. XP is a *reward*, not an action, so it is now green `+25 XP` text in the meta row, and completing is a small check icon. Start is the only real button. |
+| **Dashboard shows 15 minutes** | `isCardImminent()` in `packages/shared/src/schedule.ts`; `dashboard.upcoming` now returns only cards due within 15 minutes, overdue, or already pinged. `dashboard.scheduled` (new) carries the full list. The dashboard answers "what am I doing now" — a card three hours out is planning, not doing. |
+| **New Timeline tab** | `apps/web/src/pages/TimelinePage.tsx` at `/app/timeline`: today's shape as a colour ribbon with a live now-marker and the block list, then every scheduled card grouped by day (Today / Tomorrow / weekday) in a calendar-style agenda with a time gutter. Plus a "Done today" tail. |
+| **Dashboard reordered** | Up next moved to the bottom. Order is now: pulse header → today vs yesterday → agent cards → right now → day timeline → growth + quick log + XP chart → up next. |
+| **LAN access** | `API_HOST=0.0.0.0` now works end to end. New `apps/api/src/net.ts` replaces the hard-coded CORS origin list with a policy that allows **loopback and RFC1918 origins on any port** and requires anything public to be named in `CORS_ORIGINS`. A wildcard would have let any page the user happens to be browsing talk to their instance. Vite binds all interfaces and proxies `/api` same-origin, which is what makes a phone work with zero configuration. The boot banner prints the reachable addresses and states plainly what is exposed. |
+| **`/health` reports its reach** | Now returns `host` and `lan`, so a phone or a future native client can confirm it hit the right box. |
+| **`VITE_API_URL` must be empty** | `.env.example` used to hard-code `http://127.0.0.1:8787`, which breaks LAN access silently — the phone tries *its own* loopback and the app looks dead. Now empty by default with the reason written down. |
+| **`docs/NETWORK.md`** | How to turn it on, why `VITE_API_URL` stays empty, the CORS table, firewall notes, and an honest section on what LAN exposure actually means (one shared token, no rate limiting, plain HTTP — fine for home Wi-Fi, not for anything else, use a VPN for remote). |
+
+Verified live: the API bound `0.0.0.0` and printed `192.168.29.131:8787`; a preflight from
+`http://192.168.29.131:5173` came back with a matching `access-control-allow-origin`, while one
+from `https://evil.example.com` got **no** allow-origin header. Dashboard shows exactly one
+imminent row with `+3 later · timeline →`; the Timeline tab renders four items across the day
+with tags, repeat badges, reminder bells and the ribbon.
+
+---
+
+## 0.0 What changed in the v0.4 pass (2026-08-03)
+
+The theme of this pass: **make the agentic pipeline open-ended.** Before it, an agent could
+only manipulate concepts the app already knew about. Now it can invent its own values, write
+its own success conditions against them, and schedule things into the future.
+
+### 0.1 Agents own the settings and the setup
+
+`lifeos_update_settings` previously exposed six of twenty-five fields. It now exposes all of
+them, and the skill says so in as many words — agents were being unnecessarily timid about
+tuning an instance they are supposed to own.
+
+New `POST /api/v1/agent/setup` (`lifeos_setup_instance`) reshapes a fresh clone in one call:
+replace or add habits, set the XP pool and growth style, set wake/sleep/quiet hours, and
+publish the setup card. Composed from the existing services, so there is no second source of
+truth — see `apps/api/src/services/setup.ts`.
+
+### 0.2 Scheduled cards: events, reminders, spaced repetition
+
+Cards gained two kinds, `event` and `reminder`, which are **unpinned** (`slot: -1`) and live
+in a new Upcoming rail. This was the key design call: reminders must not compete for the two
+front-page slots, or queueing a week of reviews would evict whatever the user actually needs
+to see today. A card sent with `eventAt`/`remindAt` but no `kind` is coerced to scheduled
+rather than silently evicting a pinned card.
+
+Three instants, with an ordering rule the server enforces:
+
+```
+showAt   <=   remindAt   <   eventAt
+(appears)     (chimes)       (happens)
+```
+
+The rule is *the user is always told about a thing before the thing*. A reminder at or after
+its own event returns `400` naming the violated leg, rather than being quietly reordered — an
+agent that gets this wrong should find out at call time, not at 3am when the chime never came.
+`PATCH` re-validates the **resulting** schedule, not just the patched fields, because moving
+`eventAt` earlier can invalidate a `remindAt` that was already stored; a changed instant also
+re-arms `notifiedAt`.
+
+`activityTag` is a **closed set**: `Deep Work · Study · Sleep · Exercise · Break · Life Admin ·
+Exploration`. Agents may invent any content but must map it onto a day shape the timeline
+already understands, which is what makes "read a chapter" tagged `Study` auto-activate the
+Study bucket when started. `Exploration` is new — the creative/curiosity bucket, so play does
+not have to masquerade as Deep Work.
+
+`repeatRule: "spaced"` walks `1, 3, 7, 14, 30, 60` days on each completion (overridable via
+`repeatOffsetsDays`), preserving the lead times between the three instants. Completing a
+repeating card inserts the next occurrence as a **new** row and leaves the completed one as
+`done` — rewinding the same row would have destroyed the completion record that daily XP and
+`cards_completed` are counted from.
+
+### 0.3 Agent-defined properties
+
+New `agent_properties` table and service. An agent defines a counter (`books_read`), pushes to
+it, and writes goals against it. Each property has a stable `uid` separate from its
+human-readable `key`, so external records survive a relabel.
+
+Incrementing an **undefined** key auto-defines it as a counter instead of failing. That was a
+deliberate choice: the failure mode of the strict version is a lost increment and a goal that
+then quietly never fires, which is far worse than an extra row. Redefining an existing key
+returns `409` rather than silently overwriting.
+
+### 0.4 Goals are the agent's job, and "met" is not "finished"
+
+Goals now carry a machine-checkable condition (`packages/shared/src/conditions.ts`): a small
+DSL of `property` / `metric` / `all` / `any` nodes with the usual comparison operators, over
+windows of `all | 7d | 30d | 90d | year`. Invalid conditions return **every** problem at once
+rather than zod's first-failure union noise, so one round-trip is enough to fix them.
+
+Evaluation runs from a Hono middleware after **any** successful non-`GET` request, and after
+any mutating MCP tool. The hook lives at the middleware rather than inside each service so a
+new endpoint gets goal checking for free instead of silently not having it. That is the
+contract the skill advertises: any change to the database can complete a goal.
+
+The important semantic: crossing the line stamps `conditionMetAt` but **deliberately leaves
+`status: "active"`**. `status: "achieved"` is only reachable through
+`POST /api/v1/goals/:id/celebration-seen`, which the dashboard calls after the user dismisses
+the full-screen animation. A goal the user never saw complete has not, as far as this product
+is concerned, completed. `createGoal`/`updateGoal` do not accept `"achieved"` as input.
+
+`GoalsPage` was rewritten read-only to match: the user does not type in goals. Deciding what to
+want is exactly the executive-function tax the app exists to remove.
+
+### 0.5 Reminders that actually land
+
+`apps/web/src/lib/notify.ts` synthesizes the chime with WebAudio rather than shipping an audio
+file — nothing to 404, no extra request, and it works identically on the Pages build. Browsers
+block audio until a gesture, so the context is armed on first click/keypress and the visual
+channel never depends on the audio one succeeding.
+
+`ReminderRunner` is headless and consumes the server's `dueReminders`. The server owns *whether*
+a reminder is due (it has the clock and the once-only flag); the client only decides *how* it
+lands: chime, accent wash across the viewport, flashing tab title, and an OS notification when
+permitted. It POSTs `/cards/:id/notified` immediately so a refresh or second tab cannot replay
+it, while the card keeps pulsing in the rail until it is dealt with — being told about a thing
+is not the same as doing it.
+
+### 0.6 Database backups
+
+`packages/db/src/backup.ts` uses SQLite `VACUUM INTO`, which writes a consistent, compacted
+copy while the database is open — unlike a file copy, which can catch a half-written WAL.
+Snapshots land in `data/backups/` (now gitignored) and are pruned oldest-first to `backupKeep`.
+
+The scheduler polls every 15 minutes and compares against `lastBackupAt` rather than sleeping
+for the whole interval. Two reasons: the interval is a live setting that can change underneath
+a long timer, and a laptop that suspends never fires one at all. The `lastBackupAt` comparison
+also means a machine asleep for two days takes one snapshot on wake, not the dozen it "missed".
+
+### 0.7 Verification
+
+29/29 end-to-end assertions passed against a running API, including: the goal reaching 33% on
+one increment then metering to met; the goal staying `active` while pending and only flipping
+to `achieved` after `celebration-seen`; `remindAt` after `eventAt` rejected; `activityTag:
+"Vibes"` rejected; scheduled cards not consuming pinned slots; a due reminder appearing and
+then not reappearing after `/notified`; `start` creating a Study block and running session;
+a spaced completion scheduling the next rung at +1 day; and a 196 KB snapshot appearing.
+The boot scheduler was verified by backdating `lastBackupAt` and restarting — it fired and
+logged, and correctly skipped when not due. MCP went 30 → **53 tools**, verified over stdio.
+All five packages typecheck clean and the web app builds.
+
+---
+
+## 0.8 What changed in the v0.3 pass (2026-08-03)
 
 | Area | Change |
 |------|--------|
@@ -548,18 +697,29 @@ Give any agent (Hermes, OpenClaw, …): **`docs/skills/life-os/SKILL.md`** only.
 8. Agent cards (max 2) + webhooks + XP redistrib + skill.  
 9. Private GitHub + README.  
 10. **This development log** for full handoff.  
-11. Icon resync to web; collapsed Hermes md into single `SKILL.md` for all agents.
+11. Icon resync to web; collapsed Hermes md into single `SKILL.md` for all agents.  
+12. v0.3: XP integrity fix, growth-meter rename, one-command setup, rebuilt landing page,
+    GitHub Pages deploy, profile card SVG.  
+13. v0.4: agent-owned settings + one-call setup, scheduled/reminder cards with spaced
+    repetition and the `showAt ≤ remindAt < eventAt` rule, the `Exploration` day bucket,
+    agent-defined properties, condition-driven goals whose celebration must be seen, and
+    automatic database backups.
 
 ---
 
 ## 14. Suggested next work (priority)
 
-1. Day-rollover job: reset done cards / inject tomorrow from agent.  
-2. Tests for `redistributeDailyXp`, snapshot XP aggregation, SVG sanitizing, and timeline continuity.  
-3. CI: typecheck + seed smoke on PR (typecheck is green now, so this is cheap to add).  
-4. Complete the Supabase storage adapter or remove the Settings UI until it is real.  
-5. Align `LIFE_OS.md` (still mentions Flutter and levels) with the shipped product.  
-6. Browser notifications for quiet-hours-aware reminders.
+1. Tests for `redistributeDailyXp`, snapshot XP aggregation, SVG sanitizing, timeline
+   continuity, `validateCardSchedule`, and `evaluateCondition`. The smoke script in this
+   pass covers the behaviour end-to-end but nothing is pinned at unit level yet.
+2. CI: typecheck + seed smoke on PR (typecheck is green now, so this is cheap to add).
+3. Day-rollover job: reset done cards / inject tomorrow from agent.
+4. Respect `quietHoursStart`/`quietHoursEnd` in `ReminderRunner` — a reminder scheduled into
+   quiet hours currently still chimes. The setting exists; the runner does not read it yet.
+5. Goal evaluation is O(goals × conditions) on every write. Fine at current scale; if someone
+   accumulates hundreds of goals it wants an index or a dirty-set.
+6. Complete the Supabase storage adapter or remove the Settings UI until it is real.
+7. Align `LIFE_OS.md` (still mentions Flutter and levels) with the shipped product.
 
 ---
 

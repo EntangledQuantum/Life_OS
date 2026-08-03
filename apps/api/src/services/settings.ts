@@ -40,6 +40,11 @@ export function getSettings(db: LifeOsDb): AppSettings {
     agentWebhookSecretSet: Boolean(
       (row as { agentWebhookSecret?: string | null }).agentWebhookSecret,
     ),
+    backupsEnabled: (row as { backupsEnabled?: boolean }).backupsEnabled ?? true,
+    backupIntervalHours:
+      (row as { backupIntervalHours?: number }).backupIntervalHours ?? 6,
+    backupKeep: (row as { backupKeep?: number }).backupKeep ?? 24,
+    lastBackupAt: (row as { lastBackupAt?: string | null }).lastBackupAt ?? null,
   };
 }
 
@@ -65,6 +70,9 @@ export function updateSettings(
     supabaseKey: string | null;
     agentWebhookUrl: string | null;
     agentWebhookSecret: string | null;
+    backupsEnabled: boolean;
+    backupIntervalHours: number;
+    backupKeep: number;
   }>,
 ) {
   const row = getSettingsRow(db);
@@ -151,6 +159,8 @@ export function exportAll(db: LifeOsDb) {
     quests: db.select().from(schema.quests).all(),
     lightReviews: db.select().from(schema.lightReviews).all(),
     agentEvents: db.select().from(schema.agentEvents).all(),
+    agentProperties: db.select().from(schema.agentProperties).all(),
+    dashboardCards: db.select().from(schema.dashboardCards).all(),
     dailySnapshots: db.select().from(schema.dailySnapshots).all(),
     userProgress: db.select().from(schema.userProgress).all(),
     settings: db.select().from(schema.settings).all(),

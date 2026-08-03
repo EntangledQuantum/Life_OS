@@ -16,3 +16,6 @@ coverage
 .firecrawl
 *.tsbuildinfo
 dist-pages
+
+# Rolling database snapshots (data/backups/lifeos-*.db)
+data/backups/

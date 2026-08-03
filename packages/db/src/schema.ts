@@ -33,9 +33,32 @@ export const habits = sqliteTable("habits", {
  */
 export const dashboardCards = sqliteTable("dashboard_cards", {
   id: text("id").primaryKey(),
-  slot: integer("slot").notNull(), // 0, 1, or 2 (agent-setup)
-  /** task | agent-setup */
+  /** -1 unpinned (event/reminder), 0-1 content, 2 agent-setup */
+  slot: integer("slot").notNull(),
+  /** task | agent-setup | event | reminder */
   kind: text("kind").notNull().default("task"),
+  /** What the card is for, in the agent's own words */
+  purpose: text("purpose"),
+  /** One of ACTIVITIES — the day bucket this card activates when started */
+  activityTag: text("activity_tag"),
+  /** Hidden until this instant */
+  showAt: text("show_at"),
+  /** Notification fires here — always strictly before eventAt */
+  remindAt: text("remind_at"),
+  /** When the thing actually happens */
+  eventAt: text("event_at"),
+  durationMinutes: integer("duration_minutes"),
+  /** none | daily | weekly | spaced */
+  repeatRule: text("repeat_rule").notNull().default("none"),
+  repeatIndex: integer("repeat_index").notNull().default(0),
+  /** JSON array of day offsets for a custom spaced ladder */
+  repeatOffsetsJson: text("repeat_offsets_json"),
+  sound: integer("sound", { mode: "boolean" }).notNull().default(true),
+  flash: integer("flash", { mode: "boolean" }).notNull().default(true),
+  /** Set once the client has actually chimed, so it only fires once */
+  notifiedAt: text("notified_at"),
+  /** Timeline block created when the user started this card */
+  linkedBlockId: text("linked_block_id"),
   title: text("title").notNull(),
   subtitle: text("subtitle"),
   body: text("body"),
@@ -120,10 +143,45 @@ export const goals = sqliteTable("goals", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description"),
+  /** achieved is only written once the celebration has actually been seen */
   status: text("status").notNull().default("active"),
   targetDate: text("target_date"),
   whyItMatters: text("why_it_matters"),
   progressPct: real("progress_pct").notNull().default(0),
+  /** agent | user — goals are the agent's job by default */
+  ownerKind: text("owner_kind").notNull().default("agent"),
+  /** Serialized GoalCondition; null means manual progress only */
+  conditionJson: text("condition_json"),
+  autoCheck: integer("auto_check", { mode: "boolean" }).notNull().default(true),
+  /** First instant the condition evaluated true */
+  conditionMetAt: text("condition_met_at"),
+  /** When the user actually watched the celebration */
+  celebrationSeenAt: text("celebration_seen_at"),
+  /** JSON array of leaf explanations from the last evaluation */
+  conditionDetailJson: text("condition_detail_json"),
+  emoji: text("emoji").notNull().default("🎯"),
+  themeColor: text("theme_color").notNull().default("#A78BFA"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/**
+ * Agent-defined internal properties: named values the agent maintains itself
+ * (books read, chapters revised, gym sessions) that goal conditions read.
+ * `id` is the stable uid agents can key their own records to; `key` is the
+ * human-readable slug used inside conditions.
+ */
+export const agentProperties = sqliteTable("agent_properties", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  /** counter | number | text | json */
+  kind: text("kind").notNull().default("counter"),
+  value: real("value"),
+  textValue: text("text_value"),
+  unit: text("unit"),
+  description: text("description"),
+  createdBy: text("created_by"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -249,6 +307,13 @@ export const settings = sqliteTable("settings", {
   /** Agent webhook URL for card/habit complete triggers */
   agentWebhookUrl: text("agent_webhook_url"),
   agentWebhookSecret: text("agent_webhook_secret"),
+  /** Periodic snapshots of the SQLite file into data/backups/ */
+  backupsEnabled: integer("backups_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  backupIntervalHours: integer("backup_interval_hours").notNull().default(6),
+  backupKeep: integer("backup_keep").notNull().default(24),
+  lastBackupAt: text("last_backup_at"),
   updatedAt: text("updated_at").notNull(),
 });
 

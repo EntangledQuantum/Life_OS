@@ -1,16 +1,32 @@
 import { z } from "zod";
 import {
   CATEGORIES,
+  CARD_KINDS,
   GROWTH_STYLES,
   HABIT_GRAPHICS,
   LEGACY_GROWTH_STYLES,
   QUALITY_FLAGS,
   ACTIVITIES,
   ACCENT_THEMES,
+  REPEAT_RULES,
   normalizeGrowthStyle,
   type GrowthStyle,
 } from "./constants.js";
 import { MAX_SVG_LENGTH } from "./svg.js";
+import { parseGoalCondition, type GoalCondition } from "./conditions.js";
+
+/**
+ * A goal condition, validated by the hand-written parser so agents get a list
+ * of everything wrong at once instead of zod's first-failure union noise.
+ */
+const goalConditionSchema = z.unknown().superRefine((value, ctx) => {
+  const parsed = parseGoalCondition(value);
+  if (!parsed.ok) {
+    for (const message of parsed.errors) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    }
+  }
+}) as unknown as z.ZodType<GoalCondition>;
 
 /** Accepts `sprout`/`orb` plus the legacy `plant`/`water`/`both`, always yielding a GrowthStyle. */
 const growthStyleSchema = z
@@ -45,10 +61,45 @@ export const createHabitSchema = z.object({
 
 export const updateHabitSchema = createHabitSchema.partial();
 
+/** ISO 8601 instant. Rejected early so agents get a clear message, not a NaN. */
+const isoInstant = z
+  .string()
+  .refine((v) => !Number.isNaN(new Date(v).getTime()), {
+    message: "must be an ISO 8601 date-time, e.g. 2026-08-04T19:30:00Z",
+  });
+
 export const createDashboardCardSchema = z.object({
-  /** 0 and 1 are content slots. Slot 2 is implied by kind:"agent-setup". */
-  slot: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
-  kind: z.enum(["task", "agent-setup"]).default("task"),
+  /**
+   * 0 and 1 are content slots; slot 2 is implied by kind:"agent-setup";
+   * event/reminder cards are unpinned and get slot -1 automatically.
+   */
+  slot: z
+    .union([z.literal(-1), z.literal(0), z.literal(1), z.literal(2)])
+    .optional(),
+  kind: z.enum(CARD_KINDS).default("task"),
+  /** What this card is for, in your own words. */
+  purpose: z.string().max(200).nullable().optional(),
+  /**
+   * Which bucket of the day this belongs to. Closed set on purpose: invent any
+   * content you like, but map it onto a day shape the timeline understands.
+   */
+  activityTag: z.enum(ACTIVITIES).nullable().optional(),
+  /** Card stays hidden until this instant. */
+  showAt: isoInstant.nullable().optional(),
+  /** Notification fires here. Must be strictly before eventAt. */
+  remindAt: isoInstant.nullable().optional(),
+  /** When the thing actually happens. */
+  eventAt: isoInstant.nullable().optional(),
+  durationMinutes: z.number().int().min(1).max(24 * 60).nullable().optional(),
+  repeatRule: z.enum(REPEAT_RULES).default("none"),
+  /** Custom spaced-repetition ladder in days; omit for the default 1/3/7/14/30/60. */
+  repeatOffsetsDays: z
+    .array(z.number().int().min(1).max(365))
+    .max(20)
+    .nullable()
+    .optional(),
+  sound: z.boolean().default(true),
+  flash: z.boolean().default(true),
   title: z.string().min(1).max(200),
   subtitle: z.string().max(300).nullable().optional(),
   body: z.string().max(4000).nullable().optional(),
@@ -114,16 +165,51 @@ export const updateScheduleBlockSchema = createScheduleBlockSchema
 export const createGoalSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().nullable().optional(),
-  status: z
-    .enum(["active", "paused", "achieved", "abandoned"])
-    .default("active"),
+  /**
+   * Note: you cannot set "achieved" here. A goal becomes achieved only when its
+   * condition comes true *and* the user has seen the celebration.
+   */
+  status: z.enum(["active", "paused", "abandoned"]).default("active"),
   targetDate: z.string().nullable().optional(),
   whyItMatters: z.string().nullable().optional(),
   progressPct: z.number().min(0).max(100).default(0),
   linkedHabitIds: z.array(z.string()).optional(),
+  ownerKind: z.enum(["agent", "user"]).default("agent"),
+  /** Machine-checkable completion rule — see GOAL_CONDITION_SYNTAX. */
+  condition: goalConditionSchema.nullable().optional(),
+  autoCheck: z.boolean().default(true),
+  emoji: z.string().max(16).default("🎯"),
+  themeColor: z.string().max(32).default("#A78BFA"),
 });
 
 export const updateGoalSchema = createGoalSchema.partial();
+
+/** Define an agent-owned internal property that goals can be written against. */
+export const createAgentPropertySchema = z.object({
+  key: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(
+      /^[a-z][a-z0-9_]*$/,
+      "key must be lower_snake_case and start with a letter, e.g. books_read",
+    ),
+  label: z.string().min(1).max(120),
+  kind: z.enum(["counter", "number", "text", "json"]).default("counter"),
+  value: z.number().nullable().optional(),
+  textValue: z.string().max(20_000).nullable().optional(),
+  unit: z.string().max(32).nullable().optional(),
+  description: z.string().max(500).nullable().optional(),
+  createdBy: z.string().max(64).nullable().optional(),
+});
+
+export const updateAgentPropertySchema = createAgentPropertySchema
+  .partial()
+  .omit({ key: true });
+
+export const incrementAgentPropertySchema = z.object({
+  by: z.number().default(1),
+});
 
 export const createSleepLogSchema = z.object({
   date: z.string(),
@@ -157,7 +243,7 @@ export const injectLightReviewSchema = z.object({
 
 export const injectAgentEventSchema = z.object({
   kind: z
-    .enum(["review", "task", "life", "study", "reminder", "other"])
+    .enum(["review", "task", "life", "study", "reminder", "exploration", "other"])
     .default("task"),
   title: z.string().min(1),
   body: z.string().nullable().optional(),
@@ -195,6 +281,9 @@ export const updateSettingsSchema = z.object({
   supabaseKey: z.string().nullable().optional(),
   agentWebhookUrl: z.string().url().nullable().optional().or(z.literal("")),
   agentWebhookSecret: z.string().nullable().optional(),
+  backupsEnabled: z.boolean().optional(),
+  backupIntervalHours: z.number().int().min(1).max(168).optional(),
+  backupKeep: z.number().int().min(1).max(500).optional(),
 });
 
 export const updateGamificationConfigSchema = z.object({
@@ -211,6 +300,42 @@ export const updateGamificationConfigSchema = z.object({
   growthStyle: growthStyleSchema.optional(),
   /** @deprecated pre-rename alias; folded into growthStyle server-side */
   nurtureStyle: growthStyleSchema.optional(),
+});
+
+/**
+ * One-call instance setup. Every field is optional — an agent can reshape only
+ * what it knows about and come back for the rest later.
+ */
+export const agentSetupSchema = z.object({
+  replaceHabits: z.boolean().default(false),
+  habits: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(120),
+        emoji: z.string().max(16).optional(),
+        category: z.enum(CATEGORIES).or(z.string()).optional(),
+        isTiny: z.boolean().optional(),
+        anchor: z.string().optional(),
+        xpWeight: z.number().int().min(1).max(100).optional(),
+        themeColor: z.string().optional(),
+        themeGraphic: z.enum(HABIT_GRAPHICS).optional(),
+      }),
+    )
+    .max(40)
+    .optional(),
+  dailyXpTarget: z.number().int().positive().max(10_000).optional(),
+  growthStyle: growthStyleSchema.optional(),
+  settings: updateSettingsSchema.optional(),
+  agentName: z.string().max(64).optional(),
+  agentSetupCard: z
+    .object({
+      title: z.string().max(200).optional(),
+      subtitle: z.string().max(300).optional(),
+      body: z.string().max(4000).optional(),
+      svg: z.string().max(MAX_SVG_LENGTH).nullable().optional(),
+      themeColor: z.string().max(32).optional(),
+    })
+    .optional(),
 });
 
 export const createAchievementSchema = z.object({

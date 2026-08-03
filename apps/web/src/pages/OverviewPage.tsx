@@ -22,6 +22,9 @@ import { cn, formatDelta, formatElapsed } from "@/lib/utils";
 import { GrowthMeter } from "@/components/graphics/GrowthMeter";
 import { AgentCard } from "@/components/AgentCard";
 import { AgentCardsSection } from "@/components/AgentCardsSection";
+import { UpcomingRail } from "@/components/UpcomingRail";
+import { ReminderRunner } from "@/components/ReminderRunner";
+import { GoalCelebration } from "@/components/GoalCelebration";
 import { toast } from "sonner";
 import { motion } from "motion/react";
 import { Check, ExternalLink, Undo2, X } from "lucide-react";
@@ -118,6 +121,16 @@ export function OverviewPage() {
           ? `Card done · +${res.xpAwarded} XP`
           : "Card complete · agent notified if webhook set",
       );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  /** Starting a scheduled card hands the timeline over to its activity tag. */
+  const startCard = useMutation({
+    mutationFn: (id: string) => api.startCard(id),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`Started · ${res.block?.category ?? "session"} running`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -314,6 +327,11 @@ export function OverviewPage() {
           ))}
         </div>
       </section>
+
+      {/* Headless: chimes and flashes when an agent reminder comes due. */}
+      <ReminderRunner due={data.dueReminders ?? []} />
+      {/* A met goal is not a finished goal until this has been on screen. */}
+      <GoalCelebration goals={data.pendingCelebrations ?? []} />
 
       <AgentCardsSection
         cards={data.cards ?? []}
@@ -551,6 +569,16 @@ export function OverviewPage() {
           </div>
         </section>
       </div>
+
+      {/* Last on purpose: the top of the page is how today is *going*; what is
+          about to happen is the hand-off to the next thing. */}
+      <UpcomingRail
+        cards={data.upcoming ?? []}
+        scheduledCount={(data.scheduled ?? []).length}
+        busy={startCard.isPending || completeCard.isPending}
+        onStart={(id) => startCard.mutate(id)}
+        onComplete={(id) => completeCard.mutate(id)}
+      />
     </motion.div>
   );
 }

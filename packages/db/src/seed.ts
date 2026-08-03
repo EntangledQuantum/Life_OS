@@ -154,7 +154,51 @@ if (goalCount === 0) {
         createdAt: now,
         updatedAt: now,
       },
+      {
+        // Demonstrates the condition mechanism on a fresh clone. Deliberately
+        // starts unmet, so nobody gets a celebration modal they didn't earn.
+        id: nanoid(),
+        title: "Finish 3 books",
+        description:
+          "Example of an agent-set goal. Your agent pushes to the books_read counter; this checks itself.",
+        status: "active",
+        targetDate: null,
+        whyItMatters: "You said you missed reading",
+        progressPct: 0,
+        ownerKind: "agent",
+        conditionJson: JSON.stringify({
+          type: "property",
+          key: "books_read",
+          op: ">=",
+          value: 3,
+        }),
+        autoCheck: true,
+        emoji: "📚",
+        themeColor: "#A78BFA",
+        createdAt: now,
+        updatedAt: now,
+      },
     ])
+    .run();
+}
+
+// The counter the example goal watches, so the wiring is visible on day one.
+const propertyCount = db.select().from(schema.agentProperties).all().length;
+if (propertyCount === 0) {
+  db.insert(schema.agentProperties)
+    .values({
+      id: nanoid(),
+      key: "books_read",
+      label: "Books finished",
+      kind: "counter",
+      value: 0,
+      unit: "books",
+      description:
+        "Example agent counter. POST /api/v1/properties/books_read/increment",
+      createdBy: "seed",
+      createdAt: now,
+      updatedAt: now,
+    })
     .run();
 }
 

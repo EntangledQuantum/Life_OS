@@ -10,7 +10,20 @@ export const env = {
   adminUser: process.env.ADMIN_USER ?? "admin",
   adminPass: process.env.ADMIN_PASS ?? "lifeos",
   apiPort: Number(process.env.API_PORT ?? 8787),
+  /**
+   * Bind address. Defaults to loopback so a fresh clone is not reachable from
+   * the network by accident. Set `API_HOST=0.0.0.0` to expose it to your LAN
+   * (phone, tablet, another machine) — see `docs/NETWORK.md`.
+   */
   apiHost: process.env.API_HOST ?? "127.0.0.1",
+  /**
+   * Extra CORS origins beyond localhost and private-LAN addresses, comma
+   * separated. Only needed for a tunnel or a real hostname.
+   */
+  corsOrigins: (process.env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
   apiToken: process.env.API_TOKEN ?? "lifeos-local-agent-token",
   sessionSecret: process.env.SESSION_SECRET ?? "lifeos-dev-secret",
   databasePath: process.env.DATABASE_PATH ?? "./data/lifeos.db",

@@ -72,9 +72,33 @@ export const api = {
     request(`/api/v1/events/${id}/complete`, { method: "POST" }),
   dismissEvent: (id: string) =>
     request(`/api/v1/events/${id}/dismiss`, { method: "POST" }),
-  goals: () => request("/api/v1/goals"),
+  cards: () =>
+    request<import("@life-os/shared").DashboardCard[]>("/api/v1/cards"),
+  completeCard: (id: string) =>
+    request<{ xpAwarded: number }>(`/api/v1/cards/${id}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ source: "user" }),
+    }),
+  /** Start a scheduled card — it takes over the timeline under its activity tag. */
+  startCard: (id: string) =>
+    request<any>(`/api/v1/cards/${id}/start`, { method: "POST" }),
+  /** Confirm the chime actually played, so the reminder fires exactly once. */
+  markCardNotified: (id: string) =>
+    request<any>(`/api/v1/cards/${id}/notified`, { method: "POST" }),
+  goals: () => request<import("@life-os/shared").Goal[]>("/api/v1/goals"),
   createGoal: (body: unknown) =>
     request("/api/v1/goals", { method: "POST", body: JSON.stringify(body) }),
+  /**
+   * Mark a goal's celebration as watched. This is the only path to `achieved` —
+   * a goal whose condition is met but whose animation nobody saw stays open.
+   */
+  markCelebrationSeen: (id: string) =>
+    request<import("@life-os/shared").Goal>(
+      `/api/v1/goals/${id}/celebration-seen`,
+      { method: "POST" },
+    ),
+  properties: () =>
+    request<import("@life-os/shared").AgentProperty[]>("/api/v1/properties"),
   settings: () =>
     request<import("@life-os/shared").AppSettings>("/api/v1/settings"),
   updateSettings: (body: unknown) =>

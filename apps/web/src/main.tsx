@@ -9,6 +9,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RequireAuth } from "./pages/RequireAuth";
 import { OverviewPage } from "./pages/OverviewPage";
+import { TimelinePage } from "./pages/TimelinePage";
 import { HabitsPage } from "./pages/HabitsPage";
 import { StudyPage } from "./pages/StudyPage";
 import { GoalsPage } from "./pages/GoalsPage";
@@ -37,6 +38,7 @@ const routes = IS_PAGES ? (
     <Route element={<RequireAuth />}>
       <Route path="/app" element={<AppShell />}>
         <Route index element={<OverviewPage />} />
+        <Route path="timeline" element={<TimelinePage />} />
         <Route path="habits" element={<HabitsPage />} />
         <Route path="study" element={<StudyPage />} />
         <Route path="goals" element={<GoalsPage />} />

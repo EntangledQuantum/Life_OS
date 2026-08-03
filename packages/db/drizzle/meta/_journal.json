@@ -8,6 +8,13 @@
       "when": 1785683187931,
       "tag": "0000_swift_living_mummy",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785745049937,
+      "tag": "0001_small_starfox",
+      "breakpoints": true
     }
   ]
 }
