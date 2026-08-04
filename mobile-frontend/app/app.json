@@ -64,9 +64,9 @@
               "name": "LifeOsStatus",
               "label": "Life OS Status",
               "description": "Pulse, efficiency, timeline, and activity switcher",
-              "minWidth": "320dp",
-              "minHeight": "200dp",
-              "targetCellWidth": 4,
+              "minWidth": "250dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 5,
               "targetCellHeight": 3,
               "resizeMode": "horizontal|vertical",
               "updatePeriodMillis": 1800000

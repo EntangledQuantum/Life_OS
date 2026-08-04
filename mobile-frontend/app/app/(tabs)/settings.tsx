@@ -1,34 +1,36 @@
 import { useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  Switch,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api";
 import { useConnection } from "@/lib/connection";
-import { colors, accentColor } from "@/lib/theme";
+import {
+  PALETTES,
+  PALETTE_IDS,
+  font,
+  radius,
+  rgba,
+  type PaletteId,
+} from "@/lib/theme";
+import { useTheme } from "@/lib/theme-provider";
 import {
   NOTIFICATION_SOUNDS,
   type AccentThemeId,
   type NotificationSoundId,
 } from "@/lib/types";
 import { Body, Button, Card, Label, Loading, SectionHeader } from "@/components/ui";
+import { SwipeTabs } from "@/components/swipe-tabs";
 
 export default function SettingsScreen() {
   const qc = useQueryClient();
   const router = useRouter();
-  const { baseUrl, username, health, disconnect, refreshHealth } =
-    useConnection();
+  const { t, palette, choose } = useTheme();
+  const { baseUrl, health, disconnect, refreshHealth } = useConnection();
   const [msg, setMsg] = useState<string | null>(null);
 
-  const settingsQ = useQuery({
-    queryKey: ["settings"],
-    queryFn: api.settings,
-  });
+  const settingsQ = useQuery({ queryKey: ["settings"], queryFn: api.settings });
 
   const patch = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.updateSettings(body as never),
@@ -42,257 +44,353 @@ export default function SettingsScreen() {
   });
 
   if (settingsQ.isLoading || !settingsQ.data) return <Loading />;
-
   const s = settingsQ.data;
-  const theme = s.accentTheme ?? "nebula";
-  const accent = accentColor(theme);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 18 }}
-    >
-      <View>
-        <SectionHeader title="Connection" />
-        <Card style={{ gap: 8 }}>
-          <Row label="Server" value={baseUrl ?? "—"} mono />
-          <Row label="User" value={username ?? "—"} />
-          <Row
-            label="Health"
-            value={
-              health?.ok
-                ? `ok · ${health.storage}${health.lan ? " · LAN" : ""}`
-                : "unreachable"
-            }
-          />
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-            <Button
-              title="Recheck"
-              variant="soft"
-              onPress={() => void refreshHealth()}
-              style={{ flex: 1 }}
-            />
-            <Button
-              title="Disconnect"
-              variant="ghost"
-              onPress={async () => {
-                await disconnect();
-                router.replace("/connect");
-              }}
-              style={{ flex: 1 }}
-            />
-          </View>
-        </Card>
-      </View>
+    <SwipeTabs index={3}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: t.bg }}
+        contentContainerStyle={{ padding: 18, paddingBottom: 44, gap: 22 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ------------------------------------------------------ appearance */}
+        <View>
+          <SectionHeader title="Theme" />
+          <Card style={{ gap: 14 }}>
+            <Body>
+              This palette is stored on this phone only — the web app keeps its
+              own accent.
+            </Body>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              {PALETTE_IDS.map((id) => (
+                <Swatch
+                  key={id}
+                  id={id}
+                  selected={palette === id}
+                  onPress={() => {
+                    void Haptics.selectionAsync();
+                    choose(id);
+                  }}
+                />
+              ))}
+            </View>
 
-      <View>
-        <SectionHeader title="Do not disturb" />
-        <Card style={{ gap: 14 }}>
-          <Toggle
-            label="Do not disturb"
-            hint="Silence interruptions, keep reminders visible"
-            value={s.doNotDisturb}
-            accent={accent}
-            onChange={(v) => patch.mutate({ doNotDisturb: v })}
-          />
-          <Toggle
-            label="Quiet hours auto-silence"
-            hint={`${s.quietHoursStart} – ${s.quietHoursEnd}`}
-            value={s.quietHoursSilent}
-            accent={accent}
-            onChange={(v) => patch.mutate({ quietHoursSilent: v })}
-          />
-        </Card>
-      </View>
+            <Toggle
+              label="Reduced motion"
+              hint="Stops the meter breathing and the confetti"
+              value={s.reducedMotion}
+              accent={t.accent}
+              onChange={(v) => patch.mutate({ reducedMotion: v })}
+            />
+          </Card>
+        </View>
 
-      <View>
-        <SectionHeader title="Notification sound" />
-        <Card style={{ gap: 6 }}>
-          {NOTIFICATION_SOUNDS.map((opt) => {
-            const on = s.notificationSound === opt.id;
-            return (
-              <Pressable
+        {/* --------------------------------------------------------- silence */}
+        <View>
+          <SectionHeader title="Do not disturb" />
+          <Card style={{ gap: 14 }}>
+            <Toggle
+              label="Do not disturb"
+              hint="Silences the interruption, not the information"
+              value={s.doNotDisturb}
+              accent={t.accent}
+              onChange={(v) => patch.mutate({ doNotDisturb: v })}
+            />
+            <Toggle
+              label="Quiet hours auto-silence"
+              hint={`${s.quietHoursStart} – ${s.quietHoursEnd}`}
+              value={s.quietHoursSilent}
+              accent={t.accent}
+              onChange={(v) => patch.mutate({ quietHoursSilent: v })}
+            />
+          </Card>
+        </View>
+
+        <View>
+          <SectionHeader title="Notification sound" />
+          <Card style={{ gap: 2 }}>
+            {NOTIFICATION_SOUNDS.map((opt) => (
+              <Option
                 key={opt.id}
+                title={opt.label}
+                hint={opt.description}
+                selected={s.notificationSound === opt.id}
+                accent={t.accent}
                 onPress={() =>
-                  patch.mutate({
-                    notificationSound: opt.id as NotificationSoundId,
-                  })
+                  patch.mutate({ notificationSound: opt.id as NotificationSoundId })
                 }
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 8,
-                  borderRadius: 10,
-                  backgroundColor: on ? "rgba(255,255,255,0.06)" : "transparent",
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      color: colors.text,
-                      fontFamily: "Figtree_600SemiBold",
-                      fontSize: 14,
-                    }}
-                  >
-                    {opt.label}
-                  </Text>
-                  <Text
-                    style={{
-                      color: colors.faint,
-                      fontFamily: "Figtree_400Regular",
-                      fontSize: 12,
-                    }}
-                  >
-                    {opt.description}
-                  </Text>
-                </View>
-                {on ? (
-                  <Text style={{ color: accent, fontSize: 16 }}>●</Text>
-                ) : null}
-              </Pressable>
-            );
-          })}
-          <Body style={{ marginTop: 4 }}>
-            Native maps these ids onto system notification sounds — the id is the
-            contract, not the waveform.
-          </Body>
-        </Card>
-      </View>
+              />
+            ))}
+          </Card>
+        </View>
 
-      <View>
-        <SectionHeader title="Appearance" />
-        <Card style={{ gap: 10 }}>
-          <Label>Accent theme</Label>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        <View>
+          <SectionHeader title="Celebration" />
+          <Card style={{ gap: 2 }}>
             {(
               [
-                ["nebula", "Nebula"],
-                ["quantum", "Quantum"],
-                ["terminal", "Terminal"],
-                ["ember", "Ember"],
-              ] as [AccentThemeId, string][]
-            ).map(([id, name]) => {
-              const on = theme === id;
-              const c = accentColor(id);
-              return (
-                <Pressable
-                  key={id}
-                  onPress={() => patch.mutate({ accentTheme: id })}
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderRadius: 999,
-                    backgroundColor: on ? c : colors.surface2,
-                  }}
-                >
-                  <Text
+                ["full", "Full", "Confetti, glow, the lot"],
+                ["minimal", "Minimal", "Restrained — still unmissable"],
+                ["off", "Off", "No celebration screen at all"],
+              ] as const
+            ).map(([level, title, hint]) => (
+              <Option
+                key={level}
+                title={title}
+                hint={hint}
+                selected={s.celebrationIntensity === level}
+                accent={t.accent}
+                onPress={() => patch.mutate({ celebrationIntensity: level })}
+              />
+            ))}
+          </Card>
+        </View>
+
+        {/* -------------------------------------------------------- surfaces */}
+        <View>
+          <SectionHeader title="Surfaces" />
+          <Card style={{ gap: 14 }}>
+            <Toggle
+              label="Streaks"
+              value={s.streaksEnabled}
+              accent={t.accent}
+              onChange={(v) => patch.mutate({ streaksEnabled: v })}
+            />
+            <Toggle
+              label="Points / XP"
+              value={s.pointsEnabled}
+              accent={t.accent}
+              onChange={(v) => patch.mutate({ pointsEnabled: v })}
+            />
+            <Toggle
+              label="Gamification"
+              value={s.gamificationEnabled}
+              accent={t.accent}
+              onChange={(v) => patch.mutate({ gamificationEnabled: v })}
+            />
+          </Card>
+        </View>
+
+        {/* ------------------------------------------------------ connection */}
+        <View>
+          <SectionHeader title="Connection" />
+          <Card style={{ gap: 10 }}>
+            <Row label="Server" value={baseUrl ?? "—"} mono />
+            <Row label="Auth" value="API token · secure store" />
+            <Row
+              label="Health"
+              value={
+                health?.ok
+                  ? `ok · ${health.storage}${health.lan ? " · LAN" : ""}`
+                  : "unreachable"
+              }
+            />
+            <Body>
+              Disconnect clears the token from the secure store. There is no
+              username/password login.
+            </Body>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+              <Button
+                title="Recheck"
+                variant="soft"
+                onPress={() => void refreshHealth()}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Disconnect"
+                variant="ghost"
+                onPress={async () => {
+                  await disconnect();
+                  router.replace("/connect");
+                }}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Card>
+        </View>
+
+        {/* ------------------------------------------------- web-side accent */}
+        <View>
+          <SectionHeader title="Web app accent" />
+          <Card style={{ gap: 10 }}>
+            <Body>Only affects the browser client, not this phone.</Body>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {(
+                [
+                  ["nebula", "Nebula"],
+                  ["quantum", "Quantum"],
+                  ["terminal", "Terminal"],
+                  ["ember", "Ember"],
+                ] as [AccentThemeId, string][]
+              ).map(([id, name]) => {
+                const on = s.accentTheme === id;
+                return (
+                  <Pressable
+                    key={id}
+                    onPress={() => patch.mutate({ accentTheme: id })}
                     style={{
-                      color: on ? colors.background : colors.muted,
-                      fontFamily: "Figtree_600SemiBold",
-                      fontSize: 13,
+                      paddingHorizontal: 13,
+                      paddingVertical: 8,
+                      borderRadius: radius.pill,
+                      backgroundColor: on ? rgba(t.accent, 0.2) : t.surface2,
+                      borderWidth: 1,
+                      borderColor: on ? t.accent : "transparent",
                     }}
                   >
-                    {name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Toggle
-            label="Reduced motion"
-            value={s.reducedMotion}
-            accent={accent}
-            onChange={(v) => patch.mutate({ reducedMotion: v })}
-          />
-        </Card>
-      </View>
+                    <Text
+                      style={{
+                        color: on ? t.accent : t.muted,
+                        fontFamily: font.bodySemi,
+                        fontSize: 13,
+                      }}
+                    >
+                      {name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Card>
+        </View>
 
-      <View>
-        <SectionHeader title="Surfaces" />
-        <Card style={{ gap: 12 }}>
-          <Toggle
-            label="Streaks"
-            value={s.streaksEnabled}
-            accent={accent}
-            onChange={(v) => patch.mutate({ streaksEnabled: v })}
-          />
-          <Toggle
-            label="Points / XP"
-            value={s.pointsEnabled}
-            accent={accent}
-            onChange={(v) => patch.mutate({ pointsEnabled: v })}
-          />
-          <Toggle
-            label="Gamification"
-            value={s.gamificationEnabled}
-            accent={accent}
-            onChange={(v) => patch.mutate({ gamificationEnabled: v })}
-          />
-        </Card>
-      </View>
+        <View>
+          <SectionHeader title="Home screen widget" />
+          <Card>
+            <Body>
+              Add the Life OS Status widget from your Android home screen. It
+              shows pulse, efficiency, XP, habits and the day ribbon, and lets
+              you switch the current activity. Needs a native Android build —
+              not Expo Go. Data refreshes whenever the app loads the dashboard.
+            </Body>
+          </Card>
+        </View>
 
-      <View>
-        <SectionHeader title="Celebration" />
-        <Card style={{ gap: 8 }}>
-          {(["full", "minimal", "off"] as const).map((level) => {
-            const on = s.celebrationIntensity === level;
-            return (
-              <Pressable
-                key={level}
-                onPress={() => patch.mutate({ celebrationIntensity: level })}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 8,
-                  borderRadius: 10,
-                  backgroundColor: on ? "rgba(255,255,255,0.06)" : "transparent",
-                }}
-              >
-                <Text
-                  style={{
-                    color: on ? accent : colors.text,
-                    fontFamily: "Figtree_600SemiBold",
-                    fontSize: 14,
-                    textTransform: "capitalize",
-                  }}
-                >
-                  {level}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </Card>
-      </View>
+        <Body style={{ textAlign: "center" }}>
+          Life OS mobile · local-first · no telemetry
+        </Body>
 
-      <View>
-        <SectionHeader title="Home screen widget" />
-        <Card>
-          <Body>
-            Add the Life OS Status widget from your Android home screen. It shows
-            pulse, efficiency, XP, habits, the day ribbon, and lets you switch the
-            current activity. Requires a native Android build (not Expo Go).
-            Widget data refreshes whenever the app loads the dashboard.
-          </Body>
-        </Card>
-      </View>
+        {msg ? (
+          <Text
+            style={{ textAlign: "center", color: t.positive, fontFamily: font.bodyMedium }}
+          >
+            {msg}
+          </Text>
+        ) : null}
+      </ScrollView>
+    </SwipeTabs>
+  );
+}
 
-      <Body style={{ textAlign: "center" }}>
-        Life OS mobile · local-first · no telemetry
-      </Body>
+/* --------------------------------------------------------------- pieces */
 
-      {msg ? (
+function Swatch({
+  id,
+  selected,
+  onPress,
+}: {
+  id: PaletteId;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const t = useTheme().t;
+  const p = PALETTES[id];
+  return (
+    <Pressable onPress={onPress} style={{ alignItems: "center", gap: 6, width: 64 }}>
+      <LinearGradient
+        colors={[p.accent2, p.accent]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 23,
+          borderWidth: selected ? 3 : 1,
+          borderColor: selected ? t.text : "rgba(255,255,255,0.12)",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {selected ? (
+          <Text style={{ color: p.onAccent, fontSize: 16, fontFamily: font.bodySemi }}>
+            ✓
+          </Text>
+        ) : null}
+      </LinearGradient>
+      <Text
+        style={{
+          color: selected ? t.text : t.faint,
+          fontFamily: font.bodyMedium,
+          fontSize: 11,
+        }}
+        numberOfLines={1}
+      >
+        {p.name}
+      </Text>
+    </Pressable>
+  );
+}
+
+function Option({
+  title,
+  hint,
+  selected,
+  accent,
+  onPress,
+}: {
+  title: string;
+  hint?: string;
+  selected: boolean;
+  accent: string;
+  onPress: () => void;
+}) {
+  const t = useTheme().t;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingVertical: 11,
+        paddingHorizontal: 10,
+        borderRadius: radius.sm,
+        backgroundColor: selected ? rgba(accent, 0.12) : "transparent",
+      }}
+    >
+      <View style={{ flex: 1 }}>
         <Text
           style={{
-            textAlign: "center",
-            color: colors.positive,
-            fontFamily: "Figtree_500Medium",
+            color: selected ? accent : t.text,
+            fontFamily: font.bodySemi,
+            fontSize: 14,
           }}
         >
-          {msg}
+          {title}
         </Text>
-      ) : null}
-    </ScrollView>
+        {hint ? (
+          <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 12, marginTop: 1 }}>
+            {hint}
+          </Text>
+        ) : null}
+      </View>
+      <View
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: 9,
+          borderWidth: 2,
+          borderColor: selected ? accent : t.border,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {selected ? (
+          <View
+            style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accent }}
+          />
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -309,34 +407,17 @@ function Toggle({
   onChange: (v: boolean) => void;
   accent: string;
 }) {
+  const t = useTheme().t;
   return (
     <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-      }}
+      style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}
     >
       <View style={{ flex: 1 }}>
-        <Text
-          style={{
-            color: colors.text,
-            fontFamily: "Figtree_600SemiBold",
-            fontSize: 14,
-          }}
-        >
+        <Text style={{ color: t.text, fontFamily: font.bodySemi, fontSize: 14 }}>
           {label}
         </Text>
         {hint ? (
-          <Text
-            style={{
-              color: colors.faint,
-              fontFamily: "Figtree_400Regular",
-              fontSize: 12,
-              marginTop: 2,
-            }}
-          >
+          <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 12, marginTop: 2 }}>
             {hint}
           </Text>
         ) : null}
@@ -344,8 +425,8 @@ function Toggle({
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: colors.surface2, true: accent }}
-        thumbColor={colors.text}
+        trackColor={{ false: t.surface2, true: accent }}
+        thumbColor={t.text}
       />
     </View>
   );
@@ -360,14 +441,15 @@ function Row({
   value: string;
   mono?: boolean;
 }) {
+  const t = useTheme().t;
   return (
-    <View style={{ gap: 2 }}>
+    <View style={{ gap: 3 }}>
       <Label>{label}</Label>
       <Text
         selectable
         style={{
-          color: colors.text,
-          fontFamily: mono ? "JetBrainsMono_500Medium" : "Figtree_500Medium",
+          color: t.text,
+          fontFamily: mono ? font.mono : font.bodyMedium,
           fontSize: 13,
         }}
       >

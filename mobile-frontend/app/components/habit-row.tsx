@@ -1,7 +1,8 @@
 import { Pressable, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import type { HabitWithToday } from "@/lib/types";
-import { colors } from "@/lib/theme";
+import { font, radius, rgba } from "@/lib/theme";
+import { useTokens } from "@/lib/theme-provider";
 
 export function HabitRow({
   habit,
@@ -14,12 +15,16 @@ export function HabitRow({
   onToggle: () => void;
   busy?: boolean;
 }) {
+  const t = useTokens();
   const done = habit.completedToday;
+  const tint = habit.themeColor || t.accent;
 
   return (
     <Pressable
       onPress={() => {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        void Haptics.impactAsync(
+          done ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium,
+        );
         onToggle();
       }}
       disabled={busy}
@@ -27,92 +32,76 @@ export function HabitRow({
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
-        paddingVertical: 10,
+        paddingVertical: 11,
         paddingHorizontal: 12,
-        borderRadius: 14,
-        backgroundColor: colors.surface,
+        borderRadius: radius.md,
+        backgroundColor: done ? rgba(t.positive, 0.07) : t.surface,
         borderWidth: 1,
-        borderColor: colors.border,
-        opacity: pressed || busy ? 0.75 : 1,
+        borderColor: done ? rgba(t.positive, 0.28) : t.border,
+        opacity: busy ? 0.6 : 1,
+        transform: [{ scale: pressed ? 0.99 : 1 }],
         borderCurve: "continuous",
       })}
     >
       <View
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 12,
-          backgroundColor: done
-            ? "rgba(52,211,153,0.18)"
-            : "rgba(255,255,255,0.04)",
+          width: 38,
+          height: 38,
+          borderRadius: radius.sm + 2,
+          backgroundColor: done ? rgba(t.positive, 0.18) : rgba(tint, 0.1),
           alignItems: "center",
           justifyContent: "center",
           borderWidth: 1.5,
-          borderColor: done ? colors.positive : colors.border,
+          borderColor: done ? t.positive : t.border,
+          borderCurve: "continuous",
         }}
       >
-        <Text style={{ fontSize: 16 }}>{done ? "✓" : habit.emoji}</Text>
+        <Text style={{ fontSize: 17, color: t.positive }}>
+          {done ? "✓" : habit.emoji}
+        </Text>
       </View>
 
-      <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flex: 1, gap: 3 }}>
         <Text
           style={{
-            color: colors.text,
-            fontFamily: "Figtree_600SemiBold",
+            color: done ? t.muted : t.text,
+            fontFamily: font.bodySemi,
             fontSize: 15,
             textDecorationLine: done ? "line-through" : "none",
-            opacity: done ? 0.7 : 1,
           }}
+          numberOfLines={1}
         >
           {habit.name}
         </Text>
         {habit.anchor ? (
           <Text
-            style={{
-              color: colors.faint,
-              fontFamily: "Figtree_400Regular",
-              fontSize: 12,
-            }}
+            style={{ color: t.faint, fontFamily: font.body, fontSize: 12 }}
             numberOfLines={1}
           >
             {habit.anchor}
           </Text>
         ) : null}
-        <View style={{ flexDirection: "row", gap: 3, marginTop: 4 }}>
+        <View style={{ flexDirection: "row", gap: 3, marginTop: 3 }}>
           {(habit.history7 ?? []).map((v, i) => (
             <View
               key={i}
               style={{
-                width: 8,
-                height: 12,
+                width: 9,
+                height: 4,
                 borderRadius: 2,
-                backgroundColor: v
-                  ? habit.themeColor || colors.positive
-                  : "rgba(255,255,255,0.08)",
+                backgroundColor: v ? tint : rgba(t.text, 0.08),
               }}
             />
           ))}
         </View>
       </View>
 
-      <View style={{ alignItems: "flex-end", gap: 2 }}>
-        <Text
-          style={{
-            color: colors.positive,
-            fontFamily: "JetBrainsMono_500Medium",
-            fontSize: 12,
-          }}
-        >
+      <View style={{ alignItems: "flex-end", gap: 3 }}>
+        <Text style={{ color: t.positive, fontFamily: font.mono, fontSize: 12 }}>
           +{habit.baseXp + (habit.extraXp || 0)}
         </Text>
         {streaksEnabled && habit.currentStreak > 0 ? (
-          <Text
-            style={{
-              color: colors.muted,
-              fontFamily: "JetBrainsMono_500Medium",
-              fontSize: 11,
-            }}
-          >
+          <Text style={{ color: t.muted, fontFamily: font.mono, fontSize: 11 }}>
             🔥 {habit.currentStreak}
           </Text>
         ) : null}

@@ -17,17 +17,31 @@ export class ApiError extends Error {
   }
 }
 
-type RequestOpts = RequestInit & { skipAuth?: boolean };
+/** Called once on 401 — clear token and return to connect. Never log the token. */
+let onUnauthorized: (() => void) | null = null;
 
-async function resolveBase(): Promise<string> {
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
+type RequestOpts = RequestInit & {
+  /** Override base URL (connect flow before storage is set). */
+  baseUrl?: string;
+  /** Override token for the one-shot /auth/me validation. */
+  token?: string | null;
+};
+
+async function resolveBase(override?: string): Promise<string> {
+  if (override) return normalizeBaseUrl(override);
   const base = await getBaseUrl();
   if (!base) throw new ApiError(0, "No server configured");
   return base;
 }
 
 async function request<T>(path: string, options: RequestOpts = {}): Promise<T> {
-  const base = await resolveBase();
-  const token = options.skipAuth ? null : await getToken();
+  const base = await resolveBase(options.baseUrl);
+  const token =
+    options.token !== undefined ? options.token : await getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -35,14 +49,22 @@ async function request<T>(path: string, options: RequestOpts = {}): Promise<T> {
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  // Strip custom fields before fetch
+  const { baseUrl: _b, token: _t, ...fetchOpts } = options;
+
   let res: Response;
   try {
     res = await fetch(`${base}${path}`, {
-      ...options,
+      ...fetchOpts,
       headers,
     });
   } catch {
     throw new ApiError(0, "Life OS isn't running — can't reach the server");
+  }
+
+  if (res.status === 401) {
+    onUnauthorized?.();
+    throw new ApiError(401, "Wrong or expired API token");
   }
 
   if (!res.ok) {
@@ -60,7 +82,7 @@ async function request<T>(path: string, options: RequestOpts = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** Health check against an explicit base URL (setup screen). */
+/** Health check against an explicit base URL (setup screen). No auth required. */
 export async function checkHealth(baseUrl: string): Promise<HealthResponse> {
   const base = normalizeBaseUrl(baseUrl);
   let res: Response;
@@ -93,27 +115,48 @@ export async function checkHealth(baseUrl: string): Promise<HealthResponse> {
   return body;
 }
 
+/**
+ * Validate token against the server. 200 = good, 401 = wrong token.
+ * Does not use the unauthorized handler (caller decides).
+ */
+export async function validateToken(
+  baseUrl: string,
+  token: string,
+): Promise<{ ok: true; username?: string } | { ok: false; status: number }> {
+  const base = normalizeBaseUrl(baseUrl);
+  let res: Response;
+  try {
+    res = await fetch(`${base}/api/v1/auth/me`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token.trim()}`,
+      },
+    });
+  } catch {
+    throw new ApiError(0, "Life OS isn't running — can't reach the server");
+  }
+  if (res.status === 401) return { ok: false, status: 401 };
+  if (!res.ok) {
+    throw new ApiError(res.status, "Token check failed");
+  }
+  try {
+    const body = (await res.json()) as { username?: string };
+    return { ok: true, username: body.username };
+  } catch {
+    return { ok: true };
+  }
+}
+
 export const api = {
   health: async () => {
     const base = await resolveBase();
     return checkHealth(base);
   },
 
-  login: (username: string, password: string) =>
-    request<{ token: string; username: string; user?: unknown }>(
-      "/api/v1/auth/login",
-      {
-        method: "POST",
-        body: JSON.stringify({ username, password }),
-        skipAuth: true,
-      },
-    ),
-
   me: () =>
-    request<{ username: string; role: string }>("/api/v1/auth/me"),
+    request<{ username?: string; role?: string }>("/api/v1/auth/me"),
 
-  dashboard: () =>
-    request<DashboardToday>("/api/v1/dashboard/today"),
+  dashboard: () => request<DashboardToday>("/api/v1/dashboard/today"),
 
   settings: () => request<AppSettings>("/api/v1/settings"),
 
@@ -135,7 +178,6 @@ export const api = {
         },
       );
     } catch (e) {
-      // 409 = already completed today — success-with-no-op
       if (e instanceof ApiError && e.status === 409) {
         return { xpAwarded: 0, alreadyDone: true as const };
       }

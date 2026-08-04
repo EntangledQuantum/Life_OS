@@ -1,89 +1,31 @@
 import { Tabs } from "expo-router";
-import { Text } from "react-native";
-import { colors, accentColor } from "@/lib/theme";
+import { TabBar } from "@/components/tab-bar";
+import { font } from "@/lib/theme";
+import { useTokens } from "@/lib/theme-provider";
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  const map: Record<string, string> = {
-    Today: "◎",
-    Timeline: "☰",
-    Goals: "◇",
-    Settings: "⚙",
-  };
-  return (
-    <Text
-      style={{
-        fontSize: 18,
-        color: focused ? accentColor("nebula") : colors.faint,
-        marginBottom: -2,
-      }}
-    >
-      {map[label] ?? "·"}
-    </Text>
-  );
-}
-
+/**
+ * Screen order here is the left-to-right swipe order — keep it in sync with
+ * `TAB_ROUTES` in `components/swipe-tabs.tsx`.
+ */
 export default function TabLayout() {
+  const t = useTokens();
+
   return (
     <Tabs
+      tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.text,
-        headerTitleStyle: {
-          fontFamily: "Figtree_600SemiBold",
-          fontSize: 17,
-        },
+        headerStyle: { backgroundColor: t.bg },
+        headerTintColor: t.text,
+        headerTitleStyle: { fontFamily: font.display, fontSize: 20 },
         headerShadowVisible: false,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 6,
-        },
-        tabBarActiveTintColor: accentColor("nebula"),
-        tabBarInactiveTintColor: colors.faint,
-        tabBarLabelStyle: {
-          fontFamily: "Figtree_500Medium",
-          fontSize: 11,
-        },
+        sceneStyle: { backgroundColor: t.bg },
+        animation: "shift",
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Today",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="Today" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="timeline"
-        options={{
-          title: "Timeline",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="Timeline" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="goals"
-        options={{
-          title: "Goals",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="Goals" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: "Settings",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="Settings" focused={focused} />
-          ),
-        }}
-      />
+      <Tabs.Screen name="index" options={{ headerShown: false }} />
+      <Tabs.Screen name="timeline" options={{ title: "Timeline" }} />
+      <Tabs.Screen name="goals" options={{ title: "Goals" }} />
+      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
       {/* hide template leftover if present */}
       <Tabs.Screen name="two" options={{ href: null }} />
     </Tabs>

@@ -1,100 +1,83 @@
 import { Text, View } from "react-native";
-import { colors, accentColor } from "@/lib/theme";
-import type { AccentThemeId } from "@/lib/types";
+import { LinearGradient } from "expo-linear-gradient";
+import { font, radius, rgba } from "@/lib/theme";
+import { useTokens } from "@/lib/theme-provider";
 
 export function XpChart({
   series,
-  theme = "nebula",
 }: {
   series: { date: string; current: number; target: number }[];
-  theme?: AccentThemeId;
 }) {
+  const t = useTokens();
   if (!series?.length) return null;
-  const max = Math.max(
-    ...series.map((s) => Math.max(s.current, s.target)),
-    1,
-  );
-  const accent = accentColor(theme);
+
+  const max = Math.max(...series.map((s) => Math.max(s.current, s.target)), 1);
+  const H = 84;
 
   return (
     <View
       style={{
-        backgroundColor: colors.surface,
-        borderRadius: 16,
+        backgroundColor: t.surface,
+        borderRadius: radius.lg,
         borderWidth: 1,
-        borderColor: colors.border,
-        padding: 14,
+        borderColor: t.border,
+        padding: 16,
         borderCurve: "continuous",
-        gap: 10,
+        gap: 12,
       }}
     >
       <Text
         style={{
-          color: colors.faint,
-          fontFamily: "Figtree_600SemiBold",
+          color: t.faint,
+          fontFamily: font.bodySemi,
           fontSize: 11,
-          letterSpacing: 0.8,
+          letterSpacing: 1.1,
         }}
       >
         7-DAY XP
       </Text>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "flex-end",
-          height: 88,
-          gap: 6,
-        }}
-      >
-        {series.map((s) => {
-          const h = Math.max(4, (s.current / max) * 80);
-          const targetH = Math.max(4, (s.target / max) * 80);
-          const day = s.date.slice(5); // MM-DD
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
+        {series.map((s, i) => {
+          const h = Math.max(4, (s.current / max) * H);
+          const targetH = Math.max(4, (s.target / max) * H);
+          const hit = s.current >= s.target;
+          const today = i === series.length - 1;
           return (
-            <View
-              key={s.date}
-              style={{ flex: 1, alignItems: "center", justifyContent: "flex-end" }}
-            >
-              <View
-                style={{
-                  width: "100%",
-                  height: 80,
-                  justifyContent: "flex-end",
-                  position: "relative",
-                }}
-              >
-                {/* target dashed line */}
+            <View key={s.date} style={{ flex: 1, alignItems: "center" }}>
+              <View style={{ width: "100%", height: H, justifyContent: "flex-end" }}>
                 <View
                   style={{
                     position: "absolute",
                     bottom: targetH,
-                    left: 0,
-                    right: 0,
+                    left: -2,
+                    right: -2,
                     height: 1,
-                    backgroundColor: colors.faint,
-                    opacity: 0.5,
+                    backgroundColor: rgba(t.text, 0.18),
                   }}
                 />
-                <View
+                <LinearGradient
+                  colors={
+                    hit
+                      ? [t.accent2, t.accent]
+                      : [rgba(t.accent, 0.55), rgba(t.accent, 0.28)]
+                  }
                   style={{
                     width: "100%",
                     height: h,
-                    backgroundColor: accent,
-                    borderTopLeftRadius: 6,
-                    borderTopRightRadius: 6,
-                    opacity: 0.9,
+                    borderRadius: 7,
+                    borderCurve: "continuous",
                   }}
                 />
               </View>
               <Text
                 style={{
-                  color: colors.faint,
-                  fontFamily: "JetBrainsMono_500Medium",
+                  color: today ? t.accent : t.faint,
+                  fontFamily: today ? font.monoBold : font.mono,
                   fontSize: 9,
-                  marginTop: 4,
+                  marginTop: 6,
                 }}
               >
-                {day}
+                {s.date.slice(5)}
               </Text>
             </View>
           );

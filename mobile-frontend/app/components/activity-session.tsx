@@ -1,23 +1,40 @@
 import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Modal, Pressable, Text, View } from "react-native";
+import * as Haptics from "expo-haptics";
+import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
 import { ACTIVITIES, type Activity } from "@/lib/types";
-import { colors, accentColor } from "@/lib/theme";
+import { ACTIVITY_COLORS, font, radius, rgba } from "@/lib/theme";
+import { useTokens } from "@/lib/theme-provider";
 import { formatElapsed } from "@/lib/format";
-import type { AccentThemeId } from "@/lib/types";
 
+const ICONS: Record<Activity, string> = {
+  "Deep Work": "🎯",
+  Study: "📖",
+  Exercise: "🏃",
+  Break: "☕",
+  "Life Admin": "🗂",
+  Sleep: "🌙",
+  Exploration: "🔭",
+};
+
+/**
+ * "Right now" is one line plus one button. The seven activity chips used to sit
+ * permanently on the dashboard, which is a menu you have to re-read every time
+ * you glance at your day — the opposite of what this app is for. They live in a
+ * sheet behind an explicit Change now.
+ */
 export function ActivitySession({
   active,
-  theme = "nebula",
   onSelect,
   onClear,
 }: {
   active: { activity: string; startedAt: string } | null;
-  theme?: AccentThemeId;
   onSelect: (a: Activity) => void;
   onClear: () => void;
 }) {
+  const t = useTokens();
+  const [open, setOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const accent = accentColor(theme);
 
   useEffect(() => {
     if (!active?.startedAt) {
@@ -27,105 +44,224 @@ export function ActivitySession({
     const start = new Date(active.startedAt).getTime();
     const tick = () => setElapsed(Date.now() - start);
     tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, [active?.startedAt, active?.activity]);
 
+  const tint = active
+    ? (ACTIVITY_COLORS[active.activity as Activity] ?? t.accent)
+    : t.faint;
+
   return (
-    <View style={{ gap: 10 }}>
+    <>
       <View
         style={{
-          backgroundColor: colors.surface,
-          borderRadius: 16,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          backgroundColor: t.surface,
+          borderRadius: radius.lg,
           borderWidth: 1,
-          borderColor: colors.border,
+          borderColor: active ? rgba(tint, 0.35) : t.border,
           padding: 14,
           borderCurve: "continuous",
         }}
       >
-        <Text
-          style={{
-            color: colors.faint,
-            fontFamily: "Figtree_600SemiBold",
-            fontSize: 11,
-            letterSpacing: 0.8,
-          }}
-        >
-          RIGHT NOW
-        </Text>
         <View
           style={{
-            flexDirection: "row",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            marginTop: 4,
+            width: 44,
+            height: 44,
+            borderRadius: radius.md,
+            backgroundColor: rgba(tint, 0.16),
+            alignItems: "center",
+            justifyContent: "center",
+            borderCurve: "continuous",
           }}
         >
+          <Text style={{ fontSize: 20 }}>
+            {active ? (ICONS[active.activity as Activity] ?? "◎") : "○"}
+          </Text>
+        </View>
+
+        <View style={{ flex: 1, gap: 2 }}>
           <Text
-            style={{
-              color: colors.text,
-              fontFamily: "Figtree_700Bold",
-              fontSize: 20,
-            }}
+            style={{ color: t.faint, fontFamily: font.bodySemi, fontSize: 10, letterSpacing: 1.1 }}
+          >
+            RIGHT NOW
+          </Text>
+          <Text
+            style={{ color: t.text, fontFamily: font.title, fontSize: 18 }}
+            numberOfLines={1}
           >
             {active?.activity ?? "Nothing running"}
           </Text>
-          {active ? (
-            <Text
-              style={{
-                color: accent,
-                fontFamily: "JetBrainsMono_600SemiBold",
-                fontSize: 18,
-                fontVariant: ["tabular-nums"],
-              }}
-            >
-              {formatElapsed(elapsed)}
-            </Text>
-          ) : null}
         </View>
+
         {active ? (
-          <Pressable onPress={onClear} style={{ marginTop: 10 }}>
-            <Text
-              style={{
-                color: colors.muted,
-                fontFamily: "Figtree_500Medium",
-                fontSize: 13,
-              }}
-            >
-              Stop session
-            </Text>
-          </Pressable>
+          <Text
+            style={{
+              color: tint,
+              fontFamily: font.monoBold,
+              fontSize: 17,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {formatElapsed(elapsed)}
+          </Text>
         ) : null}
+
+        <Pressable
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setOpen(true);
+          }}
+          style={({ pressed }) => ({
+            paddingHorizontal: 14,
+            paddingVertical: 9,
+            borderRadius: radius.pill,
+            backgroundColor: pressed ? t.accent : rgba(t.accent, 0.16),
+            borderCurve: "continuous",
+          })}
+        >
+          <Text style={{ color: t.accent, fontFamily: font.bodySemi, fontSize: 13 }}>
+            {active ? "Change" : "Start"}
+          </Text>
+        </Pressable>
       </View>
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {ACTIVITIES.map((a) => {
-          const on = active?.activity === a;
-          return (
+      <ActivitySheet
+        visible={open}
+        current={active?.activity ?? null}
+        onClose={() => setOpen(false)}
+        onSelect={(a) => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          onSelect(a);
+          setOpen(false);
+        }}
+        onClear={() => {
+          onClear();
+          setOpen(false);
+        }}
+      />
+    </>
+  );
+}
+
+function ActivitySheet({
+  visible,
+  current,
+  onSelect,
+  onClear,
+  onClose,
+}: {
+  visible: boolean;
+  current: string | null;
+  onSelect: (a: Activity) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const t = useTokens();
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <Animated.View entering={FadeIn.duration(160)} style={{ flex: 1 }}>
+        <Pressable
+          onPress={onClose}
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)" }}
+        />
+        <Animated.View
+          entering={SlideInDown.duration(260)}
+          style={{
+            backgroundColor: t.bgLift,
+            borderTopLeftRadius: radius.xl,
+            borderTopRightRadius: radius.xl,
+            borderTopWidth: 1,
+            borderColor: t.border,
+            padding: 20,
+            paddingBottom: 34,
+            gap: 16,
+            borderCurve: "continuous",
+          }}
+        >
+          <View
+            style={{
+              alignSelf: "center",
+              width: 40,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: rgba(t.text, 0.2),
+            }}
+          />
+          <Text style={{ color: t.text, fontFamily: font.display, fontSize: 22 }}>
+            What are you doing?
+          </Text>
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            {ACTIVITIES.map((a) => {
+              const on = current === a;
+              const c = ACTIVITY_COLORS[a];
+              return (
+                <Pressable
+                  key={a}
+                  onPress={() => onSelect(a)}
+                  style={({ pressed }) => ({
+                    width: "47.5%",
+                    flexGrow: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                    paddingVertical: 14,
+                    paddingHorizontal: 14,
+                    borderRadius: radius.md,
+                    backgroundColor: on ? rgba(c, 0.22) : t.surface,
+                    borderWidth: 1,
+                    borderColor: on ? c : t.border,
+                    opacity: pressed ? 0.8 : 1,
+                    borderCurve: "continuous",
+                  })}
+                >
+                  <Text style={{ fontSize: 20 }}>{ICONS[a]}</Text>
+                  <Text
+                    style={{
+                      color: on ? c : t.text,
+                      fontFamily: font.bodySemi,
+                      fontSize: 14,
+                      flexShrink: 1,
+                    }}
+                  >
+                    {a}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {current ? (
             <Pressable
-              key={a}
-              onPress={() => onSelect(a)}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 999,
-                backgroundColor: on ? accent : colors.surface2,
+              onPress={onClear}
+              style={({ pressed }) => ({
+                alignItems: "center",
+                paddingVertical: 13,
+                borderRadius: radius.md,
+                borderWidth: 1,
+                borderColor: t.border,
+                opacity: pressed ? 0.7 : 1,
                 borderCurve: "continuous",
-              }}
+              })}
             >
-              <Text
-                style={{
-                  color: on ? colors.background : colors.muted,
-                  fontFamily: "Figtree_600SemiBold",
-                  fontSize: 12,
-                }}
-              >
-                {a}
+              <Text style={{ color: t.muted, fontFamily: font.bodySemi, fontSize: 14 }}>
+                Stop session
               </Text>
             </Pressable>
-          );
-        })}
-      </View>
-    </View>
+          ) : null}
+        </Animated.View>
+      </Animated.View>
+    </Modal>
   );
 }

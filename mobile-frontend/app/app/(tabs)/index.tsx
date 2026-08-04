@@ -1,33 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  AppState,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { AppState, RefreshControl, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import { useConnection } from "@/lib/connection";
-import { colors, pulseColor, accentColor, accentSoft } from "@/lib/theme";
+import { font, pulseColor, radius, rgba } from "@/lib/theme";
+import { useTheme } from "@/lib/theme-provider";
 import { isSilenced } from "@/lib/schedule";
 import { cacheDashboard, readDashboardCache } from "@/lib/storage";
 import type { DashboardToday, Activity } from "@/lib/types";
-import { Body, Card, Chip, Label, Loading, SectionHeader } from "@/components/ui";
-import { GrowthMeter } from "@/components/growth-meter";
-import { DayTimeline } from "@/components/day-timeline";
+import { Body, Button, Chip, Loading, SectionHeader } from "@/components/ui";
+import { GrowthHero } from "@/components/growth-hero";
 import { HabitRow } from "@/components/habit-row";
 import { CardRow } from "@/components/card-row";
+import { AgentCard, AgentSetupStrip } from "@/components/agent-card";
 import { ActivitySession } from "@/components/activity-session";
-import { VsYesterdayRow } from "@/components/vs-yesterday";
-import { XpChart } from "@/components/xp-chart";
 import { ReminderRunner } from "@/components/reminder-runner";
 import { CelebrationModal } from "@/components/celebration-modal";
+import { SwipeTabs } from "@/components/swipe-tabs";
 import { pushWidgetFromDashboard } from "@/widgets/update";
 
 export default function TodayScreen() {
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
+  const { t, osReducedMotion } = useTheme();
   const { authenticated, refreshHealth } = useConnection();
   const [stale, setStale] = useState(false);
   const [cached, setCached] = useState<DashboardToday | null>(null);
@@ -78,18 +75,16 @@ export default function TodayScreen() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(t);
+    const id = setTimeout(() => setToast(null), 2400);
+    return () => clearTimeout(id);
   }, [toast]);
 
   const data = dashQ.data ?? cached;
-  const theme = settingsQ.data?.accentTheme ?? "nebula";
-  const accent = accentColor(theme);
-  const silent = isSilenced(settingsQ.data);
+  const settings = settingsQ.data;
+  const reduce = Boolean(settings?.reducedMotion) || osReducedMotion;
+  const silent = isSilenced(settings);
   const quietOnly =
-    !settingsQ.data?.doNotDisturb &&
-    settingsQ.data?.quietHoursSilent !== false &&
-    silent;
+    !settings?.doNotDisturb && settings?.quietHoursSilent !== false && silent;
 
   const invalidate = useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -172,366 +167,204 @@ export default function TodayScreen() {
     return { events, reviews, hasAgent: events.length + reviews.length > 0 };
   }, [data]);
 
-  const celebration =
-    data?.pendingCelebrations?.[0] ?? null;
-
   if (dashQ.isLoading && !data) return <Loading />;
 
   if (dashQ.isError && !data) {
     const msg =
-      dashQ.error instanceof ApiError
-        ? dashQ.error.message
-        : "Life OS isn't running";
+      dashQ.error instanceof ApiError ? dashQ.error.message : "Life OS isn't running";
     return (
       <View
         style={{
           flex: 1,
-          backgroundColor: colors.background,
+          backgroundColor: t.bg,
           padding: 24,
           justifyContent: "center",
           gap: 12,
         }}
       >
-        <Text
-          style={{
-            color: colors.text,
-            fontFamily: "Figtree_700Bold",
-            fontSize: 22,
-          }}
-        >
+        <Text style={{ color: t.text, fontFamily: font.display, fontSize: 24 }}>
           Life OS isn&apos;t running
         </Text>
         <Body>{msg}</Body>
-        <Pressable
+        <Button
+          title="Retry"
           onPress={() => void dashQ.refetch()}
-          style={{
-            marginTop: 8,
-            backgroundColor: accent,
-            padding: 14,
-            borderRadius: 12,
-            alignItems: "center",
-          }}
-        >
-          <Text
-            style={{
-              color: colors.background,
-              fontFamily: "Figtree_600SemiBold",
-            }}
-          >
-            Retry
-          </Text>
-        </Pressable>
+          style={{ marginTop: 8 }}
+        />
       </View>
     );
   }
 
   if (!data) return <Loading />;
 
-  const p = data.progress;
-  const contentCards = (data.cards ?? []).filter(
-    (c) => c.slot === 0 || c.slot === 1,
+  const celebration = data.pendingCelebrations?.[0] ?? null;
+  const contentCards = (data.cards ?? []).filter((c) => c.slot === 0 || c.slot === 1);
+  const setupCard = (data.cards ?? []).find(
+    (c) => c.slot === 2 || c.kind === "agent-setup",
   );
-  const setupCard = (data.cards ?? []).find((c) => c.slot === 2 || c.kind === "agent-setup");
+  const upcoming = data.upcoming ?? [];
+  const laterCount = (data.scheduled?.length ?? 0) - upcoming.length;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <SwipeTabs index={0}>
       <ReminderRunner due={data.dueReminders ?? []} scheduled={data.scheduled} />
       <CelebrationModal
         goal={celebration}
-        intensity={settingsQ.data?.celebrationIntensity ?? "full"}
-        theme={theme}
+        intensity={settings?.celebrationIntensity ?? "full"}
+        reducedMotion={reduce}
         onDismiss={() => {
           if (celebration) celebrate.mutate(celebration.id);
         }}
       />
 
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 18 }}
+        contentContainerStyle={{
+          paddingTop: insets.top + 12,
+          paddingHorizontal: 18,
+          paddingBottom: 32,
+          gap: 24,
+        }}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={dashQ.isFetching && !dashQ.isLoading}
             onRefresh={() => void dashQ.refetch()}
-            tintColor={colors.muted}
+            tintColor={t.accent}
           />
         }
       >
-        {/* Status chips */}
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <Chip label={data.date} color={colors.muted} />
-          {stale ? (
-            <Chip label="stale · offline" color={colors.warning} bg="rgba(251,191,36,0.12)" />
-          ) : null}
-          {settingsQ.data?.doNotDisturb ? (
-            <Chip label="DND" color={colors.warning} bg="rgba(251,191,36,0.12)" />
-          ) : quietOnly ? (
-            <Chip label="quiet hours" color={colors.muted} bg="rgba(255,255,255,0.06)" />
-          ) : null}
-        </View>
-
-        {/* Pulse header */}
-        <View style={{ gap: 6 }}>
+        {/* ---------------------------------------------------------- header */}
+        <View style={{ gap: 10 }}>
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            <Chip label={data.date} />
+            {stale ? <Chip label="offline · cached" color={t.warning} dot /> : null}
+            {settings?.doNotDisturb ? (
+              <Chip label="Do not disturb" color={t.warning} dot />
+            ) : quietOnly ? (
+              <Chip label="Quiet hours" color={t.muted} dot />
+            ) : null}
+          </View>
           <Text
             style={{
-              color: pulseColor(data.pulse, theme),
-              fontFamily: "Figtree_700Bold",
-              fontSize: 34,
-              letterSpacing: -0.5,
+              color: pulseColor(data.pulse, t),
+              fontFamily: font.display,
+              fontSize: 38,
+              letterSpacing: -1,
             }}
           >
             {data.pulse}
           </Text>
           <Body>{data.pulseExplanation}</Body>
-          <View style={{ flexDirection: "row", gap: 16, marginTop: 4 }}>
-            <Metric
-              label="Efficiency"
-              value={`${Math.round(p.efficiencyPct)}%`}
-              color={accent}
-            />
-            <Metric
-              label="vs yesterday"
-              value={`${p.improvementPct > 0 ? "+" : ""}${p.improvementPct.toFixed(1)} pp`}
-              color={
-                p.improvementPct > 0
-                  ? colors.positive
-                  : p.improvementPct < 0
-                    ? colors.neutralNegative
-                    : colors.muted
-              }
-            />
-            <Metric
-              label="XP"
-              value={`${p.dailyXp}/${p.dailyXpTarget}`}
-              color={colors.text}
-            />
-          </View>
         </View>
 
-        {/* vs yesterday */}
-        <View>
-          <SectionHeader title="Today vs yesterday" />
-          <VsYesterdayRow vs={data.vsYesterday} />
-        </View>
+        {/* ------------------------------------------------------------ hero */}
+        <GrowthHero
+          progress={data.progress}
+          vs={data.vsYesterday}
+          reducedMotion={reduce}
+          celebrationIntensity={settings?.celebrationIntensity ?? "full"}
+        />
 
-        {/* Agent setup strip */}
-        {setupCard ? (
-          <View
-            style={{
-              backgroundColor: accentSoft(theme, 0.1),
-              borderRadius: 12,
-              padding: 12,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <Text
-              style={{
-                color: colors.muted,
-                fontFamily: "Figtree_500Medium",
-                fontSize: 13,
-              }}
-            >
-              {setupCard.emoji ? `${setupCard.emoji} ` : ""}
-              {setupCard.title}
-              {setupCard.subtitle ? ` · ${setupCard.subtitle}` : ""}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* Agent content cards */}
-        {contentCards.length > 0 ? (
-          <View style={{ gap: 10 }}>
-            <SectionHeader title="Focus" />
+        {/* ---------------------------------------------------- agent cards */}
+        {setupCard || contentCards.length > 0 ? (
+          <View style={{ gap: 12 }}>
+            <SectionHeader title="From your agent" />
+            {setupCard ? <AgentSetupStrip card={setupCard} /> : null}
             {contentCards.map((c) => (
-              <Card key={c.id} style={{ gap: 8 }}>
-                <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-                  <Text style={{ fontSize: 28 }}>{c.emoji || "✦"}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        color: colors.text,
-                        fontFamily: "Figtree_600SemiBold",
-                        fontSize: 16,
-                      }}
-                    >
-                      {c.title}
-                    </Text>
-                    {c.subtitle ? (
-                      <Text style={{ color: colors.muted, fontSize: 13 }}>
-                        {c.subtitle}
-                      </Text>
-                    ) : null}
-                  </View>
-                  {c.xpOnComplete > 0 ? (
-                    <Text
-                      style={{
-                        color: colors.positive,
-                        fontFamily: "JetBrainsMono_500Medium",
-                        fontSize: 12,
-                      }}
-                    >
-                      +{c.xpOnComplete} XP
-                    </Text>
-                  ) : null}
-                </View>
-                {c.progress > 0 ? (
-                  <View
-                    style={{
-                      height: 4,
-                      backgroundColor: colors.surface2,
-                      borderRadius: 2,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: `${Math.min(100, c.progress)}%`,
-                        height: "100%",
-                        backgroundColor: c.themeColor || accent,
-                      }}
-                    />
-                  </View>
-                ) : null}
-                <Pressable
-                  onPress={() => completeCard.mutate(c.id)}
-                  style={{
-                    alignSelf: "flex-start",
-                    backgroundColor: colors.surface2,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 10,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.text,
-                      fontFamily: "Figtree_600SemiBold",
-                      fontSize: 13,
-                    }}
-                  >
-                    Complete
-                  </Text>
-                </Pressable>
-              </Card>
+              <AgentCard key={c.id} card={c} onComplete={() => completeCard.mutate(c.id)} />
             ))}
           </View>
         ) : null}
 
-        {/* Right now */}
-        <View>
-          <SectionHeader title="Right now" />
-          <ActivitySession
-            active={data.activeSession}
-            theme={theme}
-            onSelect={(a) => setActivity.mutate(a)}
-            onClear={() => clearActivity.mutate()}
-          />
-        </View>
+        {/* ------------------------------------------------------- right now */}
+        <ActivitySession
+          active={data.activeSession}
+          onSelect={(a) => setActivity.mutate(a)}
+          onClear={() => clearActivity.mutate()}
+        />
 
-        {/* Day timeline ribbon */}
-        <View>
-          <SectionHeader title="Day shape" />
-          <DayTimeline segments={data.timeline ?? []} />
-        </View>
-
-        {/* Growth + quick log */}
-        <View style={{ gap: 14 }}>
-          <SectionHeader title="Growth" />
-          <Card>
-            <GrowthMeter
-              efficiencyPct={p.efficiencyPct}
-              style={p.growthStyle ?? "sprout"}
-              dailyXp={p.dailyXp}
-              dailyXpTarget={p.dailyXpTarget}
-              theme={theme}
-              reducedMotion={settingsQ.data?.reducedMotion}
+        {/* --------------------------------------------- up next (15 min) */}
+        {upcoming.length > 0 ? (
+          <View style={{ gap: 10 }}>
+            <SectionHeader
+              title="Up next"
+              right={
+                laterCount > 0 ? (
+                  <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 12 }}>
+                    +{laterCount} on Timeline
+                  </Text>
+                ) : null
+              }
             />
-          </Card>
-        </View>
+            {upcoming.map((c) => (
+              <CardRow
+                key={c.id}
+                card={c}
+                urgent={Boolean(c.flash && c.notifiedAt)}
+                onStart={() => startCard.mutate(c.id)}
+                onComplete={() => completeCard.mutate(c.id)}
+              />
+            ))}
+          </View>
+        ) : null}
 
-        {/* Quick log — agent items first; hide habits while any agent item open */}
+        {/* -------------------------------------------------------- quick log */}
         <View style={{ gap: 10 }}>
-          <SectionHeader title="Quick log" />
+          <SectionHeader title={pendingAgent.hasAgent ? "Needs you" : "Quick log"} />
           {pendingAgent.hasAgent ? (
             <>
               {pendingAgent.events.map((ev) => (
-                <Card key={ev.id} style={{ gap: 8 }}>
-                  <Text
-                    style={{
-                      color: colors.text,
-                      fontFamily: "Figtree_600SemiBold",
-                      fontSize: 15,
-                    }}
-                  >
+                <View
+                  key={ev.id}
+                  style={{
+                    gap: 10,
+                    backgroundColor: rgba(t.accent, 0.08),
+                    borderWidth: 1,
+                    borderColor: rgba(t.accent, 0.24),
+                    borderRadius: radius.lg,
+                    padding: 16,
+                    borderCurve: "continuous",
+                  }}
+                >
+                  <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
                     {ev.title}
                   </Text>
-                  {ev.body ? (
-                    <Text style={{ color: colors.muted, fontSize: 13 }}>{ev.body}</Text>
-                  ) : null}
+                  {ev.body ? <Body>{ev.body}</Body> : null}
                   <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Pressable
+                    <Button
+                      title={`Done${ev.xpOnComplete ? ` · +${ev.xpOnComplete}` : ""}`}
                       onPress={() => completeEvent.mutate(ev.id)}
-                      style={{
-                        backgroundColor: accent,
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                        borderRadius: 10,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: colors.background,
-                          fontFamily: "Figtree_600SemiBold",
-                          fontSize: 13,
-                        }}
-                      >
-                        Done
-                        {ev.xpOnComplete ? ` · +${ev.xpOnComplete}` : ""}
-                      </Text>
-                    </Pressable>
-                    <Pressable
+                    />
+                    <Button
+                      title="Dismiss"
+                      variant="ghost"
                       onPress={() => dismissEvent.mutate(ev.id)}
-                      style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                      }}
-                    >
-                      <Text style={{ color: colors.faint }}>Dismiss</Text>
-                    </Pressable>
+                    />
                   </View>
-                </Card>
+                </View>
               ))}
               {pendingAgent.reviews.map((r) => (
-                <Card key={r.id} style={{ gap: 8 }}>
-                  <Text
-                    style={{
-                      color: colors.text,
-                      fontFamily: "Figtree_600SemiBold",
-                      fontSize: 15,
-                    }}
-                  >
+                <View
+                  key={r.id}
+                  style={{
+                    gap: 10,
+                    backgroundColor: rgba(t.accent, 0.08),
+                    borderWidth: 1,
+                    borderColor: rgba(t.accent, 0.24),
+                    borderRadius: radius.lg,
+                    padding: 16,
+                    borderCurve: "continuous",
+                  }}
+                >
+                  <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
                     {r.prompt}
                   </Text>
-                  <Pressable
+                  <Button
+                    title="Complete review"
                     onPress={() => completeReview.mutate(r.id)}
-                    style={{
-                      alignSelf: "flex-start",
-                      backgroundColor: accent,
-                      paddingHorizontal: 14,
-                      paddingVertical: 8,
-                      borderRadius: 10,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: colors.background,
-                        fontFamily: "Figtree_600SemiBold",
-                        fontSize: 13,
-                      }}
-                    >
-                      Complete review
-                    </Text>
-                  </Pressable>
-                </Card>
+                    style={{ alignSelf: "flex-start" }}
+                  />
+                </View>
               ))}
             </>
           ) : (
@@ -539,7 +372,7 @@ export default function TodayScreen() {
               <HabitRow
                 key={h.id}
                 habit={h}
-                streaksEnabled={settingsQ.data?.streaksEnabled !== false}
+                streaksEnabled={settings?.streaksEnabled !== false}
                 busy={completeHabit.isPending || undoHabit.isPending}
                 onToggle={() => {
                   if (h.completedToday) undoHabit.mutate(h.id);
@@ -550,90 +383,40 @@ export default function TodayScreen() {
           )}
         </View>
 
-        <XpChart series={data.xpSeries7 ?? []} theme={theme} />
-
-        {/* Up next — 15 min only */}
-        <View style={{ gap: 10 }}>
-          <SectionHeader
-            title="Up next"
-            right={
-              (data.scheduled?.length ?? 0) > (data.upcoming?.length ?? 0) ? (
-                <Text style={{ color: colors.faint, fontSize: 12 }}>
-                  +{(data.scheduled?.length ?? 0) - (data.upcoming?.length ?? 0)}{" "}
-                  later · Timeline
-                </Text>
-              ) : null
-            }
-          />
-          {(data.upcoming ?? []).length === 0 ? (
-            <Body>Nothing in the next 15 minutes.</Body>
-          ) : (
-            data.upcoming.map((c) => (
-              <CardRow
-                key={c.id}
-                card={c}
-                urgent={Boolean(c.flash && c.notifiedAt)}
-                onStart={() => startCard.mutate(c.id)}
-                onComplete={() => completeCard.mutate(c.id)}
-              />
-            ))
-          )}
-        </View>
+        <Text
+          style={{
+            textAlign: "center",
+            color: t.faint,
+            fontFamily: font.body,
+            fontSize: 12,
+          }}
+        >
+          Swipe left for your timeline
+        </Text>
       </ScrollView>
 
       {toast ? (
-        <View
+        <Animated.View
+          entering={FadeInDown.duration(180)}
+          exiting={FadeOut.duration(150)}
           pointerEvents="none"
           style={{
             position: "absolute",
-            bottom: 24,
+            bottom: 22,
             alignSelf: "center",
-            backgroundColor: colors.surface2,
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            borderRadius: 999,
+            backgroundColor: t.surface2,
+            paddingHorizontal: 18,
+            paddingVertical: 11,
+            borderRadius: radius.pill,
             borderWidth: 1,
-            borderColor: colors.border,
+            borderColor: rgba(t.accent, 0.3),
           }}
         >
-          <Text
-            style={{
-              color: colors.text,
-              fontFamily: "Figtree_500Medium",
-              fontSize: 13,
-            }}
-          >
+          <Text style={{ color: t.text, fontFamily: font.bodySemi, fontSize: 13 }}>
             {toast}
           </Text>
-        </View>
+        </Animated.View>
       ) : null}
-    </View>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string;
-  color: string;
-}) {
-  return (
-    <View>
-      <Label>{label}</Label>
-      <Text
-        style={{
-          color,
-          fontFamily: "JetBrainsMono_600SemiBold",
-          fontSize: 16,
-          marginTop: 2,
-          fontVariant: ["tabular-nums"],
-        }}
-      >
-        {value}
-      </Text>
-    </View>
+    </SwipeTabs>
   );
 }

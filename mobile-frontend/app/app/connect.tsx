@@ -11,24 +11,24 @@ import { useRouter } from "expo-router";
 import { useConnection } from "@/lib/connection";
 import { checkHealth, ApiError } from "@/lib/api";
 import { looksLikeWebUiPort } from "@/lib/storage";
-import { colors, accentColor } from "@/lib/theme";
+import { font, radius } from "@/lib/theme";
+import { useTokens } from "@/lib/theme-provider";
 import { Button, Body, Title, Label, Card } from "@/components/ui";
 
-type Mode = "token" | "login";
-
+/**
+ * First-run (and re-auth) screen. Only two fields: server URL + API token.
+ * Login with username/password is gone (POST /auth/login → 410).
+ */
 export default function ConnectScreen() {
-  const { connectWithToken, connectWithLogin, baseUrl } = useConnection();
+  const t = useTokens();
+  const { connectWithToken, baseUrl } = useConnection();
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("token");
   const [url, setUrl] = useState(baseUrl ?? "http://192.168.1.1:8787");
   const webUiPort = looksLikeWebUiPort(url);
   const [token, setToken] = useState("");
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("lifeos");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [healthNote, setHealthNote] = useState<string | null>(null);
-  const accent = accentColor("nebula");
 
   async function onTest() {
     setError(null);
@@ -36,17 +36,14 @@ export default function ConnectScreen() {
     setBusy(true);
     try {
       const h = await checkHealth(url);
-      setHealthNote(
-        h.ok
-          ? `Reachable · storage=${h.storage}${h.lan ? " · LAN" : " · loopback only"}`
-          : "Unexpected health response",
-      );
+      let note = h.ok
+        ? `Reachable · storage=${h.storage}${h.lan ? " · LAN" : " · loopback only"}`
+        : "Unexpected health response";
       if (h.lan === false) {
-        setHealthNote(
-          (n) =>
-            `${n}\nTip: set API_HOST=0.0.0.0 on the server so your phone can connect.`,
-        );
+        note +=
+          "\nTip: set API_HOST=0.0.0.0 on the server so your phone can connect.";
       }
+      setHealthNote(note);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unreachable");
     } finally {
@@ -58,16 +55,12 @@ export default function ConnectScreen() {
     setError(null);
     setBusy(true);
     try {
-      if (mode === "token") {
-        if (!token.trim()) throw new Error("Paste your API_TOKEN");
-        await connectWithToken(url, token.trim());
-      } else {
-        await connectWithLogin(url, username.trim(), password);
-      }
+      if (!token.trim()) throw new Error("Paste your API_TOKEN from .env");
+      await connectWithToken(url, token.trim());
       router.replace("/(tabs)");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        setError("Wrong token or credentials");
+        setError("Wrong API token — check API_TOKEN in your Life OS .env");
       } else {
         setError(e instanceof Error ? e.message : "Connection failed");
       }
@@ -78,7 +71,7 @@ export default function ConnectScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
+      style={{ flex: 1, backgroundColor: t.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
@@ -91,15 +84,28 @@ export default function ConnectScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ gap: 6 }}>
-          <Text style={{ fontSize: 40 }}>◈</Text>
+          <Text style={{ fontSize: 44, color: t.accent }}>◈</Text>
           <Title>Connect to Life OS</Title>
           <Body>
-            This app talks to the Life OS server on your machine. Enter the LAN
-            address printed when the API starts, and your API token from{" "}
-            <Text style={{ fontFamily: "JetBrainsMono_500Medium", color: colors.text }}>
+            One credential: the API token from your machine&apos;s Life OS{" "}
+            <Text
+              style={{
+                fontFamily: font.mono,
+                color: t.text,
+              }}
+            >
               .env
+            </Text>{" "}
+            (
+            <Text
+              style={{
+                fontFamily: font.mono,
+                color: t.text,
+              }}
+            >
+              API_TOKEN
             </Text>
-            .
+            ). There is no username or password.
           </Body>
         </View>
 
@@ -116,23 +122,30 @@ export default function ConnectScreen() {
           {webUiPort ? (
             <Text
               style={{
-                color: colors.warning,
-                fontFamily: "Figtree_500Medium",
+                color: t.warning,
+                fontFamily: font.bodyMedium,
                 fontSize: 13,
               }}
             >
-              Port 5173 is the web UI (Vite), not the API. Use port{" "}
-              <Text style={{ fontFamily: "JetBrainsMono_500Medium" }}>8787</Text>{" "}
-              — e.g. http://192.168.29.131:8787
+              Port 5173 is the web UI, not the API. Use{" "}
+              <Text style={{ fontFamily: font.mono }}>
+                8787
+              </Text>
+              .
             </Text>
           ) : null}
-          <Button title="Test connection" variant="soft" onPress={onTest} disabled={busy} />
+          <Button
+            title="Test connection"
+            variant="soft"
+            onPress={onTest}
+            disabled={busy}
+          />
           {healthNote ? (
             <Text
               selectable
               style={{
-                color: colors.positive,
-                fontFamily: "Figtree_400Regular",
+                color: t.positive,
+                fontFamily: font.body,
                 fontSize: 13,
               }}
             >
@@ -141,61 +154,34 @@ export default function ConnectScreen() {
           ) : null}
         </Card>
 
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["token", "login"] as Mode[]).map((m) => (
-            <Button
-              key={m}
-              title={m === "token" ? "API token" : "Login"}
-              variant={mode === m ? "primary" : "soft"}
-              accent={accent}
-              onPress={() => setMode(m)}
-              style={{ flex: 1 }}
-            />
-          ))}
-        </View>
-
         <Card style={{ gap: 12 }}>
-          {mode === "token" ? (
-            <>
-              <Label>API_TOKEN</Label>
-              <Field
-                value={token}
-                onChangeText={setToken}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="lifeos-local-agent-token"
-                secureTextEntry
-              />
-              <Body>
-                Stored in the device secure store. Never logged. This is the same
-                token agents use.
-              </Body>
-            </>
-          ) : (
-            <>
-              <Label>Username</Label>
-              <Field
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <Label>Password</Label>
-              <Field
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-            </>
-          )}
+          <Label>API_TOKEN</Label>
+          <Field
+            value={token}
+            onChangeText={setToken}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="Paste token from .env"
+            secureTextEntry
+            autoComplete="off"
+            textContentType="password"
+          />
+          <Body>
+            Stored in the device secure store (Keystore). Never logged. Same
+            token agents use. Validated with{" "}
+            <Text style={{ fontFamily: font.mono }}>
+              GET /api/v1/auth/me
+            </Text>
+            .
+          </Body>
         </Card>
 
         {error ? (
           <Text
             selectable
             style={{
-              color: colors.warning,
-              fontFamily: "Figtree_500Medium",
+              color: t.warning,
+              fontFamily: font.bodyMedium,
               fontSize: 14,
             }}
           >
@@ -205,14 +191,13 @@ export default function ConnectScreen() {
 
         <Button
           title={busy ? "Connecting…" : "Connect"}
-          accent={accent}
           onPress={onConnect}
           disabled={busy}
         />
 
         <Body style={{ marginTop: 8 }}>
-          Need LAN access? On the PC: set API_HOST=0.0.0.0, restart the API, then
-          use the address it prints.
+          Need LAN access? On the PC: set API_HOST=0.0.0.0, restart the API,
+          then use the address it prints.
         </Body>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -220,19 +205,20 @@ export default function ConnectScreen() {
 }
 
 function Field(props: ComponentProps<typeof TextInput>) {
+  const t = useTokens();
   return (
     <TextInput
-      placeholderTextColor={colors.faint}
+      placeholderTextColor={t.faint}
       style={{
-        backgroundColor: colors.surface2,
-        borderRadius: 12,
+        backgroundColor: t.surface2,
+        borderRadius: radius.md,
         borderWidth: 1,
-        borderColor: colors.border,
-        color: colors.text,
-        fontFamily: "JetBrainsMono_500Medium",
+        borderColor: t.border,
+        color: t.text,
+        fontFamily: font.mono,
         fontSize: 14,
         paddingHorizontal: 14,
-        paddingVertical: 12,
+        paddingVertical: 13,
       }}
       {...props}
     />

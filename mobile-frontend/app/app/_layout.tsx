@@ -11,12 +11,17 @@ import {
   Figtree_700Bold,
 } from "@expo-google-fonts/figtree";
 import {
+  Outfit_600SemiBold,
+  Outfit_700Bold,
+} from "@expo-google-fonts/outfit";
+import {
   JetBrainsMono_500Medium,
   JetBrainsMono_600SemiBold,
 } from "@expo-google-fonts/jetbrains-mono";
 import * as SystemUI from "expo-system-ui";
 import { ConnectionProvider, useConnection } from "@/lib/connection";
-import { colors } from "@/lib/theme";
+import { ThemeProvider, useTokens } from "@/lib/theme-provider";
+import { font } from "@/lib/theme";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -37,13 +42,11 @@ export default function RootLayout() {
     Figtree_500Medium,
     Figtree_600SemiBold,
     Figtree_700Bold,
+    Outfit_600SemiBold,
+    Outfit_700Bold,
     JetBrainsMono_500Medium,
     JetBrainsMono_600SemiBold,
   });
-
-  useEffect(() => {
-    void SystemUI.setBackgroundColorAsync(colors.background);
-  }, []);
 
   useEffect(() => {
     if (error) throw error;
@@ -57,18 +60,25 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ConnectionProvider>
-        <StatusBar style="light" />
-        <RootNav />
-      </ConnectionProvider>
+      <ThemeProvider>
+        <ConnectionProvider>
+          <StatusBar style="light" />
+          <RootNav />
+        </ConnectionProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
 
 function RootNav() {
   const { ready, authenticated } = useConnection();
+  const t = useTokens();
   const segments = useSegments();
   const router = useRouter();
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(t.bg);
+  }, [t.bg]);
 
   useEffect(() => {
     if (!ready) return;
@@ -83,10 +93,10 @@ function RootNav() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontFamily: "Figtree_600SemiBold" },
-        contentStyle: { backgroundColor: colors.background },
+        headerStyle: { backgroundColor: t.bg },
+        headerTintColor: t.text,
+        headerTitleStyle: { fontFamily: font.title },
+        contentStyle: { backgroundColor: t.bg },
         headerShadowVisible: false,
       }}
     >

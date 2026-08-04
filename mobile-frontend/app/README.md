@@ -19,7 +19,7 @@ to the API over HTTP only. See `../CLIENT_GUIDE.md` for product contracts and
 | **Timeline** | Full day shape + every scheduled card grouped by day |
 | **Goals** | Read-only goals + agent properties |
 | **Settings** | Connection, DND, sounds, accent, surfaces |
-| **Connect** | Server URL + API token or session login |
+| **Connect** | Server URL + API token only (validated via `/auth/me`) |
 
 ## Contracts implemented
 

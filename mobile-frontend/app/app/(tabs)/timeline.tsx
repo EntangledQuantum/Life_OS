@@ -2,32 +2,36 @@ import { useMemo, useState, useEffect } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { colors, accentColor } from "@/lib/theme";
+import { font, radius } from "@/lib/theme";
+import { useTokens } from "@/lib/theme-provider";
 import { dayKey, labelDay } from "@/lib/format";
 import type { DashboardCard } from "@/lib/types";
 import { Body, Loading, SectionHeader } from "@/components/ui";
 import { DayTimeline } from "@/components/day-timeline";
+import { VsYesterdayRow } from "@/components/vs-yesterday";
+import { XpChart } from "@/components/xp-chart";
 import { CardRow } from "@/components/card-row";
+import { SwipeTabs } from "@/components/swipe-tabs";
 
+/**
+ * Everything time-shaped lives here: the day ribbon, how today compares, the
+ * agent's full schedule, and the week. Today's screen only carries the next
+ * fifteen minutes, so this is where the rest goes.
+ */
 export default function TimelineScreen() {
   const qc = useQueryClient();
+  const t = useTokens();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
   }, []);
 
   const dashQ = useQuery({
     queryKey: ["dashboard"],
     queryFn: api.dashboard,
     refetchInterval: 15_000,
-  });
-
-  const settingsQ = useQuery({
-    queryKey: ["settings"],
-    queryFn: api.settings,
-    staleTime: 30_000,
   });
 
   const start = useMutation({
@@ -41,6 +45,7 @@ export default function TimelineScreen() {
   });
 
   const groups = useMemo(() => {
+    void now; // re-group as the clock moves
     const scheduled = dashQ.data?.scheduled ?? [];
     const byDay = new Map<string, DashboardCard[]>();
     for (const card of scheduled) {
@@ -53,9 +58,7 @@ export default function TimelineScreen() {
     }
     for (const list of byDay.values()) {
       list.sort((a, b) =>
-        (a.eventAt ?? a.remindAt ?? "").localeCompare(
-          b.eventAt ?? b.remindAt ?? "",
-        ),
+        (a.eventAt ?? a.remindAt ?? "").localeCompare(b.eventAt ?? b.remindAt ?? ""),
       );
     }
     const keys = [...byDay.keys()].sort((a, b) => {
@@ -66,92 +69,108 @@ export default function TimelineScreen() {
     return keys.map((k) => ({ key: k, cards: byDay.get(k)! }));
   }, [dashQ.data?.scheduled, now]);
 
-  const doneToday = useMemo(() => {
-    return (dashQ.data?.scheduled ?? []).filter((c) => c.status === "done");
-  }, [dashQ.data?.scheduled]);
+  const doneToday = useMemo(
+    () => (dashQ.data?.scheduled ?? []).filter((c) => c.status === "done"),
+    [dashQ.data?.scheduled],
+  );
 
   if (dashQ.isLoading && !dashQ.data) return <Loading />;
 
-  const theme = settingsQ.data?.accentTheme ?? "nebula";
-  void theme;
-  void accentColor;
-
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 18 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={dashQ.isFetching && !dashQ.isLoading}
-          onRefresh={() => void dashQ.refetch()}
-          tintColor={colors.muted}
-        />
-      }
-    >
-      <View>
-        <SectionHeader title="Today's shape" />
-        <DayTimeline segments={dashQ.data?.timeline ?? []} />
-      </View>
+    <SwipeTabs index={1}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: t.bg }}
+        contentContainerStyle={{ padding: 18, paddingBottom: 36, gap: 24 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={dashQ.isFetching && !dashQ.isLoading}
+            onRefresh={() => void dashQ.refetch()}
+            tintColor={t.accent}
+          />
+        }
+      >
+        <View>
+          <SectionHeader title="Today's shape" />
+          <DayTimeline segments={dashQ.data?.timeline ?? []} />
+        </View>
 
-      {groups.length === 0 ? (
-        <Body>Nothing scheduled. Your agent will fill this in.</Body>
-      ) : (
-        groups.map((g) => (
-          <View key={g.key} style={{ gap: 10 }}>
-            <SectionHeader title={labelDay(g.key)} />
-            {g.cards.map((c) => (
-              <CardRow
-                key={c.id}
-                card={c}
-                urgent={Boolean(c.notifiedAt && c.flash)}
-                onStart={() => start.mutate(c.id)}
-                onComplete={() => complete.mutate(c.id)}
-              />
-            ))}
+        {dashQ.data?.vsYesterday ? (
+          <View>
+            <SectionHeader title="Today vs yesterday" />
+            <VsYesterdayRow vs={dashQ.data.vsYesterday} />
           </View>
-        ))
-      )}
+        ) : null}
 
-      {doneToday.length > 0 ? (
-        <View style={{ gap: 10, opacity: 0.7 }}>
-          <SectionHeader title="Done today" />
-          {doneToday.map((c) => (
-            <View
-              key={c.id}
-              style={{
-                flexDirection: "row",
-                gap: 10,
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-              }}
-            >
-              <Text style={{ fontSize: 18 }}>{c.emoji || "✓"}</Text>
-              <Text
+        {groups.length === 0 ? (
+          <Body>Nothing scheduled. Your agent will fill this in.</Body>
+        ) : (
+          groups.map((g) => (
+            <View key={g.key} style={{ gap: 10 }}>
+              <SectionHeader
+                title={labelDay(g.key)}
+                right={
+                  <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 11 }}>
+                    {g.cards.length}
+                  </Text>
+                }
+              />
+              {g.cards.map((c) => (
+                <CardRow
+                  key={c.id}
+                  card={c}
+                  urgent={Boolean(c.notifiedAt && c.flash)}
+                  onStart={() => start.mutate(c.id)}
+                  onComplete={() => complete.mutate(c.id)}
+                />
+              ))}
+            </View>
+          ))
+        )}
+
+        <XpChart series={dashQ.data?.xpSeries7 ?? []} />
+
+        {doneToday.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            <SectionHeader title="Done today" />
+            {doneToday.map((c) => (
+              <View
+                key={c.id}
                 style={{
-                  color: colors.muted,
-                  fontFamily: "Figtree_500Medium",
-                  fontSize: 14,
-                  textDecorationLine: "line-through",
-                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  paddingVertical: 9,
+                  paddingHorizontal: 12,
+                  borderRadius: radius.md,
+                  backgroundColor: t.surface,
+                  opacity: 0.65,
+                  borderCurve: "continuous",
                 }}
               >
-                {c.title}
-              </Text>
-              {c.xpOnComplete > 0 ? (
+                <Text style={{ fontSize: 16 }}>{c.emoji || "✓"}</Text>
                 <Text
                   style={{
-                    color: colors.positive,
-                    fontFamily: "JetBrainsMono_500Medium",
-                    fontSize: 12,
+                    color: t.muted,
+                    fontFamily: font.bodyMedium,
+                    fontSize: 14,
+                    textDecorationLine: "line-through",
+                    flex: 1,
                   }}
+                  numberOfLines={1}
                 >
-                  +{c.xpOnComplete} XP
+                  {c.title}
                 </Text>
-              ) : null}
-            </View>
-          ))}
-        </View>
-      ) : null}
-    </ScrollView>
+                {c.xpOnComplete > 0 ? (
+                  <Text style={{ color: t.positive, fontFamily: font.mono, fontSize: 12 }}>
+                    +{c.xpOnComplete} XP
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
+    </SwipeTabs>
   );
 }

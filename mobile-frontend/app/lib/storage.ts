@@ -4,68 +4,55 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const KEYS = {
   token: "lifeos_token",
   baseUrl: "lifeos_base_url",
-  username: "lifeos_username",
   dashboardCache: "lifeos_dashboard_cache",
+  palette: "lifeos_palette",
 } as const;
 
 /**
- * SecureStore works on iOS/Android. On web (and any SecureStore failure) fall
- * back to AsyncStorage so Connect still works in the browser for UI testing.
- * Production mobile always uses the secure path.
+ * Token storage: SecureStore on iOS/Android (Keystore-backed).
+ * Never store the API token in plain AsyncStorage on native.
+ * Web falls back to AsyncStorage only for Expo web UI testing.
  */
-const useSecure =
-  Platform.OS === "ios" || Platform.OS === "android";
+const nativeSecure = Platform.OS === "ios" || Platform.OS === "android";
 
-async function secretGet(key: string): Promise<string | null> {
-  if (useSecure) {
-    try {
-      const SecureStore = await import("expo-secure-store");
-      return await SecureStore.getItemAsync(key);
-    } catch {
-      /* fall through */
-    }
+async function tokenGet(): Promise<string | null> {
+  if (nativeSecure) {
+    const SecureStore = await import("expo-secure-store");
+    return SecureStore.getItemAsync(KEYS.token);
   }
-  return AsyncStorage.getItem(key);
+  return AsyncStorage.getItem(KEYS.token);
 }
 
-async function secretSet(key: string, value: string): Promise<void> {
-  if (useSecure) {
-    try {
-      const SecureStore = await import("expo-secure-store");
-      await SecureStore.setItemAsync(key, value);
-      return;
-    } catch {
-      /* fall through */
-    }
+async function tokenSet(value: string): Promise<void> {
+  if (nativeSecure) {
+    const SecureStore = await import("expo-secure-store");
+    await SecureStore.setItemAsync(KEYS.token, value);
+    return;
   }
-  await AsyncStorage.setItem(key, value);
+  await AsyncStorage.setItem(KEYS.token, value);
 }
 
-async function secretDelete(key: string): Promise<void> {
-  if (useSecure) {
-    try {
-      const SecureStore = await import("expo-secure-store");
-      await SecureStore.deleteItemAsync(key);
-      return;
-    } catch {
-      /* fall through */
-    }
+async function tokenDelete(): Promise<void> {
+  if (nativeSecure) {
+    const SecureStore = await import("expo-secure-store");
+    await SecureStore.deleteItemAsync(KEYS.token);
+    return;
   }
-  await AsyncStorage.removeItem(key);
+  await AsyncStorage.removeItem(KEYS.token);
 }
 
-/** Token — SecureStore on native, AsyncStorage on web. Never log it. */
+/** API token — never log it. */
 export async function getToken(): Promise<string | null> {
   try {
-    return await secretGet(KEYS.token);
+    return await tokenGet();
   } catch {
     return null;
   }
 }
 
 export async function setToken(token: string | null): Promise<void> {
-  if (token) await secretSet(KEYS.token, token);
-  else await secretDelete(KEYS.token);
+  if (token) await tokenSet(token);
+  else await tokenDelete();
 }
 
 export async function getBaseUrl(): Promise<string | null> {
@@ -77,13 +64,17 @@ export async function setBaseUrl(url: string | null): Promise<void> {
   else await AsyncStorage.removeItem(KEYS.baseUrl);
 }
 
-export async function getUsername(): Promise<string | null> {
-  return AsyncStorage.getItem(KEYS.username);
+/** Palette is a device-local look, not a server setting. */
+export async function getPalette(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(KEYS.palette);
+  } catch {
+    return null;
+  }
 }
 
-export async function setUsername(name: string | null): Promise<void> {
-  if (name) await AsyncStorage.setItem(KEYS.username, name);
-  else await AsyncStorage.removeItem(KEYS.username);
+export async function setPalette(id: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.palette, id);
 }
 
 export async function cacheDashboard(json: string): Promise<void> {
@@ -94,9 +85,9 @@ export async function readDashboardCache(): Promise<string | null> {
   return AsyncStorage.getItem(KEYS.dashboardCache);
 }
 
+/** Clear the API token (and only that). Base URL can stay for re-entry. */
 export async function clearSession(): Promise<void> {
   await setToken(null);
-  await setUsername(null);
 }
 
 /** Strip trailing slash; ensure http(s). */
@@ -106,9 +97,7 @@ export function normalizeBaseUrl(raw: string): string {
   return u;
 }
 
-/**
- * Soft hint when the URL looks like the Vite web UI (5173) instead of the API (8787).
- */
+/** Soft hint when the URL looks like the Vite web UI (5173) instead of the API (8787). */
 export function looksLikeWebUiPort(url: string): boolean {
   try {
     const u = new URL(normalizeBaseUrl(url));
