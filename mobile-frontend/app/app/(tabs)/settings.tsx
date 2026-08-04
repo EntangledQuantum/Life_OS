@@ -18,8 +18,10 @@ import { useTheme } from "@/lib/theme-provider";
 import {
   NOTIFICATION_SOUNDS,
   type AccentThemeId,
+  type GrowthStyle,
   type NotificationSoundId,
 } from "@/lib/types";
+import { GrowthMeter } from "@/components/growth-meter";
 import { Body, Button, Card, Label, Loading, SectionHeader } from "@/components/ui";
 import { SwipeTabs } from "@/components/swipe-tabs";
 
@@ -31,6 +33,25 @@ export default function SettingsScreen() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: api.settings });
+
+  const configQ = useQuery({
+    queryKey: ["gamification"],
+    queryFn: api.gamificationConfig,
+    staleTime: 30_000,
+  });
+
+  const patchConfig = useMutation({
+    mutationFn: (body: { growthStyle: GrowthStyle }) =>
+      api.updateGamificationConfig(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["gamification"] });
+      // The dashboard carries growthStyle in `progress`, so it has to refetch.
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+      setMsg("Saved");
+      setTimeout(() => setMsg(null), 1500);
+    },
+    onError: (e: Error) => setMsg(e.message),
+  });
 
   const patch = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.updateSettings(body as never),
@@ -53,6 +74,40 @@ export default function SettingsScreen() {
         contentContainerStyle={{ padding: 18, paddingBottom: 44, gap: 22 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* --------------------------------------------------- growth meter */}
+        <View>
+          <SectionHeader title="Growth meter" />
+          <Card style={{ gap: 14 }}>
+            <Body>
+              How today&apos;s progress is drawn. Both show the full day ghosted
+              behind where you actually are.
+            </Body>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              {(
+                [
+                  ["sprout", "Sprout", "grows leaf by leaf"],
+                  ["orb", "Orb", "fills with light"],
+                ] as [GrowthStyle, string, string][]
+              ).map(([id, name, hint]) => (
+                <GrowthChoice
+                  key={id}
+                  id={id}
+                  name={name}
+                  hint={hint}
+                  selected={configQ.data?.growthStyle === id}
+                  busy={patchConfig.isPending}
+                  reducedMotion={s.reducedMotion}
+                  onPress={() => {
+                    if (configQ.data?.growthStyle === id) return;
+                    void Haptics.selectionAsync();
+                    patchConfig.mutate({ growthStyle: id });
+                  }}
+                />
+              ))}
+            </View>
+          </Card>
+        </View>
+
         {/* ------------------------------------------------------ appearance */}
         <View>
           <SectionHeader title="Theme" />
@@ -282,6 +337,72 @@ export default function SettingsScreen() {
 }
 
 /* --------------------------------------------------------------- pieces */
+
+/**
+ * A live preview you pick by tapping it. A sample percentage rather than the
+ * real one, so both tiles look the same and you are comparing the drawing
+ * rather than the day.
+ */
+function GrowthChoice({
+  id,
+  name,
+  hint,
+  selected,
+  busy,
+  reducedMotion,
+  onPress,
+}: {
+  id: GrowthStyle;
+  name: string;
+  hint: string;
+  selected: boolean;
+  busy: boolean;
+  reducedMotion: boolean;
+  onPress: () => void;
+}) {
+  const t = useTheme().t;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={busy}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      style={({ pressed }) => ({
+        flex: 1,
+        alignItems: "center",
+        gap: 8,
+        paddingVertical: 14,
+        borderRadius: radius.md,
+        backgroundColor: selected ? rgba(t.accent, 0.12) : t.surface2,
+        borderWidth: 1.5,
+        borderColor: selected ? t.accent : "transparent",
+        opacity: busy ? 0.6 : pressed ? 0.85 : 1,
+        borderCurve: "continuous",
+      })}
+    >
+      <GrowthMeter
+        efficiencyPct={62}
+        style={id}
+        size={104}
+        reducedMotion={reducedMotion}
+        celebrationIntensity="minimal"
+        showReadout={false}
+      />
+      <Text
+        style={{
+          color: selected ? t.accent : t.text,
+          fontFamily: font.bodySemi,
+          fontSize: 14,
+        }}
+      >
+        {name}
+      </Text>
+      <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 11 }}>
+        {hint}
+      </Text>
+    </Pressable>
+  );
+}
 
 function Swatch({
   id,

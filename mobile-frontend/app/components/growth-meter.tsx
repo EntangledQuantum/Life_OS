@@ -51,12 +51,19 @@ export function GrowthMeter({
   size = 240,
   reducedMotion = false,
   celebrationIntensity = "full",
+  showReadout = true,
 }: {
   efficiencyPct: number;
   style?: GrowthStyle;
   size?: number;
   reducedMotion?: boolean;
   celebrationIntensity?: CelebrationIntensity;
+  /**
+   * Off when the meter is a sample rather than your day — a picker tile is
+   * already labelled, and "62% of today" on something that is not today reads
+   * as a real number.
+   */
+  showReadout?: boolean;
 }) {
   const t = useTokens();
   const pct = Math.min(100, Math.max(0, efficiencyPct));
@@ -76,7 +83,9 @@ export function GrowthMeter({
       ) : (
         <Sprout pct={pct} full={full} size={size} t={t} reduce={reducedMotion} />
       )}
-      <Readout pct={pct} full={full} size={size} t={t} style={style} />
+      {showReadout ? (
+        <Readout pct={pct} full={full} size={size} t={t} style={style} />
+      ) : null}
     </View>
   );
 }

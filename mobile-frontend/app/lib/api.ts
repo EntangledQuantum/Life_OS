@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   DashboardToday,
+  GamificationConfig,
   HealthResponse,
   HabitWithToday,
   Goal,
@@ -162,6 +163,20 @@ export const api = {
 
   updateSettings: (body: Partial<AppSettings>) =>
     request<AppSettings>("/api/v1/settings", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * The growth meter style lives in the gamification config, not in settings —
+   * it is part of the XP model rather than a display preference. Read it from
+   * `dashboard.progress.growthStyle`; write it here.
+   */
+  gamificationConfig: () =>
+    request<GamificationConfig>("/api/v1/gamification/config"),
+
+  updateGamificationConfig: (body: Partial<GamificationConfig>) =>
+    request<GamificationConfig>("/api/v1/gamification/config", {
       method: "PATCH",
       body: JSON.stringify(body),
     }),

@@ -187,6 +187,22 @@ export interface UserProgress {
   growthStyle: GrowthStyle;
 }
 
+/**
+ * `GET/PATCH /api/v1/gamification/config`. Separate from AppSettings on
+ * purpose — this is the XP model, not display preferences.
+ */
+export interface GamificationConfig {
+  dailyXpTarget: number;
+  growthStyle: GrowthStyle;
+  baseMultipliers: {
+    inspired: number;
+    feynman: number;
+    retrieval: number;
+    tinyHabit: number;
+    fullBlock: number;
+  };
+}
+
 export interface AppSettings {
   gamificationEnabled: boolean;
   streaksEnabled: boolean;
