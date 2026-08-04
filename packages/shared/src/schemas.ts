@@ -34,11 +34,6 @@ const growthStyleSchema = z
   .enum([...GROWTH_STYLES, ...LEGACY_GROWTH_STYLES])
   .transform((v): GrowthStyle => normalizeGrowthStyle(v));
 
-export const loginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-});
-
 export const createHabitSchema = z.object({
   name: z.string().min(1).max(120),
   emoji: z.string().min(1).max(16).default("✨"),

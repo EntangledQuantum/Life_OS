@@ -17,11 +17,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-    credentials: "include",
-  });
+  // No `credentials: "include"` — auth is the bearer header only. A cookie
+  // would ride along automatically on cross-site requests, which is the whole
+  // CSRF problem.
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (!res.ok) {
     let message = res.statusText;
@@ -39,12 +38,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  login: (username: string, password: string) =>
-    request<{ token: string; username: string }>("/api/v1/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    }),
-  logout: () => request("/api/v1/auth/logout", { method: "POST" }),
+  /** Validates whatever token is currently stored. There is no login call. */
   me: () => request<{ username: string; role: string }>("/api/v1/auth/me"),
   dashboard: () =>
     request<import("@life-os/shared").DashboardToday>("/api/v1/dashboard/today"),

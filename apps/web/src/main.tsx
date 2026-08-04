@@ -6,7 +6,7 @@ import { Toaster } from "sonner";
 import "./index.css";
 import { AppShell } from "./components/AppShell";
 import { LandingPage } from "./pages/LandingPage";
-import { LoginPage } from "./pages/LoginPage";
+import { ConnectPage } from "./pages/ConnectPage";
 import { RequireAuth } from "./pages/RequireAuth";
 import { OverviewPage } from "./pages/OverviewPage";
 import { TimelinePage } from "./pages/TimelinePage";
@@ -34,7 +34,7 @@ const routes = IS_PAGES ? (
 ) : (
   <Routes>
     <Route path="/" element={<LandingPage />} />
-    <Route path="/login" element={<LoginPage />} />
+    <Route path="/connect" element={<ConnectPage />} />
     <Route element={<RequireAuth />}>
       <Route path="/app" element={<AppShell />}>
         <Route index element={<OverviewPage />} />

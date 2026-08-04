@@ -43,29 +43,31 @@ Default port `8787`. Do not scan the network looking for it.
 
 ### Authenticate
 
-Two ways in. Pick based on what you are building:
-
-**Bearer token** — for a client acting on the user's behalf without a login
-screen. The token is `API_TOKEN` from their `.env`.
-
-```http
-Authorization: Bearer lifeos-local-agent-token
-```
-
-**Session login** — for a client with a real sign-in screen.
+**One credential: the API token.** There is no username/password login and no
+session cookie. `POST /api/v1/auth/login` used to exist and now returns `410` —
+it checked values that defaulted to `admin` / `lifeos` and were printed in the
+README, so it kept nobody out.
 
 ```http
-POST /api/v1/auth/login
-{ "username": "admin", "password": "lifeos" }
-
-→ { "token": "…", "username": "admin", "user": {…} }
+Authorization: Bearer <API_TOKEN>
 ```
 
-Send the returned token the same way. Sessions last 7 days.
+`API_TOKEN` comes from the user's Life OS `.env`. Your client's job is to ask
+for it once and keep it:
 
-Every `/api/v1/*` route except `login` requires auth. Store the token in the
-platform's secure store (Keychain, Keystore, `EncryptedSharedPreferences`) —
-**not** in plain preferences, and never in a log line.
+```
+1. First run → a "paste your API token" screen (and the server address)
+2. Validate it:  GET /api/v1/auth/me   → 200 means good, 401 means wrong token
+3. Store it in the platform secure store
+4. Send it on every request from then on
+```
+
+Store it in **Keychain / Keystore / EncryptedSharedPreferences** — never in
+plain preferences, never in `AsyncStorage` unencrypted, and never in a log line
+or a crash report. Treat a `401` as "the token is wrong or was rotated": clear
+it and show the entry screen again. Do not retry in a loop.
+
+Every `/api/v1/*` route requires it, including `auth/me`.
 
 ### CORS, if you are a web client
 
@@ -560,7 +562,9 @@ back would not be an improvement.
 ## 9. Before you call it done
 
 - [ ] Health check, and a clear message when the server is unreachable
+- [ ] Token-only auth — no username/password screen anywhere
 - [ ] Token stored in the platform secure store, never logged
+- [ ] `401` clears the stored token and returns to the entry screen
 - [ ] Life-day boundary respected everywhere (never midnight)
 - [ ] Habit complete handles `409` as success
 - [ ] `source: "user"` on every human action

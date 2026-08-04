@@ -3,16 +3,18 @@ import { Navigate, Outlet } from "react-router-dom";
 import { api, setToken } from "@/lib/api";
 
 /**
- * Life OS is single-user and self-hosted: whoever runs the server is the admin.
- * Real multi-user auth is on hold, so rather than show a sign-in form to the one
- * person who already owns the machine, we sign in automatically with the mock
- * credentials from .env and drop straight into the app.
+ * Gate the app on a valid API token.
  *
- * The login page still exists at /login as a fallback for a customised
- * ADMIN_USER / ADMIN_PASS that the auto sign-in cannot guess.
+ * This used to sign in automatically with `admin` / `lifeos` so the single user
+ * never saw a form. That was fine while the API only listened on loopback, and
+ * became a real hole the moment it started binding `0.0.0.0` for the phone:
+ * anyone on the Wi-Fi could open the app and be let straight in.
+ *
+ * `VITE_API_TOKEN` is a dev convenience — set it and you skip the prompt on
+ * your own machine. Leave it unset for any build you might serve to anything
+ * other than yourself, since it bakes the secret into the bundle.
  */
-const DEFAULT_USER = import.meta.env.VITE_ADMIN_USER ?? "admin";
-const DEFAULT_PASS = import.meta.env.VITE_ADMIN_PASS ?? "lifeos";
+const DEV_TOKEN = import.meta.env.VITE_API_TOKEN as string | undefined;
 
 export function RequireAuth() {
   const [state, setState] = useState<"loading" | "ok" | "no">("loading");
@@ -26,17 +28,21 @@ export function RequireAuth() {
         if (!cancelled) setState("ok");
         return;
       } catch {
-        /* no valid session yet — try the automatic one */
+        /* nothing stored, or it no longer works */
       }
 
-      try {
-        const result = await api.login(DEFAULT_USER, DEFAULT_PASS);
-        setToken(result.token);
-        if (!cancelled) setState("ok");
-      } catch {
-        // Custom credentials, or the API is down. Fall back to the form.
-        if (!cancelled) setState("no");
+      if (DEV_TOKEN) {
+        setToken(DEV_TOKEN);
+        try {
+          await api.me();
+          if (!cancelled) setState("ok");
+          return;
+        } catch {
+          setToken(null);
+        }
       }
+
+      if (!cancelled) setState("no");
     };
 
     void run();
@@ -52,6 +58,6 @@ export function RequireAuth() {
       </div>
     );
   }
-  if (state === "no") return <Navigate to="/login" replace />;
+  if (state === "no") return <Navigate to="/connect" replace />;
   return <Outlet />;
 }

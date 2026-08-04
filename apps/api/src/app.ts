@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { ensureSchema, getDb } from "@life-os/db";
 import {
@@ -21,7 +21,6 @@ import {
   injectAgentEventSchema,
   injectLightReviewSchema,
   injectQuestSchema,
-  loginSchema,
   setHabitThemeSchema,
   updateDashboardCardSchema,
   updateGamificationConfigSchema,
@@ -84,33 +83,26 @@ export function createApp() {
     }),
   );
 
-  // Auth
-  app.post("/api/v1/auth/login", async (c) => {
-    const body = loginSchema.parse(await c.req.json());
-    const result = auth.login(getDb(), body.username, body.password);
-    if (!result.ok) return c.json({ error: result.error }, 401);
-    c.header(
-      "Set-Cookie",
-      `lifeos_token=${result.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 86400}`,
+  /**
+   * Auth is the API token and nothing else.
+   *
+   * The old `POST /auth/login` took a username and password that defaulted to
+   * admin/lifeos and were documented publicly, so it was a way in for anyone who
+   * could reach the port rather than a lock. It is gone; the routes answer 410 so
+   * an older client fails loudly instead of silently looking unauthenticated.
+   */
+  const loginGone = (c: Context) =>
+    c.json(
+      {
+        error: "Password login has been removed",
+        hint: "Authenticate with Authorization: Bearer <API_TOKEN> from the Life OS .env",
+      },
+      410,
     );
-    return c.json({
-      token: result.token,
-      username: result.username,
-      user: auth.me(result.username),
-    });
-  });
+  app.post("/api/v1/auth/login", loginGone);
+  app.post("/api/v1/auth/logout", loginGone);
 
-  app.post("/api/v1/auth/logout", requireAuth, async (c) => {
-    const header = c.req.header("authorization");
-    const token = header?.startsWith("Bearer ") ? header.slice(7) : "";
-    if (token) auth.logout(getDb(), token);
-    c.header(
-      "Set-Cookie",
-      "lifeos_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-    );
-    return c.json({ ok: true });
-  });
-
+  /** Cheap way for a client to check its token before showing the app. */
   app.get("/api/v1/auth/me", requireAuth, (c) => {
     return c.json(auth.me(c.get("username")));
   });

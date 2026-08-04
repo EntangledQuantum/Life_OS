@@ -11,16 +11,55 @@ import path from "node:path";
  * so there is no hard-coded `127.0.0.1` for it to fail on and no CORS round
  * trip. Leave `VITE_API_URL` empty for this to apply.
  */
-const proxyToApi = {
-  "/api": {
-    target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8787",
-    changeOrigin: true,
-  },
-  "/health": {
-    target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8787",
-    changeOrigin: true,
+const API_TARGET = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8787";
+
+/**
+ * `pnpm dev` starts both servers in parallel and Vite wins by a few seconds, so
+ * the app's first fetch lands before the API is listening. Without this, http-proxy
+ * prints an ECONNREFUSED stack trace and the browser sees a dead socket.
+ *
+ * Answer with a real 503 instead: one quiet log line, and the client gets a
+ * message it can show.
+ */
+const apiProxy = {
+  target: API_TARGET,
+  changeOrigin: true,
+  configure: (proxy: {
+    on: (
+      event: "error",
+      cb: (
+        err: NodeJS.ErrnoException,
+        _req: unknown,
+        res: {
+          writableEnded?: boolean;
+          writeHead?: (code: number, headers: Record<string, string>) => void;
+          end?: (body: string) => void;
+        },
+      ) => void,
+    ) => void;
+  }) => {
+    proxy.on("error", (err, _req, res) => {
+      const starting = err.code === "ECONNREFUSED";
+      console.log(
+        starting
+          ? `  [api] not up yet at ${API_TARGET} — retrying as you use the app`
+          : `  [api] proxy error: ${err.message}`,
+      );
+      if (res?.writeHead && res.end && !res.writableEnded) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: starting
+              ? "Life OS API is still starting"
+              : "Cannot reach the Life OS API",
+          }),
+        );
+      }
+    });
   },
 };
+
+const proxyToApi = { "/api": apiProxy, "/health": apiProxy };
 
 export default defineConfig({
   // GitHub Pages serves the site from /<repo>/, so the build needs that prefix.

@@ -1,32 +1,31 @@
 import type { Context, Next } from "hono";
-import { getDb } from "@life-os/db";
 import { validateToken } from "../services/auth.js";
 
 export type AuthVars = {
   username: string;
 };
 
+/**
+ * Every `/api/v1/*` route except the health check needs the API token.
+ *
+ * Bearer header only — no cookie fallback. A cookie is sent automatically by
+ * the browser, which is exactly what makes CSRF possible; an explicit header
+ * cannot be forged by another site.
+ */
 export async function requireAuth(c: Context, next: Next) {
   const header = c.req.header("authorization");
-  const bearer = header?.startsWith("Bearer ")
-    ? header.slice(7)
-    : null;
-  const cookie = parseCookie(c.req.header("cookie") ?? "", "lifeos_token");
-  const token = bearer || cookie;
+  const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : null;
 
-  const result = validateToken(getDb(), token);
+  const result = validateToken(token);
   if (!result.valid) {
-    return c.json({ error: "Unauthorized" }, 401);
+    return c.json(
+      {
+        error: "Unauthorized",
+        hint: "Send Authorization: Bearer <API_TOKEN> — the value of API_TOKEN in the Life OS .env",
+      },
+      401,
+    );
   }
   c.set("username", result.username);
   await next();
-}
-
-function parseCookie(cookie: string, name: string): string | null {
-  const parts = cookie.split(";").map((p) => p.trim());
-  for (const p of parts) {
-    const [k, ...rest] = p.split("=");
-    if (k === name) return rest.join("=");
-  }
-  return null;
 }

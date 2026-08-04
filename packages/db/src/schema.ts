@@ -334,6 +334,10 @@ export const activeSessions = sqliteTable("active_sessions", {
   blockId: text("block_id"),
 });
 
+/**
+ * @deprecated Unused since auth became token-only — nothing reads or writes it.
+ * Kept so existing databases are not rewritten; safe to drop in a later migration.
+ */
 export const authSessions = sqliteTable("auth_sessions", {
   id: text("id").primaryKey(),
   token: text("token").notNull().unique(),

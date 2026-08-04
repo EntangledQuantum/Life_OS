@@ -255,17 +255,26 @@ never overwrite an existing `.env` or touch data you already have.
 <tr><td>App</td><td><code>http://127.0.0.1:5173</code></td></tr>
 <tr><td>API</td><td><code>http://127.0.0.1:8787</code></td></tr>
 <tr><td>Database</td><td><code>data/lifeos.db</code></td></tr>
-<tr><td>Sign-in</td><td>Not needed — see below</td></tr>
+<tr><td>Sign-in</td><td>Your <code>API_TOKEN</code> — see below</td></tr>
 </table>
 
-> **🔓 There's no login screen, on purpose.**
+> **🔑 One token, no passwords.**
 >
-> Life OS is single-user and self-hosted. You run it, so you're the admin — it
-> opens straight to your day instead of asking you to log into your own laptop.
+> Life OS is single-user and self-hosted, so there are no accounts. The single
+> credential is `API_TOKEN` in your `.env`, and every client uses it — the
+> browser asks once and remembers, your agent sends it as a bearer header, and
+> so will a phone.
 >
-> Multi-user accounts and real authentication are **on hold** until the
-> single-user experience is finished. Keep the API on localhost, or put your own
-> auth in front of it if you ever expose it.
+> **Change it from the default**, especially before opening the API to your
+> network. Anything long and random will do:
+>
+> ```bash
+> node -e "console.log(crypto.randomUUID())"
+> ```
+>
+> Multi-user accounts are **on hold** until the single-user experience is
+> finished. For remote access, use a VPN rather than port-forwarding — see
+> [`docs/NETWORK.md`](docs/NETWORK.md).
 
 <br />
 

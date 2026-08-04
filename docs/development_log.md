@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-04  
 **Repo:** https://github.com/EntangledQuantum/Life_OS  
-**Status:** Phase 1 web MVP working locally; v0.4 shipped the flexible agentic pipeline — agent-owned settings and setup, scheduled/reminder cards with spaced repetition, agent-defined properties, condition-driven goals with must-be-seen celebrations, and automatic database backups. v0.4.1 added the Timeline tab, compacted the dashboard, and made the whole thing reachable over the LAN. v0.4.2 added notification sounds and do-not-disturb, and opened `mobile-frontend/` for the native client
+**Status:** Phase 1 web MVP working locally; v0.4 shipped the flexible agentic pipeline — agent-owned settings and setup, scheduled/reminder cards with spaced repetition, agent-defined properties, condition-driven goals with must-be-seen celebrations, and automatic database backups. v0.4.1 added the Timeline tab, compacted the dashboard, and made the whole thing reachable over the LAN. v0.4.2 added notification sounds and do-not-disturb, and opened `mobile-frontend/` for the native client. **v0.5 removed password login — auth is the `API_TOKEN` bearer and nothing else**
 
 **Read this file first** if you are a new human or coding agent picking up the project. Then read:
 
@@ -16,7 +16,45 @@
 
 ---
 
-## 0. What changed in the v0.4.2 pass (2026-08-04)
+## 0. What changed in the v0.5 pass (2026-08-04)
+
+### Auth is token-only. Password login is gone.
+
+The old `POST /api/v1/auth/login` checked a username and password that **defaulted to
+`admin` / `lifeos`**, were printed in the README, and were auto-submitted by `RequireAuth` so
+the user never saw a form. That was acceptable while the API only listened on loopback. It
+stopped being acceptable in v0.4.1, when the API started binding `0.0.0.0` so a phone could
+reach it — at that point anyone on the Wi-Fi could open the app and be let straight in.
+
+| Change | Detail |
+|--------|--------|
+| **One credential** | `API_TOKEN` from `.env`, sent as `Authorization: Bearer …`. Browser, agent and phone all use the same thing. Compared with a length-checked constant-time-ish loop so a wrong token cannot be probed byte by byte. |
+| **Login routes return `410`** | Not deleted outright — an older client gets a loud, explicit failure instead of looking silently unauthenticated. |
+| **No cookie fallback** | `requireAuth` reads the bearer header only. A cookie rides along automatically on cross-site requests, which is the entire CSRF problem; `credentials: "include"` is gone from the web client too. |
+| **`ConnectPage` replaces `LoginPage`** | Paste the token once, validated against `GET /auth/me`, stored in localStorage. A rejected token is rolled back immediately rather than left to 401 every later call. |
+| **`VITE_API_TOKEN`** | Optional dev convenience to skip the prompt. Documented as dev-only because it bakes the secret into the bundle. |
+| **Removed** | `ADMIN_USER`, `ADMIN_PASS`, `SESSION_SECRET`, `loginSchema`, `login()`, `logout()`, and all reads/writes of `auth_sessions` (the table is left in place and marked deprecated so existing databases are not rewritten). |
+
+Verified: `login` → `410`; no token → `401` with a hint naming `API_TOKEN`; wrong token →
+`401`; correct token → `{"username":"owner","role":"owner","auth":"token"}`; a cookie carrying
+a valid token → `401`.
+
+### The `pnpm dev` proxy error is fixed
+
+`pnpm --parallel` starts both servers at once and Vite is ready ~4s before the API, so the
+app's first `/api/v1/dashboard/today` landed on a closed socket and http-proxy printed an
+`ECONNREFUSED` stack trace. The proxy now handles `error` and answers `503` with
+`{"error":"Life OS API is still starting"}`, logging one line:
+
+```
+[api] not up yet at http://127.0.0.1:8787 — retrying as you use the app
+```
+
+Harmless before, but it read like a crash on every single start.
+
+---
+
+## 0.1 What changed in the v0.4.2 pass (2026-08-04)
 
 | Area | Change |
 |------|--------|
@@ -36,7 +74,7 @@ databases. All five packages typecheck and the web build is unchanged.
 
 ---
 
-## 0.1 What changed in the v0.4.1 pass (2026-08-03)
+## 0.2 What changed in the v0.4.1 pass (2026-08-03)
 
 Follow-up to v0.4, driven by using it: the Upcoming section was too heavy, and the app needed
 to be reachable from a phone.
@@ -63,7 +101,7 @@ with tags, repeat badges, reminder bells and the ribbon.
 
 ---
 
-## 0.2 What changed in the v0.4 pass (2026-08-03)
+## 0.3 What changed in the v0.4 pass (2026-08-03)
 
 The theme of this pass: **make the agentic pipeline open-ended.** Before it, an agent could
 only manipulate concepts the app already knew about. Now it can invent its own values, write
@@ -185,7 +223,7 @@ All five packages typecheck clean and the web app builds.
 
 ---
 
-## 0.3 What changed in the v0.3 pass (2026-08-03)
+## 0.4 What changed in the v0.3 pass (2026-08-03)
 
 | Area | Change |
 |------|--------|

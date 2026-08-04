@@ -34,7 +34,11 @@ Life OS API listening on http://0.0.0.0:8787 (storage=local)
 ```
 
 On your phone, open **`http://192.168.1.24:5173`** (that address, your web
-port). Log in with the same `ADMIN_USER` / `ADMIN_PASS`.
+port). It will ask for your `API_TOKEN` — the same one from `.env`.
+
+**Change `API_TOKEN` from the default before you do this.** It is the only
+credential, and once the API is on your network the default value is a key
+everyone already has.
 
 To go back to local-only, set `API_HOST=127.0.0.1` and, if you want the web
 server on loopback too, `WEB_HOST=localhost`.
@@ -80,9 +84,10 @@ you happen to have open in another tab talk to your Life OS instance.
 
 Be clear-eyed about this before you turn it on.
 
-- **Authentication is a single shared secret.** `API_TOKEN` for agents, and a
-  mock `ADMIN_USER` / `ADMIN_PASS` login for the browser. There are no user
-  accounts, no rate limiting, and no lockout.
+- **Authentication is a single shared secret.** `API_TOKEN`, used by every
+  client — browser, agent, phone. There are no user accounts, no rate limiting,
+  and no lockout. If it is still the default from `.env.example`, it is not a
+  secret at all.
 - **Anyone on the same network can reach it.** On your own Wi-Fi that means your
   own devices. On a café or office network it means everyone there.
 - **Nothing is encrypted.** It is plain HTTP; the token crosses the network in

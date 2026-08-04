@@ -2,7 +2,9 @@
 
 Base URL: `http://127.0.0.1:8787`
 
-Auth: `Authorization: Bearer <session-or-API_TOKEN>` on all `/api/v1/*` except login.
+Auth: `Authorization: Bearer <API_TOKEN>` on every `/api/v1/*` route. That is the only
+credential — there is no username/password login and no session cookie. `API_TOKEN` lives in
+the Life OS `.env`; change it from the default before exposing the API to your network.
 
 Reaching it from a phone or another machine on your network: see
 [`docs/NETWORK.md`](NETWORK.md). Loopback and private-LAN origins are allowed by CORS on any
@@ -18,9 +20,8 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check — returns `{ok, service, storage, host, lan}` |
-| POST | `/api/v1/auth/login` | `{ username, password }` → token |
-| POST | `/api/v1/auth/logout` | Invalidate session |
-| GET | `/api/v1/auth/me` | Current user |
+| POST | `/api/v1/auth/login` · `/logout` | **Removed.** Returns `410` — password login no longer exists |
+| GET | `/api/v1/auth/me` | Validate the token you are holding |
 | GET | `/api/v1/habits` | List habits |
 | POST | `/api/v1/habits` | Create habit |
 | PATCH | `/api/v1/habits/:id` | Update |

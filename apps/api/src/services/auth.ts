@@ -1,71 +1,42 @@
-import { nanoid } from "nanoid";
-import { eq } from "drizzle-orm";
-import type { LifeOsDb } from "@life-os/db";
-import * as schema from "@life-os/db";
+/**
+ * Token-only auth.
+ *
+ * There used to be a username/password login backed by a sessions table. It was
+ * removed because it was worse than nothing: the credentials defaulted to
+ * `admin` / `lifeos`, they were printed in the README, and the web client
+ * signed in with them automatically. Anyone who could reach the port was in —
+ * and once the API started binding `0.0.0.0` for the phone, "anyone who could
+ * reach the port" meant everyone on the network.
+ *
+ * Now there is exactly one credential: `API_TOKEN` from `.env`. It is a real
+ * secret, the user chooses it, and every client — browser, agent, phone —
+ * presents the same thing.
+ */
 import { env } from "../env.js";
-import { nowIso } from "./helpers.js";
 
-const SESSION_DAYS = 7;
-
-export function login(
-  db: LifeOsDb,
-  username: string,
-  password: string,
-): { ok: true; token: string; username: string } | { ok: false; error: string } {
-  if (username !== env.adminUser || password !== env.adminPass) {
-    return { ok: false, error: "Invalid username or password" };
+/** Constant-time-ish compare so a wrong token cannot be probed byte by byte. */
+function tokensMatch(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
-  const token = nanoid(48);
-  const now = new Date();
-  const expires = new Date(now.getTime() + SESSION_DAYS * 86400000);
-  db.insert(schema.authSessions)
-    .values({
-      id: nanoid(),
-      token,
-      username,
-      createdAt: now.toISOString(),
-      expiresAt: expires.toISOString(),
-    })
-    .run();
-  return { ok: true, token, username };
-}
-
-export function logout(db: LifeOsDb, token: string) {
-  db.delete(schema.authSessions).where(eq(schema.authSessions.token, token)).run();
-  return { ok: true };
+  return diff === 0;
 }
 
 export function validateToken(
-  db: LifeOsDb,
   token: string | undefined | null,
 ): { valid: true; username: string } | { valid: false } {
-  if (!token) return { valid: false };
-
-  // Agent API token
-  if (token === env.apiToken) {
-    return { valid: true, username: "agent" };
-  }
-
-  const session = db
-    .select()
-    .from(schema.authSessions)
-    .where(eq(schema.authSessions.token, token))
-    .get();
-
-  if (!session) return { valid: false };
-  if (new Date(session.expiresAt) < new Date()) {
-    db.delete(schema.authSessions)
-      .where(eq(schema.authSessions.token, token))
-      .run();
-    return { valid: false };
-  }
-  return { valid: true, username: session.username };
+  if (!token || !env.apiToken) return { valid: false };
+  return tokensMatch(token, env.apiToken)
+    ? { valid: true, username: "owner" }
+    : { valid: false };
 }
 
 export function me(username: string) {
   return {
     username,
-    role: username === "agent" ? "agent" : "admin",
-    mockAuth: true,
+    role: "owner",
+    auth: "token",
   };
 }

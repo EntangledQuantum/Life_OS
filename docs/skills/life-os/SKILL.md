@@ -103,8 +103,9 @@ Then confirm and hand back control:
 curl -s http://127.0.0.1:8787/health
 ```
 
-Tell the user the login is `admin` / `lifeos` (from `.env`), their database is at
-`data/lifeos.db`, and the agent token is `API_TOKEN` in `.env`.
+Tell the user their database is at `data/lifeos.db` and that `API_TOKEN` in `.env` is the
+single credential — the browser asks for it too, there is no username/password login. Suggest
+they change it from the default, especially if they plan to open the API to their network.
 
 **Rules for this flow**
 
@@ -950,7 +951,7 @@ response carries `goalsAwaitingCelebration` alongside your result.
 | Activity tags | Closed set of 7 — you may not invent day buckets |
 | Goal status `achieved` | Only reachable via `celebration-seen` |
 | Inline SVG | 64 KB, single root `<svg>`, no script or external refs |
-| Auth | Mock admin or `API_TOKEN` |
+| Auth | `API_TOKEN` bearer only — no password login, no cookie |
 | Levels / social comparison | **None** |
 | Obsidian writes from the app | **Never** |
 
