@@ -8,6 +8,7 @@ import {
   QUALITY_FLAGS,
   ACTIVITIES,
   ACCENT_THEMES,
+  NOTIFICATION_SOUND_IDS,
   REPEAT_RULES,
   normalizeGrowthStyle,
   type GrowthStyle,
@@ -270,6 +271,9 @@ export const updateSettingsSchema = z.object({
     )
     .optional(),
   reducedMotion: z.boolean().optional(),
+  notificationSound: z.enum(NOTIFICATION_SOUND_IDS).optional(),
+  doNotDisturb: z.boolean().optional(),
+  quietHoursSilent: z.boolean().optional(),
   plannedWake: z.string().optional(),
   plannedSleepStart: z.string().optional(),
   plannedSleepEnd: z.string().optional(),

@@ -2,7 +2,15 @@ import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useUiStore } from "@/lib/store";
-import { ACCENT_THEMES, type AccentThemeId } from "@life-os/shared";
+import { playSound } from "@/lib/notify";
+import { cn } from "@/lib/utils";
+import {
+  ACCENT_THEMES,
+  NOTIFICATION_SOUNDS,
+  isWithinQuietHours,
+  type AccentThemeId,
+} from "@life-os/shared";
+import { Play, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
 
@@ -56,6 +64,12 @@ export function SettingsPage() {
   }
 
   const patch = (partial: Record<string, unknown>) => update.mutate(partial);
+
+  /** Are reminders muted at this exact moment, and why? */
+  const silencedNow =
+    settings.doNotDisturb ||
+    (settings.quietHoursSilent &&
+      isWithinQuietHours(settings.quietHoursStart, settings.quietHoursEnd));
 
   return (
     <motion.div
@@ -225,6 +239,107 @@ export function SettingsPage() {
             onChange={(e) => patch({ reducedMotion: e.target.checked })}
           />
         </label>
+      </section>
+
+      <section className="card space-y-4 p-5">
+        <h2 className="font-semibold">Notifications</h2>
+        <p className="text-sm text-[var(--muted)]">
+          How agent reminders reach you. Sounds are generated in the browser, so
+          there is nothing to download and they work offline.
+        </p>
+
+        <div>
+          <label className="label">Reminder sound</label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {NOTIFICATION_SOUNDS.map((sound) => {
+              const active = settings.notificationSound === sound.id;
+              return (
+                <button
+                  key={sound.id}
+                  type="button"
+                  onClick={() => {
+                    patch({ notificationSound: sound.id });
+                    // Play it as you pick it — choosing a sound blind is silly.
+                    playSound(sound.id);
+                  }}
+                  className={cn(
+                    "flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                    active
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                      : "border-[var(--border)] hover:bg-white/[0.04]",
+                  )}
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    {sound.id === "none" ? (
+                      <VolumeX className="h-3.5 w-3.5" />
+                    ) : (
+                      <Volume2 className="h-3.5 w-3.5" />
+                    )}
+                    {sound.label}
+                  </span>
+                  <span className="text-[11px] leading-snug text-[var(--faint)]">
+                    {sound.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="btn mt-2 py-1.5 text-xs"
+            onClick={() => {
+              if (settings.notificationSound === "none") {
+                toast("Silent — reminders will still flash on screen");
+                return;
+              }
+              // Browsers block audio until a gesture; this click is one.
+              if (!playSound(settings.notificationSound)) {
+                toast.error("Your browser blocked audio playback");
+              }
+            }}
+          >
+            <Play className="h-3 w-3" /> Preview
+          </button>
+        </div>
+
+        <label className="flex items-start justify-between gap-4 text-sm">
+          <span>
+            Do not disturb
+            <span className="mt-0.5 block text-[11px] text-[var(--faint)]">
+              No sound, no flash, no system notification. Reminders still appear
+              on the dashboard and keep pulsing — you see them when you look.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="mt-1 shrink-0"
+            checked={settings.doNotDisturb}
+            onChange={(e) => patch({ doNotDisturb: e.target.checked })}
+          />
+        </label>
+
+        <label className="flex items-start justify-between gap-4 text-sm">
+          <span>
+            Silent during quiet hours
+            <span className="mt-0.5 block text-[11px] text-[var(--faint)]">
+              Automatically do-not-disturb between {settings.quietHoursStart} and{" "}
+              {settings.quietHoursEnd}.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="mt-1 shrink-0"
+            checked={settings.quietHoursSilent}
+            onChange={(e) => patch({ quietHoursSilent: e.target.checked })}
+          />
+        </label>
+
+        {silencedNow && (
+          <p className="rounded-lg border border-[var(--border)] bg-white/[0.03] px-3 py-2 font-mono text-[11px] text-[var(--accent)]">
+            Reminders are silent right now
+            {settings.doNotDisturb ? " (do not disturb)" : " (quiet hours)"}.
+          </p>
+        )}
       </section>
 
       <section className="card space-y-4 p-5">

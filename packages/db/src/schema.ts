@@ -295,6 +295,16 @@ export const settings = sqliteTable("settings", {
   reducedMotion: integer("reduced_motion", { mode: "boolean" })
     .notNull()
     .default(false),
+  /** Which chime a reminder plays; `none` is visual-only */
+  notificationSound: text("notification_sound").notNull().default("chime"),
+  /** Suppress the interruption, not the information */
+  doNotDisturb: integer("do_not_disturb", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  /** Treat quiet hours as an automatic do-not-disturb window */
+  quietHoursSilent: integer("quiet_hours_silent", { mode: "boolean" })
+    .notNull()
+    .default(true),
   plannedWake: text("planned_wake").notNull().default("11:00"),
   plannedSleepStart: text("planned_sleep_start").notNull().default("02:00"),
   plannedSleepEnd: text("planned_sleep_end").notNull().default("03:00"),

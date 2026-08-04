@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { DashboardCard } from "@life-os/shared";
+import { isWithinQuietHours, type DashboardCard } from "@life-os/shared";
 import { api } from "@/lib/api";
 import {
   armAudio,
@@ -27,6 +27,11 @@ export function ReminderRunner({ due }: { due: DashboardCard[] }) {
   /** Ids already fired in this tab — guards against a double render racing the POST. */
   const firedRef = useRef<Set<string>>(new Set());
 
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: api.settings,
+  });
+
   const markNotified = useMutation({
     mutationFn: (id: string) => api.markCardNotified(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
@@ -40,6 +45,22 @@ export function ReminderRunner({ due }: { due: DashboardCard[] }) {
   }, []);
 
   useEffect(() => {
+    /**
+     * Do-not-disturb, manual or scheduled. Suppresses the *interruption* only:
+     * the reminder is still marked notified and still sits on the dashboard
+     * pulsing, so nothing is lost — the user just is not yanked out of what
+     * they were doing.
+     *
+     * It has to be marked notified even while silenced. The alternative is a
+     * backlog that all fires at once the moment DND ends, which is worse than
+     * the thing DND was protecting them from.
+     */
+    const quiet =
+      settings?.quietHoursSilent !== false &&
+      settings != null &&
+      isWithinQuietHours(settings.quietHoursStart, settings.quietHoursEnd);
+    const silent = Boolean(settings?.doNotDisturb) || quiet;
+
     for (const card of due) {
       if (firedRef.current.has(card.id)) continue;
       firedRef.current.add(card.id);
@@ -56,18 +77,21 @@ export function ReminderRunner({ due }: { due: DashboardCard[] }) {
         body: card.subtitle ?? card.purpose ?? (when ? `Starts at ${when}` : null),
         sound: card.sound,
         flash: card.flash,
+        soundId: settings?.notificationSound ?? "chime",
+        silent,
       });
 
+      // A silenced reminder still leaves a trace you can find on your own terms.
       toast(`🔔 ${card.title}`, {
         description: when ? `Coming up at ${when}` : (card.subtitle ?? undefined),
-        duration: 8000,
+        duration: silent ? 4000 : 8000,
       });
 
       markNotified.mutate(card.id);
     }
     // `markNotified` is a stable mutation object; re-running on it would refire.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [due]);
+  }, [due, settings]);
 
   return null;
 }

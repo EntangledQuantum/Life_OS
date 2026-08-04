@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import {
   BarChart3,
+  BellOff,
   BookOpen,
   CalendarClock,
   LayoutDashboard,
@@ -8,6 +9,7 @@ import {
   Target,
   CheckCircle2,
 } from "lucide-react";
+import { isWithinQuietHours } from "@life-os/shared";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { asset } from "@/lib/deploy";
@@ -43,6 +45,12 @@ export function AppShell() {
 
   const eff = data?.progress.efficiencyPct ?? 0;
   const pending = data?.pendingEventCount ?? 0;
+  const silenced = Boolean(
+    settings &&
+      (settings.doNotDisturb ||
+        (settings.quietHoursSilent &&
+          isWithinQuietHours(settings.quietHoursStart, settings.quietHoursEnd))),
+  );
 
   return (
     <div className="relative min-h-screen">
@@ -104,6 +112,22 @@ export function AppShell() {
           </nav>
 
           <div className="flex items-center gap-3">
+            {/* Silence should be visible — otherwise a missed reminder reads as
+                a broken app rather than a setting the user chose. */}
+            {silenced && (
+              <Link
+                to="/app/settings"
+                className="chip font-mono text-[10px]"
+                title={
+                  settings?.doNotDisturb
+                    ? "Do not disturb is on — reminders are silent"
+                    : `Quiet hours (${settings?.quietHoursStart}–${settings?.quietHoursEnd}) — reminders are silent`
+                }
+              >
+                <BellOff className="h-3 w-3" />
+                {settings?.doNotDisturb ? "DND" : "quiet"}
+              </Link>
+            )}
             <div className="chip font-mono" title="Today efficiency vs XP target">
               {Math.round(eff)}%
               <div className="ml-1 h-1.5 w-14 overflow-hidden rounded-full bg-white/10">

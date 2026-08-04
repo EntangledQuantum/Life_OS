@@ -1,8 +1,8 @@
 # Life OS — Development Log & Agent Handoff
 
-**Last updated:** 2026-08-03  
+**Last updated:** 2026-08-04  
 **Repo:** https://github.com/EntangledQuantum/Life_OS  
-**Status:** Phase 1 web MVP working locally; v0.4 shipped the flexible agentic pipeline — agent-owned settings and setup, scheduled/reminder cards with spaced repetition, agent-defined properties, condition-driven goals with must-be-seen celebrations, and automatic database backups. v0.4.1 added the Timeline tab, compacted the dashboard, and made the whole thing reachable over the LAN
+**Status:** Phase 1 web MVP working locally; v0.4 shipped the flexible agentic pipeline — agent-owned settings and setup, scheduled/reminder cards with spaced repetition, agent-defined properties, condition-driven goals with must-be-seen celebrations, and automatic database backups. v0.4.1 added the Timeline tab, compacted the dashboard, and made the whole thing reachable over the LAN. v0.4.2 added notification sounds and do-not-disturb, and opened `mobile-frontend/` for the native client
 
 **Read this file first** if you are a new human or coding agent picking up the project. Then read:
 
@@ -11,12 +11,32 @@
 3. `docs/API.md` — HTTP surface  
 4. `docs/DATABASE.md` — how persistence works  
 5. `docs/NETWORK.md` — LAN access and what it exposes  
-6. `docs/CLIENT_GUIDE.md` — building a second frontend (mobile app, widget, TUI)  
+6. `mobile-frontend/` — the Android/iOS brief, and the rules that keep it from touching the web build  
 7. This log — *what was actually built, divergences, and gaps*
 
 ---
 
-## 0. What changed in the v0.4.1 pass (2026-08-03)
+## 0. What changed in the v0.4.2 pass (2026-08-04)
+
+| Area | Change |
+|------|--------|
+| **`mobile-frontend/`** | New top-level folder for the Android/iOS client and anything platform-specific. `CLIENT_GUIDE.md` moved here from `docs/`. Contains the brief, an isolation contract, and a `.gitignore` covering Gradle/Xcode/Expo/Flutter output and signing secrets. |
+| **Isolation is structural, not a promise** | `pnpm-workspace.yaml` globs only `apps/*` and `packages/*`, so the folder is invisible to `pnpm install`, `pnpm -r build` and `pnpm -r typecheck`. The Pages workflow watches `apps/web/**`, `packages/shared/**` and `scripts/build-pages.mjs`, so commits there cannot redeploy the site. Verified: `pnpm -r exec` still enumerates exactly five projects. The README spells out *why* a React Native or Flutter toolchain must not share a workspace with Vite (hoisting, duplicate React, Metro vs Vite over one `node_modules`). |
+| **Notification sounds** | Six options — `chime` `bell` `marimba` `pulse` `alert` `none` — synthesized in WebAudio from a small note table in `apps/web/src/lib/notify.ts`. No audio assets, so nothing to 404 and it works on the static Pages build. Settings shows them as a picker that plays each one as you select it, plus a Preview button (which doubles as the gesture browsers need before audio is allowed). The table is deliberately data rather than bespoke functions so a native client can read the same ids and map them onto system sounds. |
+| **Do-not-disturb** | Manual toggle plus `quietHoursSilent`, which turns the existing quiet-hours window into an automatic DND. Semantics: **suppress the interruption, not the information** — no sound, flash or system notification, but the card still appears and pulses. |
+| **Silenced reminders are still marked notified** | The tempting alternative (skip `/notified` while silent) means every suppressed reminder fires at once the moment DND ends. A notification avalanche is worse than the interruption DND was avoiding. |
+| **Quiet hours are now honoured** | Previously listed under "suggested next work". `isWithinQuietHours()` in `packages/shared/src/schedule.ts` handles the window wrapping past midnight, which is the normal case (default 03:30–10:30). A start equal to the end means *no* quiet hours rather than *always* quiet, so a mis-set field cannot mute the app forever. |
+| **Silence is visible** | A `DND` / `quiet` chip in the app header, linking to Settings, plus a banner in the Notifications section. Without it a missed reminder reads as a broken app rather than a setting the user chose. |
+| **Exposed to agents** | `notificationSound`, `doNotDisturb` and `quietHoursSilent` on `PATCH /api/v1/settings` and the `lifeos_update_settings` MCP tool. An unknown sound id falls back to `chime` on read rather than being handed to a client. |
+
+Verified live: defaults `chime` / `false` / `true`; a patch to `bell` + DND round-tripped; an
+invalid sound id returned `400`; the header chip and the settings banner both appeared while
+DND was on. Migration `0002_icy_ben_parker.sql` generated; `ensureSchema()` covers existing
+databases. All five packages typecheck and the web build is unchanged.
+
+---
+
+## 0.1 What changed in the v0.4.1 pass (2026-08-03)
 
 Follow-up to v0.4, driven by using it: the Upcoming section was too heavy, and the app needed
 to be reachable from a phone.
@@ -33,7 +53,7 @@ to be reachable from a phone.
 | **`/health` reports its reach** | Now returns `host` and `lan`, so a phone or a future native client can confirm it hit the right box. |
 | **`VITE_API_URL` must be empty** | `.env.example` used to hard-code `http://127.0.0.1:8787`, which breaks LAN access silently — the phone tries *its own* loopback and the app looks dead. Now empty by default with the reason written down. |
 | **`docs/NETWORK.md`** | How to turn it on, why `VITE_API_URL` stays empty, the CORS table, firewall notes, and an honest section on what LAN exposure actually means (one shared token, no rate limiting, plain HTTP — fine for home Wi-Fi, not for anything else, use a VPN for remote). |
-| **`docs/CLIENT_GUIDE.md`** | Written for an agent building a *second* frontend — a native app, widget, TUI. Connect + auth, the `dashboard/today` payload field by field, what each surface means, and the five behavioural contracts a client can silently break: the life-day boundary, celebration-before-achieved, fire-once reminders, the fixed XP pool with no levels, and honouring `reducedMotion` / `celebrationIntensity`. Ends with a parity checklist and an explicit "what not to build" (no goal-creation UI, no leaderboards, no telemetry, no vault writes). |
+| **`mobile-frontend/CLIENT_GUIDE.md`** | Written for an agent building a *second* frontend — a native app, widget, TUI. Connect + auth, the `dashboard/today` payload field by field, what each surface means, and the five behavioural contracts a client can silently break: the life-day boundary, celebration-before-achieved, fire-once reminders, the fixed XP pool with no levels, and honouring `reducedMotion` / `celebrationIntensity`. Ends with a parity checklist and an explicit "what not to build" (no goal-creation UI, no leaderboards, no telemetry, no vault writes). |
 
 Verified live: the API bound `0.0.0.0` and printed `192.168.29.131:8787`; a preflight from
 `http://192.168.29.131:5173` came back with a matching `access-control-allow-origin`, while one
@@ -43,7 +63,7 @@ with tags, repeat badges, reminder bells and the ribbon.
 
 ---
 
-## 0.0 What changed in the v0.4 pass (2026-08-03)
+## 0.2 What changed in the v0.4 pass (2026-08-03)
 
 The theme of this pass: **make the agentic pipeline open-ended.** Before it, an agent could
 only manipulate concepts the app already knew about. Now it can invent its own values, write
@@ -165,7 +185,7 @@ All five packages typecheck clean and the web app builds.
 
 ---
 
-## 0.8 What changed in the v0.3 pass (2026-08-03)
+## 0.3 What changed in the v0.3 pass (2026-08-03)
 
 | Area | Change |
 |------|--------|
@@ -716,8 +736,8 @@ Give any agent (Hermes, OpenClaw, …): **`docs/skills/life-os/SKILL.md`** only.
    pass covers the behaviour end-to-end but nothing is pinned at unit level yet.
 2. CI: typecheck + seed smoke on PR (typecheck is green now, so this is cheap to add).
 3. Day-rollover job: reset done cards / inject tomorrow from agent.
-4. Respect `quietHoursStart`/`quietHoursEnd` in `ReminderRunner` — a reminder scheduled into
-   quiet hours currently still chimes. The setting exists; the runner does not read it yet.
+4. Build the native client in `mobile-frontend/` — brief and isolation rules are in place,
+   stack not yet chosen.
 5. Goal evaluation is O(goals × conditions) on every write. Fine at current scale; if someone
    accumulates hundreds of goals it wants an index or a dirty-set.
 6. Complete the Supabase storage adapter or remove the Settings UI until it is real.

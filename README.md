@@ -181,8 +181,8 @@ you complete something.
 
 **🔔 Reminders that land**
 
-Your agent schedules something and a nudge before it. It chimes, flashes, and
-keeps pulsing until you deal with it.
+Your agent schedules something and a nudge before it. Six chimes to pick from,
+plus do-not-disturb when you need the room quiet.
 
 </td>
 <td valign="top">
@@ -435,7 +435,7 @@ data/              Your SQLite database (gitignored)
 | [`docs/API.md`](docs/API.md) | The full HTTP surface |
 | [`docs/DATABASE.md`](docs/DATABASE.md) | Where your data lives, how to back it up |
 | [`docs/NETWORK.md`](docs/NETWORK.md) | Opening it up to your phone, and what that exposes |
-| [`docs/CLIENT_GUIDE.md`](docs/CLIENT_GUIDE.md) | **Building another client** — a mobile app, a widget, anything |
+| [`mobile-frontend/`](mobile-frontend/) | **Building another client** — the Android/iOS brief and the isolation rules |
 | [`docs/development_log.md`](docs/development_log.md) | **Contributors** — what was built and why |
 | [`docs/LIFE_OS.md`](docs/LIFE_OS.md) | The original product spec |
 
@@ -452,8 +452,7 @@ database backups, the full HTTP API, and the MCP server.
 
 - [ ] Multi-user accounts and real authentication — *on hold, single-user for now*
 - [ ] Optional hosted Postgres storage — *scaffolded, not wired up*
-- [ ] Quiet hours are not yet respected by reminder chimes
-- [ ] Native mobile client — *the API is LAN-ready for one*
+- [ ] Native mobile client — *scaffolding and brief in [`mobile-frontend/`](mobile-frontend/)*
 - [ ] Automated tests
 
 <br />

@@ -68,6 +68,10 @@ export function ensureSchema(dbPath?: string) {
     ["settings", "backup_interval_hours", "INTEGER NOT NULL DEFAULT 6"],
     ["settings", "backup_keep", "INTEGER NOT NULL DEFAULT 24"],
     ["settings", "last_backup_at", "TEXT"],
+    // Reminder sound + do-not-disturb
+    ["settings", "notification_sound", "TEXT NOT NULL DEFAULT 'chime'"],
+    ["settings", "do_not_disturb", "INTEGER NOT NULL DEFAULT 0"],
+    ["settings", "quiet_hours_silent", "INTEGER NOT NULL DEFAULT 1"],
   ];
 
   for (const [table, col, def] of alters) {

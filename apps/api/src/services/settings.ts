@@ -3,9 +3,11 @@ import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
 import {
   DEFAULT_GAMIFICATION_CONFIG,
+  isNotificationSound,
   type AccentThemeId,
   type AppSettings,
   type GamificationConfig,
+  type NotificationSoundId,
 } from "@life-os/shared";
 import {
   getSettingsRow,
@@ -13,6 +15,11 @@ import {
   nowIso,
 } from "./helpers.js";
 import { rebalanceHabitXp } from "./habits.js";
+
+/** Fall back to the default chime rather than handing a client an unknown id. */
+function normalizeSound(value: unknown): NotificationSoundId {
+  return isNotificationSound(value) ? value : "chime";
+}
 
 export function getSettings(db: LifeOsDb): AppSettings {
   const row = getSettingsRow(db) as typeof schema.settings.$inferSelect & {
@@ -27,6 +34,12 @@ export function getSettings(db: LifeOsDb): AppSettings {
     celebrationIntensity: row.celebrationIntensity as "full" | "minimal" | "off",
     accentTheme: row.accentTheme as AccentThemeId,
     reducedMotion: row.reducedMotion,
+    notificationSound: normalizeSound(
+      (row as { notificationSound?: string }).notificationSound,
+    ),
+    doNotDisturb: (row as { doNotDisturb?: boolean }).doNotDisturb ?? false,
+    quietHoursSilent:
+      (row as { quietHoursSilent?: boolean }).quietHoursSilent ?? true,
     plannedWake: row.plannedWake,
     plannedSleepStart: row.plannedSleepStart,
     plannedSleepEnd: row.plannedSleepEnd,
@@ -59,6 +72,9 @@ export function updateSettings(
     celebrationIntensity: "full" | "minimal" | "off";
     accentTheme: AccentThemeId;
     reducedMotion: boolean;
+    notificationSound: NotificationSoundId;
+    doNotDisturb: boolean;
+    quietHoursSilent: boolean;
     plannedWake: string;
     plannedSleepStart: string;
     plannedSleepEnd: string;

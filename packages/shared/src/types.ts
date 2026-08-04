@@ -6,6 +6,7 @@ import type {
   GrowthStyle,
   HabitGraphic,
   ImprovementPulse,
+  NotificationSoundId,
   QualityFlag,
   RepeatRule,
 } from "./constants.js";
@@ -291,6 +292,15 @@ export interface AppSettings {
   celebrationIntensity: "full" | "minimal" | "off";
   accentTheme: AccentThemeId;
   reducedMotion: boolean;
+  /** Which chime a reminder plays. `none` = visual only. */
+  notificationSound: NotificationSoundId;
+  /**
+   * Suppress the interruption, not the information: no sound, no screen flash,
+   * no OS notification. Reminders still appear and stay visibly urgent.
+   */
+  doNotDisturb: boolean;
+  /** Treat quietHoursStart–quietHoursEnd as an automatic do-not-disturb window. */
+  quietHoursSilent: boolean;
   plannedWake: string;
   plannedSleepStart: string;
   plannedSleepEnd: string;

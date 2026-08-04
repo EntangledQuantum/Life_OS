@@ -87,6 +87,7 @@ import {
   CARD_KINDS,
   GOAL_CONDITION_SYNTAX,
   GOAL_METRICS,
+  NOTIFICATION_SOUND_IDS,
   REPEAT_RULES,
   localDateString,
   XP_MODEL_DOC,
@@ -452,6 +453,20 @@ const tools = [
           enum: ["nebula", "quantum", "terminal", "ember"],
         },
         reducedMotion: { type: "boolean" },
+        notificationSound: {
+          type: "string",
+          enum: [...NOTIFICATION_SOUND_IDS],
+          description: "Reminder chime; 'none' is visual-only",
+        },
+        doNotDisturb: {
+          type: "boolean",
+          description:
+            "Silence reminders without hiding them — no sound, flash or system notification",
+        },
+        quietHoursSilent: {
+          type: "boolean",
+          description: "Treat quiet hours as an automatic do-not-disturb window",
+        },
         plannedWake: { type: "string", description: "HH:mm" },
         plannedSleepStart: { type: "string", description: "HH:mm" },
         plannedSleepEnd: { type: "string", description: "HH:mm" },

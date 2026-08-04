@@ -161,6 +161,9 @@ PATCH /api/v1/settings
   "accentTheme": "nebula",
   "celebrationIntensity": "full",
   "reducedMotion": false,
+  "notificationSound": "chime",
+  "doNotDisturb": false,
+  "quietHoursSilent": true,
   "gamificationEnabled": true,
   "streaksEnabled": true,
   "pointsEnabled": true,
@@ -175,6 +178,14 @@ PATCH /api/v1/settings
 ```
 
 Themes: `nebula` | `quantum` | `terminal` | `ember`. Times are `HH:mm`, local.
+
+Reminder sounds: `chime` | `bell` | `marimba` | `pulse` | `alert` | `none`.
+
+**Do-not-disturb suppresses the interruption, not the information.** With
+`doNotDisturb: true` (or inside quiet hours when `quietHoursSilent` is on) a reminder makes no
+sound, no flash and no system notification — but it still appears on the dashboard and keeps
+pulsing until dealt with, and it is still marked notified so nothing piles up to fire at once
+when the silence ends. Schedule normally; do not try to route around it.
 
 ### First contact with a fresh clone
 
@@ -517,10 +528,14 @@ dashboard unusable — schedule as far ahead as you like.
 The line under a card's title is yours: it shows `subtitle` if set, otherwise `purpose`. Keep
 it under ~60 characters; it truncates on one line. `body` shows on the Timeline tab.
 
-When a reminder comes due the web app plays a chime, washes the screen in the accent colour,
-flashes the tab title, and raises an OS notification if the user has granted permission. The
-card keeps pulsing until it is actually dealt with — being told about a thing is not the same
-as doing it.
+When a reminder comes due the web app plays the user's chosen chime, washes the screen in the
+accent colour, flashes the tab title, and raises an OS notification if the user has granted
+permission. The card keeps pulsing until it is actually dealt with — being told about a thing
+is not the same as doing it.
+
+If do-not-disturb or quiet hours are active, all of that is suppressed and only the on-screen
+card remains. `sound: false` / `flash: false` on the card are your own per-card switches on top
+of that.
 
 You normally do not call `/notified` yourself; the browser does. Call `/start` on the user's
 behalf only if they asked you to.

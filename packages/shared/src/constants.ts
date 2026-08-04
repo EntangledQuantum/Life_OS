@@ -95,6 +95,62 @@ export type RepeatRule = (typeof REPEAT_RULES)[number];
  */
 export const SPACED_OFFSETS_DAYS = [1, 3, 7, 14, 30, 60] as const;
 
+/**
+ * Reminder chimes.
+ *
+ * All of these are synthesized by the client at play time rather than shipped
+ * as audio files — nothing to 404, no extra request, and it works identically
+ * on the static Pages build. A client on another platform is free to map these
+ * ids onto native system sounds instead; the id is the contract, not the
+ * waveform.
+ */
+export const NOTIFICATION_SOUNDS = [
+  {
+    id: "chime",
+    label: "Chime",
+    description: "Two rising notes. Clear without being startling.",
+  },
+  {
+    id: "bell",
+    label: "Bell",
+    description: "A single struck bell with a long tail.",
+  },
+  {
+    id: "marimba",
+    label: "Marimba",
+    description: "Three soft wooden notes. The gentlest option.",
+  },
+  {
+    id: "pulse",
+    label: "Pulse",
+    description: "Two low blips. Discreet enough for a shared room.",
+  },
+  {
+    id: "alert",
+    label: "Alert",
+    description: "Insistent and hard to miss. For things you must not sleep through.",
+  },
+  {
+    id: "none",
+    label: "Silent",
+    description: "No sound at all — reminders still flash on screen.",
+  },
+] as const;
+
+export type NotificationSoundId = (typeof NOTIFICATION_SOUNDS)[number]["id"];
+
+export const NOTIFICATION_SOUND_IDS = NOTIFICATION_SOUNDS.map((s) => s.id) as [
+  NotificationSoundId,
+  ...NotificationSoundId[],
+];
+
+export function isNotificationSound(value: unknown): value is NotificationSoundId {
+  return (
+    typeof value === "string" &&
+    (NOTIFICATION_SOUND_IDS as readonly string[]).includes(value)
+  );
+}
+
 export const IMPROVEMENT_PULSES = [
   "Improving",
   "Stable",

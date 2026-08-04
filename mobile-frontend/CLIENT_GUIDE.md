@@ -14,10 +14,10 @@ Read this end to end before writing code. The last two sections
 
 | | |
 |--|--|
-| API surface | [`docs/API.md`](API.md) |
-| Agent-side behaviour | [`docs/skills/life-os/SKILL.md`](skills/life-os/SKILL.md) |
-| Reaching it off-machine | [`docs/NETWORK.md`](NETWORK.md) |
-| Data model | [`docs/DATABASE.md`](DATABASE.md) |
+| API surface | [`docs/API.md`](../docs/API.md) |
+| Agent-side behaviour | [`docs/skills/life-os/SKILL.md`](../docs/skills/life-os/SKILL.md) |
+| Reaching it off-machine | [`docs/NETWORK.md`](../docs/NETWORK.md) |
+| Data model | [`docs/DATABASE.md`](../docs/DATABASE.md) |
 | Reference implementation | `apps/web/src/` |
 
 ---
@@ -37,7 +37,7 @@ GET http://<host>:8787/health
 `lan: true` means the API is bound to all interfaces and is reachable from other
 devices. If it comes back `false` (or the request times out from another
 machine), the user needs `API_HOST=0.0.0.0` — point them at
-[`docs/NETWORK.md`](NETWORK.md) rather than trying to fix it yourself.
+[`docs/NETWORK.md`](../docs/NETWORK.md) rather than trying to fix it yourself.
 
 Default port `8787`. Do not scan the network looking for it.
 
@@ -411,11 +411,39 @@ Full rules, machine-readable: `GET /api/v1/agent/xp-model`.
 | `celebrationIntensity` | `off` = no confetti at all; `minimal` = restrained |
 | `accentTheme` | `nebula` 224 · `quantum` 296 · `terminal` 150 · `ember` 38 (OKLCH hue) |
 | `gamificationEnabled`, `pointsEnabled`, `streaksEnabled`, `achievementsEnabled`, `questsEnabled` | Hide those surfaces when false |
-| `quietHoursStart` / `quietHoursEnd` | Do not make noise inside this window |
+| `notificationSound` | Which chime to play — see below |
+| `doNotDisturb` | Silence reminders without hiding them |
+| `quietHoursSilent` + `quietHoursStart` / `quietHoursEnd` | Automatic do-not-disturb window |
 
-Note: the current web client does **not** yet gate reminder chimes on quiet
-hours. If you implement it, you are ahead of the reference client, not diverging
-from it.
+### Sounds and do-not-disturb
+
+`notificationSound` is one of `chime` · `bell` · `marimba` · `pulse` · `alert` ·
+`none`. The web client synthesizes these; **a native client should map the ids
+onto platform system sounds instead** — the id is the contract, not the
+waveform. `none` means visual only.
+
+Do-not-disturb — manual (`doNotDisturb`) or scheduled (`quietHoursSilent` inside
+the quiet-hours window) — **suppresses the interruption, not the information**:
+
+```
+silent → no sound, no flash, no system notification
+       → the card still appears and still pulses
+       → you STILL POST /notified
+```
+
+That last line is the one to get right. Skipping `/notified` while silenced
+means every suppressed reminder fires the instant do-not-disturb ends — a
+notification avalanche, which is worse than the interruption the user was
+avoiding. Mark it delivered, keep it visible, and let them find it when they
+look.
+
+Quiet hours can wrap past midnight (the default is 03:30–10:30). Port
+`isWithinQuietHours()` from `packages/shared/src/schedule.ts` rather than writing
+your own comparison — the wrapping case is where hand-rolled versions break.
+
+Make the silence **visible**: the web client shows a `DND` chip in the header.
+Without it, a missed reminder reads as a broken app rather than a setting the
+user chose.
 
 ---
 
@@ -541,6 +569,8 @@ back would not be an improvement.
 - [ ] `upcoming` (15 min) and `scheduled` (everything) shown separately
 - [ ] `xpOnComplete` renders as a green indicator, not a button
 - [ ] Reminders fire once, POST `/notified`, and stay urgent until dealt with
+- [ ] `doNotDisturb` and quiet hours silence the alert but still mark it notified
+- [ ] Silence is visible in the UI, so it doesn't look like a bug
 - [ ] Celebration is unmissable and `celebration-seen` fires only after real dismissal
 - [ ] `reducedMotion` and `celebrationIntensity` honoured
 - [ ] `efficiencyPct` above 100 displays correctly

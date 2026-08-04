@@ -9,8 +9,9 @@ Reaching it from a phone or another machine on your network: see
 port; public origins must be listed in `CORS_ORIGINS`.
 
 **Building a second frontend** (mobile app, widget, TUI)? Start with
-[`docs/CLIENT_GUIDE.md`](CLIENT_GUIDE.md) — this file is the endpoint reference, that one is
-what to render and which behaviours are contracts rather than styling.
+[`mobile-frontend/CLIENT_GUIDE.md`](../mobile-frontend/CLIENT_GUIDE.md) — this file is the
+endpoint reference, that one is what to render and which behaviours are contracts rather than
+styling. Everything platform-specific lives under `mobile-frontend/`.
 
 ## Endpoints
 
@@ -55,7 +56,7 @@ what to render and which behaviours are contracts rather than styling.
 | GET/POST | `/api/v1/reviews` | Light reviews |
 | POST | `/api/v1/reviews/:id/complete` | Complete a light review |
 | GET/POST | `/api/v1/achievements` | Achievements |
-| GET/PATCH | `/api/v1/settings` | Settings incl. `dayResetTime`, agent webhook |
+| GET/PATCH | `/api/v1/settings` | Settings incl. `dayResetTime`, notification sound, do-not-disturb, agent webhook, backups |
 | GET/PATCH | `/api/v1/gamification/config` | `dailyXpTarget`, `growthStyle`, multipliers |
 | GET/POST | `/api/v1/cards` | List / create cards (pinned or scheduled) |
 | GET | `/api/v1/cards/upcoming` | Visible scheduled cards, soonest first |

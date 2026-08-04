@@ -1,0 +1,57 @@
+# Mobile build output. Kept separate from the root .gitignore so this folder
+# stays self-contained — the native toolchains produce a lot that must never be
+# committed, and none of it is the web app's business.
+
+# JS / React Native / Expo
+node_modules/
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.tsbuildinfo
+
+# Metro / Babel caches
+.metro-health-check*
+metro-cache/
+
+# Android
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/.cxx/
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# iOS
+ios/build/
+ios/Pods/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+ios/.xcode.env.local
+*.ipa
+*.dSYM.zip
+
+# Flutter, if that is the choice
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# Secrets: signing keys, service accounts, API tokens. Never commit these.
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+google-services.json
+GoogleService-Info.plist
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+*.log

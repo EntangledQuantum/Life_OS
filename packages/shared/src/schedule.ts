@@ -171,6 +171,37 @@ export function isReminderDue(
   return !Number.isNaN(ms) && ms <= now.getTime();
 }
 
+function minutesOfDay(hhmm: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/**
+ * Is `now` inside the user's quiet hours?
+ *
+ * Handles the window wrapping past midnight, which is the normal case here —
+ * the default is 03:30 to 10:30, and a night owl's quiet hours almost always
+ * straddle the date boundary. A start equal to the end means "no quiet hours"
+ * rather than "always quiet", because the latter would silently mute the app
+ * forever on a mis-set field.
+ */
+export function isWithinQuietHours(
+  start: string,
+  end: string,
+  now = new Date(),
+): boolean {
+  const from = minutesOfDay(start);
+  const to = minutesOfDay(end);
+  if (from === null || to === null || from === to) return false;
+
+  const at = now.getHours() * 60 + now.getMinutes();
+  return from < to ? at >= from && at < to : at >= from || at < to;
+}
+
 /**
  * Where the next occurrence lands after completing occurrence `repeatIndex`.
  * Returns null when the card does not repeat, or when a spaced ladder is spent.
