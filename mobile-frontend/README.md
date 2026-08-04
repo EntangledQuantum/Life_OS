@@ -10,7 +10,7 @@ space to build it in.
 mobile-frontend/
 ├── README.md          ← you are here: the isolation contract and how to start
 ├── CLIENT_GUIDE.md    ← what to build: API, screens, and the behavioural contracts
-└── app/               ← the native project goes here (not created yet)
+└── app/               ← Expo (React Native) Android-first client
 ```
 
 ---
@@ -24,9 +24,8 @@ If you are an agent picking this up:
    and the five contracts a client can silently break while still looking right.
 2. Read [The isolation contract](#the-isolation-contract) below before you create
    a single file.
-3. Ask the user which stack they want (see [Choosing a stack](#choosing-a-stack))
-   rather than picking for them.
-4. Scaffold into `mobile-frontend/app/`.
+3. Stack is **Expo / React Native** (decided). The app lives in
+   `mobile-frontend/app/` — see that folder's README for run/build commands.
 
 The running web client at `apps/web/` is the reference implementation. Read it
 freely — but see the isolation contract about copying *from* it.
@@ -107,22 +106,19 @@ first.
 
 ---
 
-## Choosing a stack
+## Stack (decided)
 
-Not decided. **Ask the user.** The trade-off in one line each:
+**Expo / React Native** in `mobile-frontend/app/`. Own lockfile, own installs —
+never part of the root pnpm workspace. Android first; iOS later.
 
-| Stack | Why | Why not |
-|-------|-----|---------|
-| **Expo / React Native** | Closest to the existing React code; one codebase for both platforms; over-the-air updates; the fastest route to something running | Another JS toolchain; native modules occasionally fight you |
-| **Flutter** | Excellent animation control — and this app is *made of* animation (growth meter, celebration, reminder flash); one codebase | New language; nothing carries over from `apps/web` |
-| **Native Swift + Kotlin** | Best notification behaviour, best widgets and watch support | Two codebases, roughly double the work |
+```bash
+cd mobile-frontend/app
+npm install
+npx expo start
+```
 
-Weigh it against what this client actually has to do well: local notifications
-that fire while backgrounded, a full-screen celebration, and a living growth
-visual. Notification reliability is the one that most often decides this.
-
-Whatever is chosen, it goes in `mobile-frontend/app/` and brings its own
-lockfile, its own `.gitignore` entries, and its own CI if it needs any.
+Widget + full notification reliability need a native Android build (`eas build`
+or `expo run:android`), not Expo Go.
 
 ---
 
