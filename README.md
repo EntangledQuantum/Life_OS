@@ -300,8 +300,11 @@ Set up Life OS for me and then run my day with it.
 3. Read the skill so you know the whole API:
      docs/skills/life-os/SKILL.md
 
-4. Authenticate with the API_TOKEN in .env:
-     Authorization: Bearer lifeos-local-agent-token
+4. Authenticate with the API_TOKEN from my .env, on every request:
+     Authorization: Bearer <API_TOKEN>
+
+   There is no username/password login; POST /api/v1/auth/login returns 410.
+   Never print the token back to me or write it into a file you commit.
 
 5. Learn the XP rules before changing anything:
      GET /api/v1/agent/xp-model
@@ -341,7 +344,7 @@ the daily XP pool · themes · the day reset time · webhooks.
 ```bash
 # Read the entire day in one call
 curl -s http://127.0.0.1:8787/api/v1/dashboard/today \
-  -H "Authorization: Bearer lifeos-local-agent-token"
+  -H "Authorization: Bearer $LIFEOS_API_TOKEN"
 ```
 
 Full reference in [`docs/API.md`](docs/API.md). Prefer MCP? `pnpm mcp` exposes
@@ -388,11 +391,11 @@ Restoring is a file copy.
 ```bash
 # Take one right now
 curl -s -X POST http://127.0.0.1:8787/api/v1/backups \
-  -H "Authorization: Bearer lifeos-local-agent-token"
+  -H "Authorization: Bearer $LIFEOS_API_TOKEN"
 
 # Or export the lot as JSON
 curl -s http://127.0.0.1:8787/api/v1/export/json \
-  -H "Authorization: Bearer lifeos-local-agent-token" > lifeos-export.json
+  -H "Authorization: Bearer $LIFEOS_API_TOKEN" > lifeos-export.json
 ```
 
 Details in [`docs/DATABASE.md`](docs/DATABASE.md).

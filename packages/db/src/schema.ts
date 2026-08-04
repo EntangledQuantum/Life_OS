@@ -334,17 +334,12 @@ export const activeSessions = sqliteTable("active_sessions", {
   blockId: text("block_id"),
 });
 
-/**
- * @deprecated Unused since auth became token-only — nothing reads or writes it.
- * Kept so existing databases are not rewritten; safe to drop in a later migration.
+/*
+ * `auth_sessions` used to live here. It stored session tokens minted by the old
+ * username/password login. Auth is a single bearer token now — nothing issued,
+ * read, or expired a row in that table any more — so `ensureSchema()` drops it
+ * on boot.
  */
-export const authSessions = sqliteTable("auth_sessions", {
-  id: text("id").primaryKey(),
-  token: text("token").notNull().unique(),
-  username: text("username").notNull(),
-  createdAt: text("created_at").notNull(),
-  expiresAt: text("expires_at").notNull(),
-});
 
 export const specialEventCandidates = sqliteTable("special_event_candidates", {
   id: text("id").primaryKey(),

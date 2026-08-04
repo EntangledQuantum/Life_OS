@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { GrowthStyle } from "@life-os/shared";
 
@@ -360,17 +360,55 @@ function OrbGrowth({
   const top = cy - r;
   const level = cy + r - (pct / 100) * (r * 2);
 
-  // Crest offset drives the wave; parked when the user prefers reduced motion.
-  const [phase, setPhase] = useState(0);
+  /*
+   * Wave motion.
+   *
+   * This used to hold the crest offset in React state and bump it inside a
+   * requestAnimationFrame loop — a full re-render sixty times a second — and
+   * then animate `x` with the same spring used for the fill level. A spring
+   * chasing a value that changes every frame can never arrive, so the surface
+   * smeared sideways instead of travelling. Two fixes:
+   *
+   *   1. the offsets are motion values, so they never touch React at all;
+   *   2. horizontal drift is linear and lives on a wrapping <g>, leaving the
+   *      spring to do the one job it is good at — the vertical level.
+   *
+   * Each crest scrolls by exactly SEG, the tile width of `wave()`, so the loop
+   * is seamless.
+   */
+  /*
+   * The crests are moved by writing the `transform` attribute straight onto the
+   * two <g> wrappers each frame.
+   *
+   * Going through motion does not work here: `style={{ x }}` on an SVG <g>
+   * resolves to `transform: none` (on an SVG element `x` is an attribute name
+   * before it is a transform shorthand, and <g> has no `x` attribute), and a
+   * motion value passed to the `transform` attribute is not applied either. A
+   * ref and one rAF is unambiguous, and — like a motion value — it never goes
+   * through React, which is the part that mattered.
+   */
+  const crestARef = useRef<SVGGElement>(null);
+  const crestBRef = useRef<SVGGElement>(null);
+
   useEffect(() => {
-    if (reduce) return;
-    let frame = 0;
-    const tick = () => {
-      setPhase((p) => (p + 0.6) % 40);
-      frame = requestAnimationFrame(tick);
+    const put = (el: SVGGElement | null, x: number) =>
+      el?.setAttribute("transform", `translate(${x.toFixed(2)} 0)`);
+
+    if (reduce) {
+      put(crestARef.current, 0);
+      put(crestBRef.current, -SEG);
+      return;
+    }
+
+    let raf = 0;
+    const tick = (t: number) => {
+      // Each crest travels exactly one tile per cycle, so the loop is seamless.
+      put(crestARef.current, -((t / 3200) % 1) * SEG);
+      put(crestBRef.current, ((t / 5200) % 1) * SEG - SEG);
+      raf = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [reduce]);
 
   return (
@@ -392,10 +430,21 @@ function OrbGrowth({
           <stop offset="0%" stopColor="oklch(82% 0.15 155)" />
           <stop offset="100%" stopColor="var(--accent)" />
         </linearGradient>
+        {/*
+          A halo that blooms outward from the glass. The old one ramped the
+          other way — transparent in the middle, opaque at the very edge — so it
+          read as a hard ring rather than light coming off the orb.
+        */}
         <radialGradient id="gm-orb-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="60%" stopColor="var(--accent)" stopOpacity="0" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.35" />
+          <stop offset="52%" stopColor="var(--accent)" stopOpacity="0.42" />
+          <stop offset="76%" stopColor="var(--accent)" stopOpacity="0.14" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
         </radialGradient>
+        {/* light pooling just under the surface of the liquid */}
+        <linearGradient id="gm-orb-sheen" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="white" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="white" stopOpacity="0" />
+        </linearGradient>
       </defs>
 
       {/* ghost: the whole sphere is what 100% looks like */}
@@ -419,21 +468,32 @@ function OrbGrowth({
         />
       )}
 
-      {full && (
-        <motion.circle
-          cx={cx}
-          cy={cy}
-          r={r + 14}
-          fill="url(#gm-orb-glow)"
-          initial={{ opacity: 0 }}
-          animate={reduce ? { opacity: 0.9 } : { opacity: [0.5, 1, 0.5] }}
-          transition={
-            reduce
-              ? { duration: 0 }
-              : { duration: 3.5, repeat: Infinity, ease: "easeInOut" }
-          }
-        />
-      )}
+      {/*
+        The glow is always on and grows with the day — an orb at 70% should look
+        lit, not flat. It only goes loud once the target is actually met.
+      */}
+      <motion.circle
+        cx={cx}
+        cy={cy}
+        r={r + 30}
+        fill="url(#gm-orb-glow)"
+        initial={false}
+        animate={
+          reduce
+            ? { opacity: full ? 0.95 : 0.25 + (pct / 100) * 0.4 }
+            : full
+              ? { opacity: [0.6, 1, 0.6], scale: [0.97, 1.03, 0.97] }
+              : { opacity: 0.2 + (pct / 100) * 0.4, scale: 1 }
+        }
+        transition={
+          reduce
+            ? { duration: 0 }
+            : full
+              ? { duration: 3.5, repeat: Infinity, ease: "easeInOut" }
+              : { duration: 0.8 }
+        }
+        style={{ transformOrigin: `${cx}px ${cy}px` }}
+      />
 
       <g clipPath="url(#gm-orb-clip)">
         {/* body of the fill */}
@@ -446,19 +506,34 @@ function OrbGrowth({
           transition={reduce ? { duration: 0 } : SPRING}
         />
         {/* two offset crests give the surface depth */}
-        <motion.path
-          d={wave(cx - r - 40, r * 2 + 80, 5)}
-          fill={full ? "oklch(82% 0.15 155)" : "var(--accent)"}
-          opacity={0.85}
+        <g ref={crestBRef}>
+          <motion.path
+            d={wave(cx - r - SEG, r * 2 + SEG * 2, 5)}
+            fill={full ? "oklch(82% 0.15 155)" : "var(--accent)"}
+            opacity={0.85}
+            initial={false}
+            animate={{ y: level }}
+            transition={reduce ? { duration: 0 } : SPRING}
+          />
+        </g>
+        <g ref={crestARef}>
+          <motion.path
+            d={wave(cx - r - SEG, r * 2 + SEG * 2, 3.5)}
+            fill="rgba(255,255,255,0.32)"
+            initial={false}
+            animate={{ y: level }}
+            transition={reduce ? { duration: 0 } : SPRING}
+          />
+        </g>
+        {/* light pooling under the surface, so the liquid reads as lit */}
+        <motion.rect
+          x={cx - r}
+          width={r * 2}
+          height={16}
+          fill="url(#gm-orb-sheen)"
+          opacity={pct > 2 ? 0.5 : 0}
           initial={false}
-          animate={{ y: level, x: -phase }}
-          transition={reduce ? { duration: 0 } : SPRING}
-        />
-        <motion.path
-          d={wave(cx - r - 40, r * 2 + 80, 3.5)}
-          fill="rgba(255,255,255,0.28)"
-          initial={false}
-          animate={{ y: level, x: phase - 20 }}
+          animate={{ y: level }}
           transition={reduce ? { duration: 0 } : SPRING}
         />
       </g>
@@ -517,15 +592,20 @@ function OrbGrowth({
   );
 }
 
+/**
+ * Tile width of one full crest. Both waves drift by exactly this much per
+ * cycle — any other distance and the tiling visibly jumps once per loop.
+ */
+const SEG = 40;
+
 /** Sine-ish crest built from cubic segments, wide enough to scroll seamlessly. */
 function wave(x: number, width: number, amp: number): string {
-  const seg = 40;
-  const count = Math.ceil(width / seg);
+  const count = Math.ceil(width / SEG);
   let d = `M${x} 0`;
   for (let i = 0; i < count; i++) {
-    const x0 = x + i * seg;
-    d += ` C${x0 + seg * 0.25} ${-amp} ${x0 + seg * 0.75} ${amp} ${x0 + seg} 0`;
+    const x0 = x + i * SEG;
+    d += ` C${x0 + SEG * 0.25} ${-amp} ${x0 + SEG * 0.75} ${amp} ${x0 + SEG} 0`;
   }
-  d += ` L${x + count * seg} 260 L${x} 260 Z`;
+  d += ` L${x + count * SEG} 260 L${x} 260 Z`;
   return d;
 }

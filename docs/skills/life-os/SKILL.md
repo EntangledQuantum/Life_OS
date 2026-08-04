@@ -23,7 +23,7 @@ metadata:
         prompt: Life OS API base URL
       - key: lifeos.api_token
         description: Bearer token (prefer env LIFEOS_API_TOKEN)
-        default: "lifeos-local-agent-token"
+        default: ""
         prompt: Life OS API bearer token name/value for local dev
   openclaw:
     requires:
@@ -33,7 +33,7 @@ homepage: https://github.com/EntangledQuantum/Life_OS
 required_environment_variables:
   - name: LIFEOS_API_TOKEN
     prompt: Life OS API bearer token
-    help: "From Life OS .env API_TOKEN (default lifeos-local-agent-token)"
+    help: "The API_TOKEN value in the Life OS .env — generated at setup, no default"
     required_for: authenticated API calls
   - name: LIFEOS_API_BASE
     prompt: Life OS API base URL
@@ -58,12 +58,12 @@ taps things. Anything that requires sitting down and deciding is yours.
 | | |
 |--|--|
 | Base URL | `$LIFEOS_API_BASE` or `http://127.0.0.1:8787` |
-| Auth | `Authorization: Bearer $LIFEOS_API_TOKEN` (default `lifeos-local-agent-token`) |
+| Auth | `Authorization: Bearer $LIFEOS_API_TOKEN` — from the Life OS `.env`. Generated at setup; there is no default. |
 | Skill path in repo | `docs/skills/life-os/SKILL.md` |
 | Repo | https://github.com/EntangledQuantum/Life_OS |
 
 ```http
-Authorization: Bearer lifeos-local-agent-token
+Authorization: Bearer $LIFEOS_API_TOKEN
 Content-Type: application/json
 ```
 
@@ -982,10 +982,10 @@ response carries `goalsAwaitingCelebration` alongside your result.
 curl -s http://127.0.0.1:8787/health
 
 curl -s http://127.0.0.1:8787/api/v1/agent/xp-model \
-  -H "Authorization: Bearer lifeos-local-agent-token"
+  -H "Authorization: Bearer $LIFEOS_API_TOKEN"
 
 curl -s -X POST http://127.0.0.1:8787/api/v1/cards \
-  -H "Authorization: Bearer lifeos-local-agent-token" \
+  -H "Authorization: Bearer $LIFEOS_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"slot":0,"title":"Smoke test card","emoji":"✅","xpOnComplete":5,
        "svg":"<svg viewBox=\"0 0 40 20\" xmlns=\"http://www.w3.org/2000/svg\"><circle cx=\"20\" cy=\"10\" r=\"8\" fill=\"#34D399\"/></svg>"}'

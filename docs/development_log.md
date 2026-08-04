@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-08-04  
 **Repo:** https://github.com/EntangledQuantum/Life_OS  
-**Status:** Phase 1 web MVP working locally; v0.4 shipped the flexible agentic pipeline — agent-owned settings and setup, scheduled/reminder cards with spaced repetition, agent-defined properties, condition-driven goals with must-be-seen celebrations, and automatic database backups. v0.4.1 added the Timeline tab, compacted the dashboard, and made the whole thing reachable over the LAN. v0.4.2 added notification sounds and do-not-disturb, and opened `mobile-frontend/` for the native client. **v0.5 removed password login — auth is the `API_TOKEN` bearer and nothing else**
+**Status:** Phase 1 web MVP working locally; v0.4 shipped the flexible agentic pipeline — agent-owned settings and setup, scheduled/reminder cards with spaced repetition, agent-defined properties, condition-driven goals with must-be-seen celebrations, and automatic database backups. v0.4.1 added the Timeline tab, compacted the dashboard, and made the whole thing reachable over the LAN. v0.4.2 added notification sounds and do-not-disturb, and opened `mobile-frontend/` for the native client. v0.5 removed password login — auth is the `API_TOKEN` bearer and nothing else. **v0.6 stopped shipping a default token entirely, rebuilt the mobile client's look, and fixed the orb's water animation.**
 
 **Read this file first** if you are a new human or coding agent picking up the project. Then read:
 
@@ -16,7 +16,54 @@
 
 ---
 
-## 0. What changed in the v0.5 pass (2026-08-04)
+## 0. What changed in the v0.6 pass (2026-08-04)
+
+**No shipped credential.** `API_TOKEN=lifeos-local-agent-token` is gone. There is
+no fallback in `env.ts` and no value in `.env.example`. `pnpm setup` generates a
+256-bit token, and `apps/api/src/token.ts` generates one at boot if `.env` still
+has none — or still has a known-weak one — writes it back, and prints it once.
+A shipped default is the same password on every clone of a public repo, which
+mattered the moment `API_HOST=0.0.0.0` became a supported setting. The default
+was also baked into `SKILL.md`, the README, the landing page's agent brief, and
+the token field's placeholder; all of those now reference `$LIFEOS_API_TOKEN`.
+
+**The orb's water actually moves.** `GrowthMeter.tsx` held the crest offset in
+React state, bumped it inside a `requestAnimationFrame` loop — a full re-render
+sixty times a second — and animated `x` with the same spring used for the fill
+level. A spring chasing a value that changes every frame never arrives, so the
+surface smeared sideways instead of travelling. The offsets are motion values
+now, horizontal drift is linear and lives on a wrapping `<g>`, and the spring is
+left to do the one thing it is good at: the level. The glow is also always on
+and scales with the day, rather than appearing only at 100%.
+
+**The token field was unusable.** `.input` is unlayered CSS and Tailwind's
+utilities live in `@layer utilities`; unlayered always wins, so `pl-9` did
+nothing and the key icon sat on top of the text. Added `.input-icon-left`
+alongside it with a comment explaining why a padding utility will not work.
+
+**Landing page.** One CTA (Get started → quick start) instead of two. The agent
+section and the quick start were the same story told twice, so they are now one
+section — run the server, then paste this into your agent — moved up directly
+after "How it fits together". Removed the stale "you are already signed in"
+copy, which predated token auth.
+
+**Mobile client redesign** (`mobile-frontend/app/`, isolated as always). Eight
+device-local palettes defaulting to pink, kept deliberately separate from the
+server's four-hue `accentTheme` so a phone theme change does not repaint the web
+client. The growth meter is now the hero — a real liquid orb with tiled crests
+that each scroll by exactly their own period, and a sprout whose leaves unfurl
+by interpolating their own geometry in a worklet. Day metrics sit in the corners
+around it. The seven activity chips moved behind an explicit Change button.
+Swipe navigation between tabs via `PanResponder`, which leaves vertical
+scrolling intact. Outfit for headings.
+
+**Dropped `auth_sessions`.** It stored session tokens for the old
+username/password login and nothing has touched it since v0.5. `ensureSchema()`
+drops it on boot.
+
+---
+
+## 0.1 What changed in the v0.5 pass (2026-08-04)
 
 ### Auth is token-only. Password login is gone.
 
@@ -54,7 +101,7 @@ Harmless before, but it read like a crash on every single start.
 
 ---
 
-## 0.1 What changed in the v0.4.2 pass (2026-08-04)
+## 0.2 What changed in the v0.4.2 pass (2026-08-04)
 
 | Area | Change |
 |------|--------|
@@ -74,7 +121,7 @@ databases. All five packages typecheck and the web build is unchanged.
 
 ---
 
-## 0.2 What changed in the v0.4.1 pass (2026-08-03)
+## 0.3 What changed in the v0.4.1 pass (2026-08-03)
 
 Follow-up to v0.4, driven by using it: the Upcoming section was too heavy, and the app needed
 to be reachable from a phone.
@@ -101,7 +148,7 @@ with tags, repeat badges, reminder bells and the ribbon.
 
 ---
 
-## 0.3 What changed in the v0.4 pass (2026-08-03)
+## 0.4 What changed in the v0.4 pass (2026-08-03)
 
 The theme of this pass: **make the agentic pipeline open-ended.** Before it, an agent could
 only manipulate concepts the app already knew about. Now it can invent its own values, write
@@ -223,7 +270,7 @@ All five packages typecheck clean and the web app builds.
 
 ---
 
-## 0.4 What changed in the v0.3 pass (2026-08-03)
+## 0.5 What changed in the v0.3 pass (2026-08-03)
 
 | Area | Change |
 |------|--------|
@@ -376,7 +423,7 @@ life-os/
 ### 2.4 Auth model
 
 - **Mock only:** env `ADMIN_USER` / `ADMIN_PASS` (defaults `admin` / `lifeos`).
-- Session token in `auth_sessions` table + Bearer header; cookie optional.
+- ~~Session token in `auth_sessions` table + Bearer header; cookie optional.~~ *(historical — removed in v0.5; the table is dropped in v0.6)*
 - Agents: `API_TOKEN` env bearer without login.
 - **No** OAuth, multi-user, or Supabase Auth.
 
@@ -705,8 +752,8 @@ The API also bootstraps the database on boot, so `pnpm dev` alone works on a fre
 
 - Web: http://127.0.0.1:5173  
 - API: http://127.0.0.1:8787  
-- Login: `admin` / `lifeos`  
-- Agent: `Authorization: Bearer lifeos-local-agent-token`  
+- Auth: paste the `API_TOKEN` from `.env` — generated at setup, printed once  
+- Agent: `Authorization: Bearer $LIFEOS_API_TOKEN`  
 
 Give any agent (Hermes, OpenClaw, …): **`docs/skills/life-os/SKILL.md`** only.
 
@@ -732,12 +779,9 @@ Give any agent (Hermes, OpenClaw, …): **`docs/skills/life-os/SKILL.md`** only.
 
 | Variable | Default | Role |
 |----------|---------|------|
-| `ADMIN_USER` | admin | Mock login |
-| `ADMIN_PASS` | lifeos | Mock login |
 | `API_PORT` | 8787 | API port |
-| `API_HOST` | 127.0.0.1 | Bind |
-| `API_TOKEN` | lifeos-local-agent-token | Agent bearer |
-| `SESSION_SECRET` | (dev) | Session signing (if used) |
+| `API_HOST` | 127.0.0.1 | Bind. `0.0.0.0` exposes it to your LAN |
+| `API_TOKEN` | *(none)* | The only credential. Generated at setup/boot — no default |
 | `DATABASE_PATH` | ./data/lifeos.db | SQLite file |
 | `STORAGE_MODE` | local | local \| supabase (partial) |
 | `SUPABASE_URL` / `KEY` | — | Optional remote (incomplete) |

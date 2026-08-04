@@ -9,6 +9,7 @@
  * Never overwrites an existing .env or an existing database.
  */
 import { execSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,6 +56,46 @@ function readEnvValue(key, fallback) {
   return line ? line.slice(line.indexOf("=") + 1).trim() : fallback;
 }
 
+/** Kept in step with `apps/api/src/token.ts` — same rules, no TS import here. */
+const KNOWN_WEAK = new Set([
+  "",
+  "lifeos-local-agent-token",
+  "changeme",
+  "change-me",
+  "secret",
+  "token",
+  "lifeos",
+]);
+
+function isWeakToken(token) {
+  if (!token) return true;
+  const t = token.trim();
+  return KNOWN_WEAK.has(t.toLowerCase()) || t.length < 24;
+}
+
+/** Set key=value in a .env file without disturbing comments or ordering. */
+function upsertEnvValue(envPath, key, value) {
+  const line = `${key}=${value}`;
+  if (!fs.existsSync(envPath)) {
+    fs.writeFileSync(envPath, `${line}\n`, "utf8");
+    return;
+  }
+  const original = fs.readFileSync(envPath, "utf8");
+  const eol = original.includes("\r\n") ? "\r\n" : "\n";
+  const pattern = new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`);
+  let replaced = false;
+  const next = original.split(/\r?\n/).map((l) => {
+    if (replaced || !pattern.test(l)) return l;
+    replaced = true;
+    return line;
+  });
+  if (!replaced) {
+    while (next.length && next[next.length - 1].trim() === "") next.pop();
+    next.push(line);
+  }
+  fs.writeFileSync(envPath, `${next.join(eol)}${eol}`, "utf8");
+}
+
 function confirm(question) {
   // Non-interactive shells (CI, agents) must not hang waiting on stdin.
   if (!process.stdin.isTTY) return Promise.resolve(false);
@@ -95,10 +136,22 @@ async function main() {
   } else if (fs.existsSync(examplePath)) {
     fs.copyFileSync(examplePath, envPath);
     ok("Created .env from .env.example");
-    warn("Change ADMIN_PASS and API_TOKEN before exposing this beyond localhost");
   } else {
     fail(".env.example is missing — cannot create .env");
     process.exit(1);
+  }
+
+  // The API token is the only credential. A shipped default would be the same
+  // password on every clone, so we mint a real one here instead.
+  const existingToken = readEnvValue("API_TOKEN", "");
+  if (isWeakToken(existingToken)) {
+    const token = `lifeos_${crypto.randomBytes(32).toString("base64url")}`;
+    upsertEnvValue(envPath, "API_TOKEN", token);
+    ok(existingToken ? "Replaced the weak API_TOKEN" : "Generated a strong API_TOKEN");
+    say(`\n    ${c.bold}${token}${c.reset}\n`);
+    say(`  ${c.dim}Paste this into the web app on first load. Never commit it.${c.reset}`);
+  } else {
+    ok("API_TOKEN already set");
   }
 
   // ------------------------------------------------------------ 3. Install
@@ -146,18 +199,16 @@ async function main() {
     }
   }
 
-  const user = readEnvValue("ADMIN_USER", "admin");
-  const pass = readEnvValue("ADMIN_PASS", "lifeos");
-  const token = readEnvValue("API_TOKEN", "lifeos-local-agent-token");
+  const token = readEnvValue("API_TOKEN", "");
   const port = readEnvValue("API_PORT", "8787");
 
   say(`\n${c.green}${c.bold}Setup complete.${c.reset}\n`);
   say(`  ${c.bold}Start it:${c.reset}   pnpm dev`);
   say(`  ${c.bold}Web:${c.reset}        http://127.0.0.1:5173`);
   say(`  ${c.bold}API:${c.reset}        http://127.0.0.1:${port}`);
-  say(`  ${c.bold}Login:${c.reset}      ${user} / ${pass}`);
   say(`  ${c.bold}Database:${c.reset}   ${dbPath}`);
-  say(`  ${c.bold}Agent token:${c.reset} ${token}`);
+  say(`  ${c.bold}API token:${c.reset}  ${token}`);
+  say(`  ${c.dim}That token is the only credential — paste it into the app on first load.${c.reset}`);
   say(
     `\n  ${c.dim}Hand your agent docs/skills/life-os/SKILL.md — it can drive everything from there.${c.reset}\n`,
   );

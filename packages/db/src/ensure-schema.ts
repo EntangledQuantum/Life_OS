@@ -74,6 +74,22 @@ export function ensureSchema(dbPath?: string) {
     ["settings", "quiet_hours_silent", "INTEGER NOT NULL DEFAULT 1"],
   ];
 
+  /*
+   * Tables that outlived their feature. `auth_sessions` backed the old
+   * username/password login; auth has been a single bearer token since, and
+   * nothing has read or written this table since then. Leaving a table of
+   * credentials lying around is worse than dropping it.
+   */
+  for (const dead of ["auth_sessions"]) {
+    if (hasTable(db, dead)) {
+      try {
+        db.exec(`DROP TABLE ${dead}`);
+      } catch {
+        /* a locked DB will get it on the next boot */
+      }
+    }
+  }
+
   for (const [table, col, def] of alters) {
     if (!hasTable(db, table)) continue;
     if (!hasColumn(db, table, col)) {

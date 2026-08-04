@@ -58,23 +58,26 @@ export function ConnectPage() {
           Connect to Life OS
         </h1>
         <p className="mt-2 text-center text-sm leading-relaxed text-[var(--muted)]">
-          Paste your API token. It is the <code className="font-mono text-xs">API_TOKEN</code>{" "}
-          value in the Life OS <code className="font-mono text-xs">.env</code> file.
+          Paste your API token — the <code className="font-mono text-xs">API_TOKEN</code>{" "}
+          value in <code className="font-mono text-xs">.env</code>. It is generated
+          for you on first run and printed once in the terminal.
         </p>
 
         <label className="label mt-6 block" htmlFor="token">
           API token
         </label>
         <div className="relative">
-          <KeyRound className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[var(--faint)]" />
+          <KeyRound className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[var(--faint)]" />
           <input
             id="token"
-            className="input pl-9 font-mono text-sm"
+            className="input input-icon-left font-mono text-sm"
             type="password"
             autoComplete="off"
             spellCheck={false}
             autoFocus
-            placeholder="lifeos-local-agent-token"
+            // Never show a real-looking token here — a placeholder that looks
+            // like the answer is how shared defaults survive.
+            placeholder="paste your token"
             value={token}
             onChange={(e) => setValue(e.target.value)}
           />

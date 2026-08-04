@@ -1,9 +1,16 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
+import { announceGeneratedToken, ensureApiToken } from "./token.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 config({ path: path.join(root, ".env") });
+
+// There is no default token. If .env has none — or still has the old shared
+// one — mint a strong one now and write it back, before anything can serve a
+// request with it.
+const token = ensureApiToken(root, process.env.API_TOKEN);
+if (token.generated) announceGeneratedToken(token.token, token.reason);
 
 export const env = {
   root,
@@ -22,7 +29,8 @@ export const env = {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
-  apiToken: process.env.API_TOKEN ?? "lifeos-local-agent-token",
+  /** The only credential. Never has a fallback value — see `token.ts`. */
+  apiToken: token.token,
   databasePath: process.env.DATABASE_PATH ?? "./data/lifeos.db",
   storageMode: (process.env.STORAGE_MODE ?? "local") as "local" | "supabase",
   supabaseUrl: process.env.SUPABASE_URL ?? null,

@@ -37,10 +37,9 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "#how", label: "How it works" },
-  { href: "#features", label: "Features" },
-  { href: "#agents", label: "Agents" },
-  { href: "#xp", label: "XP" },
   { href: "#start", label: "Quick start" },
+  { href: "#features", label: "Features" },
+  { href: "#xp", label: "XP" },
 ];
 
 export function LandingPage() {
@@ -51,11 +50,13 @@ export function LandingPage() {
       <main className="relative z-10">
         <Hero />
         <HowItWorks />
+        {/* Getting running is one story — start the server, hand it the brief.
+            It sits here rather than at the bottom because it is what someone
+            who has just decided they want this actually needs next. */}
+        <QuickStart />
         <Features />
         <GrowthSection />
-        <AgentSection />
         <XpSection />
-        <QuickStart />
         <DatabaseSection />
         <FinalCta />
       </main>
@@ -81,17 +82,25 @@ function Background() {
 
 /* -------------------------------------------------------------------- nav */
 
-/** On the static site there is no dashboard to enter, so the CTA points at setup. */
+/**
+ * One call to action, everywhere: Get started, pointing at the quick start.
+ * There used to be a second "See the agent setup" button beside it, back when
+ * running the server and briefing the agent were two separate sections. They
+ * are one section now, so it is one button.
+ */
 function PrimaryCta({ className }: { className?: string }) {
-  if (IS_PAGES) {
-    return (
-      <a href="#start" className={cn("btn btn-primary", className)}>
-        Get started <ArrowRight className="h-4 w-4" />
-      </a>
-    );
-  }
   return (
-    <Link to="/app" className={cn("btn btn-primary", className)}>
+    <a href="#start" className={cn("btn btn-primary", className)}>
+      Get started <ArrowRight className="h-4 w-4" />
+    </a>
+  );
+}
+
+/** Only meaningful when the app is actually being served next to the API. */
+function DashboardLink({ className }: { className?: string }) {
+  if (IS_PAGES) return null;
+  return (
+    <Link to="/app" className={cn("btn", className)}>
       Open dashboard <ArrowRight className="h-4 w-4" />
     </Link>
   );
@@ -168,9 +177,7 @@ function Hero() {
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <PrimaryCta className="px-6 py-3 text-base" />
-            <a href="#agents" className="btn px-6 py-3 text-base">
-              <Bot className="h-4 w-4" /> See the agent setup
-            </a>
+            <DashboardLink className="px-6 py-3 text-base" />
           </div>
 
           <dl className="mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-white/[0.06] pt-7">
@@ -439,126 +446,6 @@ function GrowthSection() {
 
 /* ---------------------------------------------------------------- agents */
 
-/**
- * Written to be pasted straight into an agent, not read by a human.
- * Second person, imperative, with the exact commands and the permission rule.
- */
-const AGENT_BRIEF = `Set up Life OS for me and then run my day with it.
-
-1. Check whether it is already running:
-     curl -s http://127.0.0.1:8787/health
-
-2. If nothing answers, ask me where to put it, then:
-     git clone https://github.com/EntangledQuantum/Life_OS.git Life_OS
-     cd Life_OS
-     pnpm setup
-     pnpm dev
-
-   Needs Node 22.5+ and pnpm. Do not clone or install until I say yes.
-
-3. Read the skill so you know the whole API:
-     docs/skills/life-os/SKILL.md
-
-4. Authenticate with the API_TOKEN in .env:
-     Authorization: Bearer lifeos-local-agent-token
-
-5. Learn the XP rules before changing anything:
-     GET /api/v1/agent/xp-model
-
-6. Then, from now on:
-   - ask me what I want to build into my days, and create those habits
-   - block out my day on the timeline each morning
-   - put what I am reading or working on into a front-page card
-   - inject reviews and tasks into my Quick log
-   - each night, read GET /api/v1/dashboard/today and tell me how the day went
-
-If you are Hermes:
-  load docs/skills/life-os/SKILL.md as a skill, then ask me before creating
-  any scheduled morning/end-of-day jobs.
-
-If you are OpenClaw:
-  copy docs/skills/life-os/ into your workspace skills/ root, then invoke it
-  with /skill life-os.
-
-If you are Claude Code:
-  claude mcp add life-os -- pnpm --filter @life-os/mcp start
-  or just use the HTTP API above.
-
-Rules: never write to my Obsidian vault from the app. Never add levels or
-compare me to anyone. Ask before installing anything.`;
-
-function AgentSection() {
-  return (
-    <section id="agents" className="mx-auto max-w-6xl px-5 py-24">
-      <SectionHeading
-        eyebrow="Agent integration"
-        title="Hand it to your agent and let it build your system"
-        lede="You do not configure Life OS by clicking through settings. You tell an agent what you want out of your days, and it writes the habits, the schedule, and the scoring for you."
-      />
-
-      <Reveal className="mt-12">
-        <div className="panel p-6 sm:p-10">
-          <AgentFlowDiagram className="mx-auto w-full max-w-2xl" />
-        </div>
-      </Reveal>
-
-      <Reveal className="mt-12">
-        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-xl font-bold tracking-tight">
-            Copy this to your agent
-          </h3>
-          <span className="text-sm text-[var(--muted)]">
-            Works with Hermes, OpenClaw, Claude Code, or any agent that can run
-            a shell and call an API.
-          </span>
-        </div>
-        <CodeBlock
-          code={AGENT_BRIEF}
-          label="paste into your agent"
-          previewLines={12}
-        />
-      </Reveal>
-
-      <div className="mt-12 grid gap-4 md:grid-cols-2">
-        {[
-          {
-            icon: Plug,
-            title: "HTTP and MCP, same brain",
-            body: "A full REST surface under /api/v1, plus an MCP stdio server sharing the same database. Cards, blocks, habits, events, XP rules, and settings are reachable from both.",
-          },
-          {
-            icon: Webhook,
-            title: "Webhooks close the loop",
-            body: "Complete a habit or a card and Life OS posts to your agent with the entity, the XP awarded, and your note — so it can update its own memory or your vault.",
-          },
-          {
-            icon: Bot,
-            title: "Front-page cards, including SVG",
-            body: "Two content cards plus a dedicated agent-setup card. Agents can ship their own inline SVG artwork; it is sanitized and rendered sandboxed.",
-          },
-          {
-            icon: Terminal,
-            title: "No server? It can offer to install one",
-            body: "The skill tells your agent to detect a dead API, ask your permission, then clone the repo and run a single setup command. It never clones behind your back.",
-          },
-        ].map((f, i) => (
-          <Reveal key={f.title} delay={i * 70}>
-            <div className="panel flex h-full gap-4 p-5">
-              <f.icon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]" />
-              <div>
-                <h3 className="font-semibold">{f.title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-[var(--muted)]">
-                  {f.body}
-                </p>
-              </div>
-            </div>
-          </Reveal>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 /* -------------------------------------------------------------------- XP */
 
 function XpSection() {
@@ -628,6 +515,54 @@ function XpSection() {
 
 /* ------------------------------------------------------------ quick start */
 
+const AGENT_BRIEF = `Set up Life OS for me and then run my day with it.
+
+1. Check whether it is already running:
+     curl -s http://127.0.0.1:8787/health
+
+2. If nothing answers, ask me where to put it, then:
+     git clone https://github.com/EntangledQuantum/Life_OS.git Life_OS
+     cd Life_OS
+     pnpm setup
+     pnpm dev
+
+   Needs Node 22.5+ and pnpm. Do not clone or install until I say yes.
+   Setup prints an API token once — ask me for it, do not guess it.
+
+3. Read the skill so you know the whole API:
+     docs/skills/life-os/SKILL.md
+
+4. Authenticate with the API_TOKEN from my .env, on every request:
+     Authorization: Bearer <API_TOKEN>
+
+   There is no username/password login; POST /api/v1/auth/login returns 410.
+   Never print the token back to me or write it into a file you commit.
+
+5. Learn the XP rules before changing anything:
+     GET /api/v1/agent/xp-model
+
+6. Then, from now on:
+   - ask me what I want to build into my days, and create those habits
+   - block out my day on the timeline each morning
+   - put what I am reading or working on into a front-page card
+   - inject reviews and tasks into my Quick log
+   - each night, read GET /api/v1/dashboard/today and tell me how the day went
+
+If you are Hermes:
+  load docs/skills/life-os/SKILL.md as a skill, then ask me before creating
+  any scheduled morning/end-of-day jobs.
+
+If you are OpenClaw:
+  copy docs/skills/life-os/ into your workspace skills/ root, then invoke it
+  with /skill life-os.
+
+If you are Claude Code:
+  claude mcp add life-os -- pnpm --filter @life-os/mcp start
+  or just use the HTTP API above.
+
+Rules: never write to my Obsidian vault from the app. Never add levels or
+compare me to anyone. Ask before installing anything.`;
+
 const CLONE_STEPS = `git clone ${REPO_URL}.git Life_OS
 cd Life_OS
 pnpm setup
@@ -638,18 +573,26 @@ function QuickStart() {
     <section id="start" className="mx-auto max-w-6xl px-5 py-24">
       <SectionHeading
         eyebrow="Quick start"
-        title="Clone, one command, running"
-        lede="Requires Node 22.5 or newer and pnpm. pnpm setup creates your .env, installs everything, provisions the database, applies migrations, and seeds starter habits. It is safe to re-run."
+        title="Run it, then hand it to your agent"
+        lede="Two steps and you are done. Needs Node 22.5 or newer and pnpm. `pnpm setup` writes your .env, generates your API token, installs everything, provisions the database, applies migrations, and seeds starter habits — it is safe to re-run."
       />
 
-      <div className="mt-12 grid gap-8 lg:grid-cols-2">
+      {/* ------------------------------------------------------- step one */}
+      <Reveal className="mt-14">
+        <Step n={1} title="Start the server" />
+      </Reveal>
+
+      <div className="mt-6 grid gap-8 lg:grid-cols-2">
         <Reveal>
           <CodeBlock code={CLONE_STEPS} label="install and run" />
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        </Reveal>
+
+        <Reveal delay={100}>
+          <div className="grid gap-3 sm:grid-cols-2">
             {[
               { k: "App", v: "127.0.0.1:5173" },
               { k: "API", v: "127.0.0.1:8787" },
-              { k: "Sign-in", v: "not needed" },
+              { k: "Sign-in", v: "API token" },
               { k: "Database", v: "data/lifeos.db" },
             ].map((r) => (
               <div
@@ -663,40 +606,92 @@ function QuickStart() {
               </div>
             ))}
           </div>
-        </Reveal>
-
-        <Reveal delay={100}>
-          <div className="panel h-full p-6">
-            <h3 className="text-lg font-bold tracking-tight">
-              You are already signed in
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
-              Life OS is single-user and runs on your own machine, so there is
-              no login screen — you host it, you are the admin, and it opens
-              straight to your day.
-            </p>
-            <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
-              Multi-user accounts and real authentication are{" "}
-              <strong className="text-[var(--text)]">on hold</strong> until the
-              single-user experience is finished. Keep the API bound to
-              localhost, or put it behind your own auth if you expose it.
-            </p>
-
-            <h3 className="mt-8 text-lg font-bold tracking-tight">
-              Then hand it to an agent
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
-              Copy the brief from the{" "}
-              <a href="#agents" className="text-[var(--accent)] hover:underline">
-                agent section
-              </a>{" "}
-              into Hermes, OpenClaw, or Claude Code. It will read the skill,
-              learn the XP rules, and start building your days with you.
+          <div className="panel mt-3 p-5">
+            <p className="text-sm leading-relaxed text-[var(--muted)]">
+              Setup generates a strong{" "}
+              <code className="font-mono text-xs text-[var(--text)]">API_TOKEN</code>{" "}
+              and prints it once. Paste it into the app on first load. That token
+              is the only credential Life OS has — there is no account, no
+              password, and no shipped default.
             </p>
           </div>
         </Reveal>
       </div>
+
+      {/* ------------------------------------------------------- step two */}
+      <Reveal className="mt-16">
+        <Step n={2} title="Paste this into your agent" />
+      </Reveal>
+
+      <Reveal className="mt-6">
+        <p className="mb-5 max-w-3xl text-[var(--muted)]">
+          You do not configure Life OS by clicking through settings. You tell an
+          agent what you want out of your days, and it writes the habits, the
+          schedule, and the scoring for you. Works with Hermes, OpenClaw, Claude
+          Code, or anything that can run a shell and call an API.
+        </p>
+        <CodeBlock
+          code={AGENT_BRIEF}
+          label="paste into your agent"
+          previewLines={12}
+        />
+      </Reveal>
+
+      <Reveal className="mt-10">
+        <div className="panel p-6 sm:p-10">
+          <AgentFlowDiagram className="mx-auto w-full max-w-2xl" />
+        </div>
+      </Reveal>
+
+      <div className="mt-12 grid gap-4 md:grid-cols-2">
+        {[
+          {
+            icon: Plug,
+            title: "HTTP and MCP, same brain",
+            body: "A full REST surface under /api/v1, plus an MCP stdio server sharing the same database. Cards, blocks, habits, events, XP rules, and settings are reachable from both.",
+          },
+          {
+            icon: Webhook,
+            title: "Webhooks close the loop",
+            body: "Complete a habit or a card and Life OS posts to your agent with the entity, the XP awarded, and your note — so it can update its own memory or your vault.",
+          },
+          {
+            icon: Bot,
+            title: "Front-page cards, including SVG",
+            body: "Two content cards plus a dedicated agent-setup card. Agents can ship their own inline SVG artwork; it is sanitized and rendered sandboxed.",
+          },
+          {
+            icon: Terminal,
+            title: "No server? It can offer to install one",
+            body: "The skill tells your agent to detect a dead API, ask your permission, then clone the repo and run a single setup command. It never clones behind your back.",
+          },
+        ].map((f, i) => (
+          <Reveal key={f.title} delay={i * 70}>
+            <div className="panel flex h-full gap-4 p-5">
+              <f.icon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]" />
+              <div>
+                <h3 className="font-semibold">{f.title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-[var(--muted)]">
+                  {f.body}
+                </p>
+              </div>
+            </div>
+          </Reveal>
+        ))}
+      </div>
     </section>
+  );
+}
+
+/** Numbered marker for the two quick-start steps. */
+function Step({ n, title }: { n: number; title: string }) {
+  return (
+    <div className="flex items-center gap-4">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--accent)]/40 bg-[var(--accent-soft)] font-mono text-sm font-semibold text-[var(--accent)]">
+        {n}
+      </span>
+      <h3 className="text-2xl font-bold tracking-tight">{title}</h3>
+    </div>
   );
 }
 

@@ -161,6 +161,15 @@ body {
   border-color: color-mix(in oklch, var(--accent) 50%, transparent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+/*
+ * `.input` is unlayered, and unlayered CSS beats anything in a @layer — which
+ * is where Tailwind puts its utilities. So a `pl-9` on an input silently does
+ * nothing and a leading icon lands on top of the text. Use this instead of a
+ * padding utility whenever the field has an icon in it.
+ */
+.input-icon-left {
+  padding-left: 2.45rem;
+}
 
 .label {
   display: block;
