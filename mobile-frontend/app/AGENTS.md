@@ -18,6 +18,28 @@ root workspace files. Isolation rules: `../README.md`. Product contracts:
 - Token in **SecureStore** on native (never log it). On 401 → clear token → connect.
 - Implementation: `lib/api.ts`, `lib/connection.tsx`, `lib/storage.ts`, `app/connect.tsx`.
 
+## Cleartext HTTP (do not remove)
+
+Life OS is reached over plain `http://` on a LAN. Android 9+ defaults
+`usesCleartextTraffic` to **false**, so a release build silently fails every
+request at the socket layer while Expo dev builds work fine — the debug variant
+enables cleartext for you. That gap is invisible until someone installs an APK.
+
+`app.json` therefore carries:
+
+```json
+["expo-build-properties", { "android": { "usesCleartextTraffic": true } }]
+```
+
+Keep exactly one `expo-build-properties` entry — `npx expo install` appends a
+bare `"expo-build-properties"` string of its own, which is redundant next to the
+configured array form. Verify the resolved config with
+`npx expo config --type prebuild` (read-only; does not write `android/`).
+
+Symptom if it goes missing: the connect screen says "Life OS isn't running —
+can't reach the server" while the same URL loads fine in the phone's browser.
+`adb logcat | findstr /i cleartext` prints the real error.
+
 ## Contracts you must not break
 
 See CLIENT_GUIDE §4. Highlights: life-day ≠ calendar day; celebrations only after
