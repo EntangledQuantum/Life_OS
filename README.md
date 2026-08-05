@@ -34,6 +34,18 @@ while your AI agent designs the system and keeps it up to date.
 
 <br />
 
+<p align="center">
+  <strong>📱 Mobile beta is ready</strong> — Android (and soon iOS) will ship shortly.
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/mobile-1.jpeg" alt="Life OS mobile — overview" width="280" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/mobile-2.jpeg" alt="Life OS mobile — day and habits" width="280" />
+</p>
+
+<br />
+
 ## 🧠 The idea
 
 Habit apps ask you to be your own systems designer. Pick the right habits.
@@ -464,7 +476,7 @@ database backups, the full HTTP API, and the MCP server.
 
 - [ ] Multi-user accounts and real authentication — *on hold, single-user for now*
 - [ ] Optional hosted Postgres storage — *scaffolded, not wired up*
-- [ ] Native mobile client — *scaffolding and brief in [`mobile-frontend/`](mobile-frontend/)*
+- [x] Native mobile client (Android beta) — *Expo app in [`mobile-frontend/app/`](mobile-frontend/app/); public release soon*
 - [ ] Automated tests
 
 <br />

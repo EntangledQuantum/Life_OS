@@ -34,10 +34,15 @@ WEB_URL=http://localhost:5174 pnpm screenshots
 | File | Section | Used in the root README |
 |------|---------|:--:|
 | `dashboard.png` | The Overview dashboard, down to the growth meter and Quick log | ✅ |
+| `mobile-1.jpeg` | Android / mobile beta — overview | ✅ |
+| `mobile-2.jpeg` | Android / mobile beta — day ribbon and habits | ✅ |
 | `layers.png` | "Three layers, one job each" | ✅ |
 | `growth-meter.png` | The growth meter, with the 100% state ghosted behind | ✅ |
 | `agents.png` | The agent integration diagram | ✅ |
 | `landing.png` | Landing page hero | — |
+
+Mobile shots are captured on-device (not via Playwright). Drop new ones into this
+folder as `mobile-*.jpeg` / `mobile-*.png` when the UI changes.
 
 A note on the dashboard shot: it renders whatever is in **your** local database
 at the time, so the numbers will not match the ones committed here. If you want
