@@ -6,11 +6,13 @@ import {
   Bot,
   CalendarClock,
   Database,
+  Download,
   Github,
   HardDrive,
   Layers,
   Moon,
   Plug,
+  Smartphone,
   Sparkles,
   Terminal,
   Webhook,
@@ -32,7 +34,13 @@ import {
   VsYesterdayArt,
   XpPoolDiagram,
 } from "@/components/landing/illustrations";
-import { asset, IS_PAGES, REPO_URL } from "@/lib/deploy";
+import {
+  ANDROID_APK_URL,
+  asset,
+  IS_PAGES,
+  RELEASES_URL,
+  REPO_URL,
+} from "@/lib/deploy";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -92,6 +100,19 @@ function PrimaryCta({ className }: { className?: string }) {
   return (
     <a href="#start" className={cn("btn btn-primary", className)}>
       Get started <ArrowRight className="h-4 w-4" />
+    </a>
+  );
+}
+
+/**
+ * Direct APK download. Points at `releases/latest/...`, so publishing a new
+ * build updates it without touching this page.
+ */
+function AndroidDownload({ className }: { className?: string }) {
+  return (
+    <a href={ANDROID_APK_URL} className={cn("btn", className)}>
+      <Download className="h-4 w-4" /> Android app
+      <span className="text-[11px] text-[var(--faint)]">beta</span>
     </a>
   );
 }
@@ -177,6 +198,7 @@ function Hero() {
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <PrimaryCta className="px-6 py-3 text-base" />
+            <AndroidDownload className="px-6 py-3 text-base" />
             <DashboardLink className="px-6 py-3 text-base" />
           </div>
 
@@ -606,6 +628,27 @@ function QuickStart() {
               </div>
             ))}
           </div>
+          <div className="panel mt-3 flex flex-wrap items-center gap-4 p-5">
+            <Smartphone className="h-5 w-5 shrink-0 text-[var(--accent)]" />
+            <div className="min-w-[12rem] flex-1">
+              <h4 className="font-semibold">Android app</h4>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">
+                Same token, same day. Install the APK, then point it at this
+                machine&apos;s address while you are on the same Wi-Fi. You will
+                need to allow installing from unknown sources.{" "}
+                <a
+                  href={RELEASES_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[var(--accent)] hover:underline"
+                >
+                  Release notes
+                </a>
+              </p>
+            </div>
+            <AndroidDownload className="shrink-0" />
+          </div>
+
           <div className="panel mt-3 p-5">
             <p className="text-sm leading-relaxed text-[var(--muted)]">
               Setup generates a strong{" "}

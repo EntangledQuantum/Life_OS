@@ -21,3 +21,16 @@ export function asset(file: string): string {
 }
 
 export const REPO_URL = "https://github.com/EntangledQuantum/Life_OS";
+
+/**
+ * Android APK.
+ *
+ * `releases/latest/download/<asset>` is resolved by GitHub at request time, so
+ * this keeps pointing at the newest release without the site being rebuilt.
+ * It depends on the asset keeping exactly this filename — rename it in a future
+ * release and the button 404s.
+ */
+export const ANDROID_APK_URL = `${REPO_URL}/releases/latest/download/life-os.apk`;
+
+/** Release notes, for anything that wants context rather than the file. */
+export const RELEASES_URL = `${REPO_URL}/releases/latest`;

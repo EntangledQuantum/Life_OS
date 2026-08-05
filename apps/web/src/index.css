@@ -494,6 +494,14 @@ body {
 .reveal {
   opacity: 0;
   transform: translateY(24px);
+  /*
+   * Grid and flex items default to `min-width: auto`, which means a child that
+   * cannot shrink — a `<pre class="code-block">` with `white-space: pre` — drags
+   * the whole track wider instead of scrolling inside itself. The code block
+   * already has `overflow-x: auto`; this is what lets it take effect. Without
+   * it the landing page scrolls sideways on a phone.
+   */
+  min-width: 0;
   transition:
     opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
