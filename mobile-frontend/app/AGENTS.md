@@ -87,11 +87,32 @@ app does not declare as a dependency.
 - Manual activity chips exclude Sleep/Break (schedule/agent can set those)
 - Needs a native Android build to test — not Expo Go
 
+**Never use a fixed dp width for something meant to span the widget.** The
+launcher hands out a different box per device, per cell count, and again after
+every resize, so a hardcoded width leaves a gap on a wide widget and overflows a
+narrow one. Spanning elements use `match_parent` or `flex` weights — the
+progress bar is two flex children (`flex: fill` / `flex: 100 - fill`), not a
+computed pixel width.
+
+Both render paths receive the real dp box and **must forward it**:
+`widgetTaskHandler` via `props.widgetInfo`, and `requestWidgetUpdate` via the
+`renderWidget(info)` argument. Dropping either makes the widget lay itself out
+for a size it is not. `StatusWidget` uses those numbers to pick its tier —
+below ~150dp tall it drops the ribbon and chips rather than clipping them.
+
 ## Dashboard
 
 - Single poll: `GET /api/v1/dashboard/today` (~8s on Today screen)
 - After writes, invalidate/refetch — don't hand-patch state
 - `source: "user"` on human actions; habit complete `409` = success no-op
+
+**Today always shows habits. This client deliberately diverges from
+CLIENT_GUIDE §3.7**, which has the web client hide habits while any agent item
+is open. That works when agent items are occasional; against an agent keeping a
+standing queue it means the habit list never renders at all — which is what
+happened here, with six habits invisible behind eight pending events. Agent
+events and light reviews live under "Needs you" on **Timeline**; Today only
+shows a count that links across. Do not move them back.
 
 ## Design tokens
 

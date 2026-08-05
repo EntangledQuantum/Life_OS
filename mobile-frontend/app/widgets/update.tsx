@@ -18,7 +18,11 @@ export async function pushWidgetFromDashboard(
   try {
     await requestWidgetUpdate({
       widgetName: "LifeOsStatus",
-      renderWidget: () => <StatusWidget data={snap} />,
+      // The callback is handed this widget's real dp box — pass it through, or
+      // the layout falls back to defaults and stops matching the placement.
+      renderWidget: (info) => (
+        <StatusWidget data={snap} width={info.width} height={info.height} />
+      ),
       widgetNotFound: () => {
         /* no widgets placed */
       },

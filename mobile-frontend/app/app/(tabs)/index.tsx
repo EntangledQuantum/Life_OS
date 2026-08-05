@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AppState, RefreshControl, ScrollView, Text, View } from "react-native";
+import {
+  AppState,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
@@ -24,6 +32,7 @@ import { pushWidgetFromDashboard } from "@/widgets/update";
 export default function TodayScreen() {
   const qc = useQueryClient();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { t, osReducedMotion } = useTheme();
   const { authenticated, refreshHealth } = useConnection();
   const [stale, setStale] = useState(false);
@@ -118,27 +127,6 @@ export default function TodayScreen() {
     onSuccess: invalidate,
   });
 
-  const completeEvent = useMutation({
-    mutationFn: (id: string) => api.completeEvent(id),
-    onSuccess: () => {
-      invalidate();
-      setToast("Logged");
-    },
-  });
-
-  const dismissEvent = useMutation({
-    mutationFn: (id: string) => api.dismissEvent(id),
-    onSuccess: invalidate,
-  });
-
-  const completeReview = useMutation({
-    mutationFn: (id: string) => api.completeReview(id),
-    onSuccess: () => {
-      invalidate();
-      setToast("Review complete");
-    },
-  });
-
   const completeCard = useMutation({
     mutationFn: (id: string) => api.completeCard(id),
     onSuccess: (res) => {
@@ -161,11 +149,19 @@ export default function TodayScreen() {
     onSuccess: invalidate,
   });
 
-  const pendingAgent = useMemo(() => {
-    const events = (data?.agentEvents ?? []).filter((e) => e.status === "pending");
-    const reviews = (data?.lightReviews ?? []).filter((r) => !r.completedAt);
-    return { events, reviews, hasAgent: events.length + reviews.length > 0 };
-  }, [data]);
+  /**
+   * Agent items live on Timeline, not here — only their count surfaces on
+   * Today. The web client hides habits while any agent item is open, and this
+   * screen copied that: with an agent keeping a standing queue of events, the
+   * habits never rendered at all. Habits are the one thing Today must always
+   * show.
+   */
+  const agentCount = useMemo(
+    () =>
+      (data?.agentEvents ?? []).filter((e) => e.status === "pending").length +
+      (data?.lightReviews ?? []).filter((r) => !r.completedAt).length,
+    [data],
+  );
 
   if (dashQ.isLoading && !data) return <Loading />;
 
@@ -308,65 +304,21 @@ export default function TodayScreen() {
           </View>
         ) : null}
 
-        {/* -------------------------------------------------------- quick log */}
+        {/* ----------------------------------------------------------- habits */}
         <View style={{ gap: 10 }}>
-          <SectionHeader title={pendingAgent.hasAgent ? "Needs you" : "Quick log"} />
-          {pendingAgent.hasAgent ? (
-            <>
-              {pendingAgent.events.map((ev) => (
-                <View
-                  key={ev.id}
-                  style={{
-                    gap: 10,
-                    backgroundColor: rgba(t.accent, 0.08),
-                    borderWidth: 1,
-                    borderColor: rgba(t.accent, 0.24),
-                    borderRadius: radius.lg,
-                    padding: 16,
-                    borderCurve: "continuous",
-                  }}
-                >
-                  <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
-                    {ev.title}
-                  </Text>
-                  {ev.body ? <Body>{ev.body}</Body> : null}
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Button
-                      title={`Done${ev.xpOnComplete ? ` · +${ev.xpOnComplete}` : ""}`}
-                      onPress={() => completeEvent.mutate(ev.id)}
-                    />
-                    <Button
-                      title="Dismiss"
-                      variant="ghost"
-                      onPress={() => dismissEvent.mutate(ev.id)}
-                    />
-                  </View>
-                </View>
-              ))}
-              {pendingAgent.reviews.map((r) => (
-                <View
-                  key={r.id}
-                  style={{
-                    gap: 10,
-                    backgroundColor: rgba(t.accent, 0.08),
-                    borderWidth: 1,
-                    borderColor: rgba(t.accent, 0.24),
-                    borderRadius: radius.lg,
-                    padding: 16,
-                    borderCurve: "continuous",
-                  }}
-                >
-                  <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
-                    {r.prompt}
-                  </Text>
-                  <Button
-                    title="Complete review"
-                    onPress={() => completeReview.mutate(r.id)}
-                    style={{ alignSelf: "flex-start" }}
-                  />
-                </View>
-              ))}
-            </>
+          <SectionHeader
+            title="Habits"
+            right={
+              (data.habits ?? []).length > 0 ? (
+                <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 12 }}>
+                  {(data.habits ?? []).filter((h) => h.completedToday).length}/
+                  {(data.habits ?? []).length}
+                </Text>
+              ) : null
+            }
+          />
+          {(data.habits ?? []).length === 0 ? (
+            <Body>No habits yet. Ask your agent to build some.</Body>
           ) : (
             (data.habits ?? []).map((h) => (
               <HabitRow
@@ -382,6 +334,37 @@ export default function TodayScreen() {
             ))
           )}
         </View>
+
+        {/* Agent items live on Timeline; Today just says how many are waiting. */}
+        {agentCount > 0 ? (
+          <Pressable
+            onPress={() => router.navigate("/(tabs)/timeline")}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              backgroundColor: rgba(t.accent, 0.1),
+              borderWidth: 1,
+              borderColor: rgba(t.accent, 0.28),
+              borderRadius: radius.md,
+              paddingVertical: 13,
+              paddingHorizontal: 14,
+              opacity: pressed ? 0.8 : 1,
+              borderCurve: "continuous",
+            })}
+          >
+            <Text style={{ fontSize: 15 }}>✦</Text>
+            <Text
+              style={{ color: t.text, fontFamily: font.bodySemi, fontSize: 14, flex: 1 }}
+            >
+              {agentCount} item{agentCount === 1 ? "" : "s"} from your agent need
+              you
+            </Text>
+            <Text style={{ color: t.accent, fontFamily: font.bodySemi, fontSize: 13 }}>
+              Timeline →
+            </Text>
+          </Pressable>
+        ) : null}
 
         <Text
           style={{

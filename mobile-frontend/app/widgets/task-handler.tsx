@@ -53,8 +53,12 @@ export async function widgetTaskHandler(
   props: WidgetTaskHandlerProps,
 ): Promise<void> {
   const name = props.widgetInfo.widgetName;
+  // Real dp box for this placement — changes per device, per cell count, and
+  // again on every WIDGET_RESIZED. The widget lays itself out from these.
+  const { width, height } = props.widgetInfo;
+
   if (name !== "LifeOsStatus") {
-    props.renderWidget(<StatusWidget data={null} />);
+    props.renderWidget(<StatusWidget data={null} width={width} height={height} />);
     return;
   }
 
@@ -63,7 +67,9 @@ export async function widgetTaskHandler(
     case "WIDGET_UPDATE":
     case "WIDGET_RESIZED": {
       const data = await readWidgetSnapshot();
-      props.renderWidget(<StatusWidget data={data} />);
+      props.renderWidget(
+        <StatusWidget data={data} width={width} height={height} />,
+      );
       break;
     }
     case "WIDGET_CLICK": {
@@ -77,7 +83,9 @@ export async function widgetTaskHandler(
       }
       // OPEN_APP is handled by deep link / default open
       const data = await readWidgetSnapshot();
-      props.renderWidget(<StatusWidget data={data} />);
+      props.renderWidget(
+        <StatusWidget data={data} width={width} height={height} />,
+      );
       break;
     }
     case "WIDGET_DELETED":
