@@ -30,7 +30,7 @@ while your AI agent designs the system and keeps it up to date.
 
 <br />
 
-![The Life OS dashboard](docs/screenshots/dashboard.png)
+![The Life OS dashboard](docs/screenshots/dashboard.png?v=2)
 
 <br />
 
