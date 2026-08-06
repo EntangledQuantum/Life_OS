@@ -16,7 +16,47 @@
 
 ---
 
-## 0. What changed in the v0.6 pass (2026-08-04)
+## 0. What changed in the v0.6.1 pass (2026-08-06)
+
+**The API could die on startup and claim it had started.** `index.ts` printed
+`Life OS API listening on …`, plus the LAN addresses and the exposure warning,
+*before* calling `serve()`. So a failed bind produced a complete success banner
+followed by a stack trace, and the log read as though the server was up. It was
+not: the process was already gone, and every later request got ECONNREFUSED
+through the Vite proxy until someone restarted by hand.
+
+Underneath that, `serve()` returns a plain node `Server`, and an `'error'`
+event with no listener is rethrown — so a single `EADDRINUSE` terminated the
+whole process. On Windows this is not rare: `Ctrl+C` against
+`pnpm --parallel` + `tsx watch` frequently leaves the child node process alive,
+holding 8787, and the next `pnpm dev` walks straight into it.
+
+Four changes, all in `apps/api/src/index.ts`:
+
+- The banner moved into `serve()`'s listening callback. It now only appears
+  when the socket is genuinely bound.
+- `server.on("error")` handles `EADDRINUSE` with two one-second retries — which
+  covers the common case of a socket that has not finished closing — then a
+  message naming the port with the `netstat` / `taskkill` commands to clear it,
+  and `exit(1)`. No stack trace.
+- `SIGINT` / `SIGTERM` / `SIGHUP` close the server and stop the backup
+  scheduler, so the port is released promptly and the *next* start is less
+  likely to collide. There is a 3s unref'd fallback so a hung keep-alive
+  connection cannot block shutdown forever.
+- Any other server error, plus `unhandledRejection` and `uncaughtException`,
+  are logged loudly and **do not exit**. This is a deliberate trade: it is a
+  single-user app on the user's own machine with no supervisor to restart it,
+  so staying up and noisy beats dying silently and leaving the phone and the
+  agent pointed at nothing. Anything reaching those handlers is a bug.
+
+Verified against a throwaway port and database, leaving the real one closed:
+first instance binds and prints the banner, serves `/health` `200`, `/auth/me`
+`401` without a token and `200` with one; second instance on the same port
+retries twice, prints the actionable message and exits `1`.
+
+---
+
+## 0.1 What changed in the v0.6 pass (2026-08-04)
 
 **No shipped credential.** `API_TOKEN=lifeos-local-agent-token` is gone. There is
 no fallback in `env.ts` and no value in `.env.example`. `pnpm setup` generates a
@@ -63,7 +103,7 @@ drops it on boot.
 
 ---
 
-## 0.1 What changed in the v0.5 pass (2026-08-04)
+## 0.2 What changed in the v0.5 pass (2026-08-04)
 
 ### Auth is token-only. Password login is gone.
 
@@ -101,7 +141,7 @@ Harmless before, but it read like a crash on every single start.
 
 ---
 
-## 0.2 What changed in the v0.4.2 pass (2026-08-04)
+## 0.3 What changed in the v0.4.2 pass (2026-08-04)
 
 | Area | Change |
 |------|--------|
@@ -121,7 +161,7 @@ databases. All five packages typecheck and the web build is unchanged.
 
 ---
 
-## 0.3 What changed in the v0.4.1 pass (2026-08-03)
+## 0.4 What changed in the v0.4.1 pass (2026-08-03)
 
 Follow-up to v0.4, driven by using it: the Upcoming section was too heavy, and the app needed
 to be reachable from a phone.
@@ -148,7 +188,7 @@ with tags, repeat badges, reminder bells and the ribbon.
 
 ---
 
-## 0.4 What changed in the v0.4 pass (2026-08-03)
+## 0.5 What changed in the v0.4 pass (2026-08-03)
 
 The theme of this pass: **make the agentic pipeline open-ended.** Before it, an agent could
 only manipulate concepts the app already knew about. Now it can invent its own values, write
@@ -270,7 +310,7 @@ All five packages typecheck clean and the web app builds.
 
 ---
 
-## 0.5 What changed in the v0.3 pass (2026-08-03)
+## 0.6 What changed in the v0.3 pass (2026-08-03)
 
 | Area | Change |
 |------|--------|
