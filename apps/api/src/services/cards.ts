@@ -20,6 +20,7 @@ import {
 import { addXp, getLocalDayBounds, nowIso } from "./helpers.js";
 import { fireAgentWebhook } from "./webhook.js";
 import { createBlock, startBlock } from "./blocks.js";
+import { endActiveSession, getActiveSession, startTimedSession } from "./sessions.js";
 
 type WebhookResult = Awaited<ReturnType<typeof fireAgentWebhook>>;
 
@@ -438,6 +439,9 @@ export function startCard(db: LifeOsDb, id: string) {
   if (card.status === "done") return { error: "Card is already complete" as const };
 
   const category = card.activityTag ?? "Deep Work";
+  // Read this *before* startBlock swaps the running session, or "previous"
+  // would just be the activity we are about to start.
+  const before = getActiveSession(db)?.activity ?? null;
   const start = new Date();
   const end = new Date(
     start.getTime() + (card.durationMinutes ?? 30) * 60_000,
@@ -456,6 +460,20 @@ export function startCard(db: LifeOsDb, id: string) {
   const started = startBlock(db, block.id);
   if ("error" in started) return started;
 
+  /*
+   * Re-open the session as a *timed* one. `startBlock` just swaps the running
+   * activity; on its own that meant a started card ran forever and silently
+   * became your new normal. This remembers what it interrupted and when it is
+   * due to finish, so it hands the day back afterwards.
+   */
+  const timed = startTimedSession(
+    db,
+    category,
+    card.durationMinutes ?? null,
+    block.id,
+    before,
+  );
+
   db.update(schema.dashboardCards)
     .set({ linkedBlockId: block.id, progress: 1, updatedAt: nowIso() })
     .where(eq(schema.dashboardCards.id, id))
@@ -464,7 +482,7 @@ export function startCard(db: LifeOsDb, id: string) {
   return {
     card: getCard(db, id)!,
     block: started.block,
-    activeSession: started.activeSession,
+    activeSession: timed,
   };
 }
 
@@ -487,6 +505,17 @@ export async function completeCard(
 
   const card = mapCard(row);
   const now = nowIso();
+
+  /*
+   * If this card is what is currently running, finishing it also finishes the
+   * session and restores whatever it interrupted. Without this a started card
+   * simply never ended — it quietly became your new default activity.
+   */
+  const running = getActiveSession(db);
+  if (card.linkedBlockId && running?.blockId === card.linkedBlockId) {
+    endActiveSession(db);
+  }
+
   const xp = card.xpOnComplete > 0 ? card.xpOnComplete : 0;
   if (xp > 0) addXp(db, xp);
 

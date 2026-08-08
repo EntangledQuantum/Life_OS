@@ -332,6 +332,37 @@ export const activeSessions = sqliteTable("active_sessions", {
   activity: text("activity").notNull(),
   startedAt: text("started_at").notNull(),
   blockId: text("block_id"),
+  /**
+   * What was running before this session took over, so a timed session can hand
+   * the day back instead of leaving whatever it interrupted lost. Null means
+   * there was nothing to return to.
+   */
+  previousActivity: text("previous_activity"),
+  /**
+   * When a timed session should end by itself — set from a card's
+   * `durationMinutes`. Null means it runs until stopped.
+   */
+  endsAt: text("ends_at"),
+});
+
+/**
+ * What actually happened, as opposed to what was planned.
+ *
+ * `active_sessions` holds one row and is replaced on every switch, so before
+ * this table existed changing activity simply discarded the interval that just
+ * ended — there was no way to draw the part of the day you had already lived.
+ * One row per interval, closed when the next one starts.
+ */
+export const activityLog = sqliteTable("activity_log", {
+  id: text("id").primaryKey(),
+  /** Life-day key, so a 1am session lands on the day it belonged to. */
+  date: text("date").notNull(),
+  activity: text("activity").notNull(),
+  startedAt: text("started_at").notNull(),
+  /** Null while it is still running. */
+  endedAt: text("ended_at"),
+  blockId: text("block_id"),
+  source: text("source").notNull().default("user"),
 });
 
 /*

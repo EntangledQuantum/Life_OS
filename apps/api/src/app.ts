@@ -411,6 +411,13 @@ export function createApp() {
   api.delete("/session/active", (c) =>
     c.json(dashboard.clearActiveSession(getDb())),
   );
+  /**
+   * Finish the running session and hand the day back to whatever it
+   * interrupted. DELETE stops everything; this stops just this one.
+   */
+  api.post("/session/end", (c) =>
+    c.json({ activeSession: dashboard.endActiveSession(getDb()) }),
+  );
 
   api.get("/quests", (c) => c.json(quests.listQuests(getDb())));
   api.post("/quests", async (c) => {

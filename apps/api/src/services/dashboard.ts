@@ -20,6 +20,11 @@ import { listProperties } from "./properties.js";
 import { listAchievements } from "./achievements.js";
 import { listLightReviews, listQuests } from "./quests.js";
 import { listAgentEvents } from "./events.js";
+import {
+  getActiveSession,
+  listActivityLog,
+  settleActiveSession,
+} from "./sessions.js";
 import { listStudyBlocks } from "./blocks.js";
 import {
   listDueReminders,
@@ -49,7 +54,92 @@ const CATEGORY_COLORS: Record<string, string> = {
   Exploration: "#F472B6",
 };
 
+/** Clock hour (0–24) — the ribbon is drawn against the wall clock, not the life-day. */
+function clockHour(d: Date): number {
+  return d.getHours() + d.getMinutes() / 60;
+}
+
+/**
+ * What was actually done, from the start of the day up to `nowHour`.
+ * Gaps stay as an explicit "unlogged" segment rather than being papered over
+ * with the plan — an hour you did not record is information, not a Deep Work
+ * block you can take credit for.
+ */
+function buildActualSegments(
+  db: LifeOsDb,
+  dateStr: string,
+  nowHour: number,
+): {
+  id: string;
+  category: string;
+  label: string;
+  startHour: number;
+  endHour: number;
+  color: string;
+  status: string;
+  actual: boolean;
+}[] {
+  const out: ReturnType<typeof buildActualSegments> = [];
+  let cursor = 0;
+
+  for (const entry of listActivityLog(db, dateStr)) {
+    const from = Math.max(0, Math.min(24, clockHour(new Date(entry.startedAt))));
+    const to = Math.max(
+      from,
+      Math.min(
+        nowHour,
+        entry.endedAt ? clockHour(new Date(entry.endedAt)) : nowHour,
+      ),
+    );
+    if (to <= from + 1e-6) continue;
+
+    if (from > cursor + 1e-6) {
+      out.push({
+        id: `unlogged-${cursor.toFixed(3)}`,
+        category: "Unlogged",
+        label: "Not recorded",
+        startHour: cursor,
+        endHour: from,
+        color: "rgba(255,255,255,0.05)",
+        status: "unlogged",
+        actual: true,
+      });
+    }
+
+    out.push({
+      id: `did-${entry.id}`,
+      category: entry.activity,
+      label: entry.activity,
+      startHour: from,
+      endHour: to,
+      color: CATEGORY_COLORS[entry.activity] ?? "#5B8CFF",
+      status: "done",
+      actual: true,
+    });
+    cursor = to;
+  }
+
+  if (nowHour > cursor + 1e-6) {
+    out.push({
+      id: `unlogged-${cursor.toFixed(3)}`,
+      category: "Unlogged",
+      label: "Not recorded",
+      startHour: cursor,
+      endHour: nowHour,
+      color: "rgba(255,255,255,0.05)",
+      status: "unlogged",
+      actual: true,
+    });
+  }
+
+  return out;
+}
+
 export function getDashboard(db: LifeOsDb): DashboardToday {
+  // A timed session that has run out ends here — reading the dashboard is the
+  // only moment the answer matters, and a personal app has no scheduler awake
+  // at 3am to do it on a timer.
+  settleActiveSession(db);
   refreshTodaySnapshot(db);
   const config = loadGamificationConfig(db);
   const progressRow = getProgressRow(db);
@@ -83,6 +173,7 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
     endHour: number;
     color: string;
     status: string;
+    actual: boolean;
   };
 
   const segs = blocks
@@ -122,7 +213,7 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
     cleaned[cleaned.length - 1]!.end = 24;
   }
 
-  let timeline: Seg[] =
+  const planned: Seg[] =
     cleaned.length > 0
       ? cleaned.map((s) => ({
           id: s.id,
@@ -132,6 +223,7 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
           endHour: s.end,
           color: s.color,
           status: s.status,
+          actual: false,
         }))
       : [
           {
@@ -142,20 +234,28 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
             endHour: 24,
             color: CATEGORY_COLORS.Life ?? "#5B8CFF",
             status: "planned",
+            actual: false,
           },
         ];
 
-  // Enforce chain: each start === previous end (kill any float holes)
-  for (let i = 1; i < timeline.length; i++) {
-    timeline[i]!.startHour = timeline[i - 1]!.endHour;
-  }
-  if (timeline.length) {
-    timeline[0]!.startHour = 0;
-    timeline[timeline.length - 1]!.endHour = 24;
-  }
-  timeline = timeline.filter((s) => s.endHour > s.startHour + 1e-6);
+  /**
+   * The ribbon is two different things either side of the now-marker.
+   *
+   * Ahead of it, the plan: what the agent laid out. Behind it, what actually
+   * happened, from `activity_log` — the day painting itself in as you live it.
+   * Drawing the plan across hours that have already passed says nothing about
+   * whether you did any of it.
+   */
+  const nowHour = clockHour(new Date());
+  const lived = buildActualSegments(db, dateStr, nowHour);
 
-  const active = db.select().from(schema.activeSessions).limit(1).get();
+  const ahead = planned
+    .map((seg) => ({ ...seg, startHour: Math.max(seg.startHour, nowHour) }))
+    .filter((seg) => seg.endHour > seg.startHour + 1e-6);
+
+  let timeline: Seg[] = [...lived, ...ahead];
+
+  const active = getActiveSession(db);
   const agentEvents = listAgentEvents(db);
   const pendingEventCount = agentEvents.filter((e) => e.status === "pending").length;
 
@@ -206,24 +306,16 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
   };
 }
 
-export function setActiveSession(
-  db: LifeOsDb,
-  activity: string,
-  startedAt?: string,
-  blockId?: string | null,
-) {
-  db.delete(schema.activeSessions).run();
-  const started = startedAt ?? nowIso();
-  db.insert(schema.activeSessions)
-    .values({ activity, startedAt: started, blockId: blockId ?? null })
-    .run();
-  return { activity, startedAt: started, blockId: blockId ?? null };
-}
-
-export function clearActiveSession(db: LifeOsDb) {
-  db.delete(schema.activeSessions).run();
-  return { ok: true };
-}
+/*
+ * Session mutation lives in `sessions.ts` now, because every change also has to
+ * close and open an `activity_log` interval. Re-exported here so existing
+ * callers and routes keep working.
+ */
+export {
+  setActiveSession,
+  clearActiveSession,
+  endActiveSession,
+} from "./sessions.js";
 
 export function getAnalytics(db: LifeOsDb) {
   const dash = getDashboard(db);

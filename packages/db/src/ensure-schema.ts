@@ -72,6 +72,9 @@ export function ensureSchema(dbPath?: string) {
     ["settings", "notification_sound", "TEXT NOT NULL DEFAULT 'chime'"],
     ["settings", "do_not_disturb", "INTEGER NOT NULL DEFAULT 0"],
     ["settings", "quiet_hours_silent", "INTEGER NOT NULL DEFAULT 1"],
+    // A timed session remembers what it interrupted, and when to hand it back.
+    ["active_sessions", "previous_activity", "TEXT"],
+    ["active_sessions", "ends_at", "TEXT"],
   ];
 
   /*
@@ -99,6 +102,26 @@ export function ensureSchema(dbPath?: string) {
         /* ignore */
       }
     }
+  }
+
+  /*
+   * What actually happened. `active_sessions` is replaced on every switch, so
+   * without this the interval that just ended was simply discarded and the
+   * lived part of the day could not be drawn at all.
+   */
+  if (!hasTable(db, "activity_log")) {
+    db.exec(`
+      CREATE TABLE activity_log (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        activity TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        block_id TEXT,
+        source TEXT NOT NULL DEFAULT 'user'
+      );
+    `);
+    db.exec(`CREATE INDEX activity_log_date_idx ON activity_log (date);`);
   }
 
   if (!hasTable(db, "agent_events")) {

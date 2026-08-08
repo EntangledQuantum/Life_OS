@@ -410,7 +410,15 @@ export interface TimelineBlock {
   startHour: number;
   endHour: number;
   color: string;
+  /** `planned` | `active` | `done` | `unlogged` */
   status: string;
+  /**
+   * True for the part of the ribbon behind the now-marker: what was actually
+   * done, from the activity log. False ahead of it, where the ribbon is the
+   * plan. Clients should render the two differently — solid for lived, faded
+   * or outlined for planned.
+   */
+  actual: boolean;
 }
 
 export interface ActiveSession {
