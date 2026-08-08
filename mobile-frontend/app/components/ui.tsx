@@ -12,10 +12,78 @@ import {
 } from "react-native";
 import { font, radius, rgba } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
+import { useLayout } from "@/lib/responsive";
 
 export function Screen({ style, ...rest }: ViewProps) {
   const t = useTokens();
   return <View style={[{ flex: 1, backgroundColor: t.bg }, style]} {...rest} />;
+}
+
+/**
+ * The content column. Centres itself and stops growing at `maxContent` — a
+ * single column of habit rows stretched across an iPad is unreadable, and line
+ * length is the thing being capped.
+ *
+ * Goes *inside* each screen's ScrollView, so the scrollbar and the refresh
+ * control still belong to the whole window.
+ */
+export function PageBody({
+  children,
+  gap = 24,
+  style,
+}: {
+  children: ReactNode;
+  gap?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { maxContent } = useLayout();
+  return (
+    <View
+      style={[{ width: "100%", maxWidth: maxContent, alignSelf: "center", gap }, style]}
+    >
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Two columns when there is room, one when there is not.
+ *
+ * Below `expanded` the two halves are emitted straight into the parent, so they
+ * inherit its `gap` and read as one list — no wrapper, no double spacing.
+ */
+export function TwoPane({
+  left,
+  right,
+  gap = 24,
+  leftFlex = 1,
+  rightFlex = 1,
+}: {
+  left: ReactNode;
+  right: ReactNode;
+  gap?: number;
+  leftFlex?: number;
+  rightFlex?: number;
+}) {
+  const { twoPane } = useLayout();
+
+  if (!twoPane) {
+    return (
+      <>
+        {left}
+        {right}
+      </>
+    );
+  }
+
+  return (
+    <View style={{ flexDirection: "row", gap: gap + 8, alignItems: "flex-start" }}>
+      {/* `minWidth: 0` — flex children default to their content width, which
+          would let a long card title push the column wider than its share. */}
+      <View style={{ flex: leftFlex, minWidth: 0, gap }}>{left}</View>
+      <View style={{ flex: rightFlex, minWidth: 0, gap }}>{right}</View>
+    </View>
+  );
 }
 
 export function Card({

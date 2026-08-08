@@ -4,9 +4,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { font, radius, rgba, type Tokens } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
+import { useLayout } from "@/lib/responsive";
 import { dayKey, labelDay } from "@/lib/format";
 import type { DashboardCard } from "@/lib/types";
-import { Body, Button, Loading, SectionHeader } from "@/components/ui";
+import {
+  Body,
+  Button,
+  Loading,
+  PageBody,
+  SectionHeader,
+  TwoPane,
+} from "@/components/ui";
 import { DayTimeline } from "@/components/day-timeline";
 import { VsYesterdayRow } from "@/components/vs-yesterday";
 import { XpChart } from "@/components/xp-chart";
@@ -21,6 +29,7 @@ import { SwipeTabs } from "@/components/swipe-tabs";
 export default function TimelineScreen() {
   const qc = useQueryClient();
   const t = useTokens();
+  const { gutter } = useLayout();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -106,7 +115,10 @@ export default function TimelineScreen() {
     <SwipeTabs index={1}>
       <ScrollView
         style={{ flex: 1, backgroundColor: t.bg }}
-        contentContainerStyle={{ padding: 18, paddingBottom: 36, gap: 24 }}
+        contentContainerStyle={{
+          padding: gutter,
+          paddingBottom: 36,
+        }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -116,123 +128,136 @@ export default function TimelineScreen() {
           />
         }
       >
-        {agentEvents.length + reviews.length > 0 ? (
-          <View style={{ gap: 10 }}>
-            <SectionHeader title="Needs you" />
-            {agentEvents.map((ev) => (
-              <View key={ev.id} style={agentPanel(t)}>
-                <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
-                  {ev.title}
-                </Text>
-                {ev.body ? <Body>{ev.body}</Body> : null}
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <Button
-                    title={`Done${ev.xpOnComplete ? ` · +${ev.xpOnComplete}` : ""}`}
-                    onPress={() => completeEvent.mutate(ev.id)}
-                  />
-                  <Button
-                    title="Dismiss"
-                    variant="ghost"
-                    onPress={() => dismissEvent.mutate(ev.id)}
-                  />
-                </View>
-              </View>
-            ))}
-            {reviews.map((r) => (
-              <View key={r.id} style={agentPanel(t)}>
-                <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
-                  {r.prompt}
-                </Text>
-                <Button
-                  title="Complete review"
-                  onPress={() => completeReview.mutate(r.id)}
-                  style={{ alignSelf: "flex-start" }}
-                />
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        <View>
-          <SectionHeader title="Today's shape" />
-          <DayTimeline segments={dashQ.data?.timeline ?? []} />
-        </View>
-
-        {dashQ.data?.vsYesterday ? (
-          <View>
-            <SectionHeader title="Today vs yesterday" />
-            <VsYesterdayRow vs={dashQ.data.vsYesterday} />
-          </View>
-        ) : null}
-
-        {groups.length === 0 ? (
-          <Body>Nothing scheduled. Your agent will fill this in.</Body>
-        ) : (
-          groups.map((g) => (
-            <View key={g.key} style={{ gap: 10 }}>
-              <SectionHeader
-                title={labelDay(g.key)}
-                right={
-                  <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 11 }}>
-                    {g.cards.length}
-                  </Text>
-                }
-              />
-              {g.cards.map((c) => (
-                <CardRow
-                  key={c.id}
-                  card={c}
-                  urgent={Boolean(c.notifiedAt && c.flash)}
-                  onStart={() => start.mutate(c.id)}
-                  onComplete={() => complete.mutate(c.id)}
-                />
-              ))}
-            </View>
-          ))
-        )}
-
-        <XpChart series={dashQ.data?.xpSeries7 ?? []} />
-
-        {doneToday.length > 0 ? (
-          <View style={{ gap: 8 }}>
-            <SectionHeader title="Done today" />
-            {doneToday.map((c) => (
-              <View
-                key={c.id}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                  paddingVertical: 9,
-                  paddingHorizontal: 12,
-                  borderRadius: radius.md,
-                  backgroundColor: t.surface,
-                  opacity: 0.65,
-                  borderCurve: "continuous",
-                }}
-              >
-                <Text style={{ fontSize: 16 }}>{c.emoji || "✓"}</Text>
-                <Text
-                  style={{
-                    color: t.muted,
-                    fontFamily: font.bodyMedium,
-                    fontSize: 14,
-                    textDecorationLine: "line-through",
-                    flex: 1,
-                  }}
-                  numberOfLines={1}
-                >
-                  {c.title}
-                </Text>
-                {c.xpOnComplete > 0 ? (
-                  <Text style={{ color: t.positive, fontFamily: font.mono, fontSize: 12 }}>
-                    +{c.xpOnComplete} XP
-                  </Text>
+        <PageBody>
+          <TwoPane
+            /* Left is the shape of the day and how it compares; right is the
+               list of things that are going to happen in it. */
+            left={
+              <>
+                {agentEvents.length + reviews.length > 0 ? (
+                  <View style={{ gap: 10 }}>
+                    <SectionHeader title="Needs you" />
+                    {agentEvents.map((ev) => (
+                      <View key={ev.id} style={agentPanel(t)}>
+                        <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
+                          {ev.title}
+                        </Text>
+                        {ev.body ? <Body>{ev.body}</Body> : null}
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <Button
+                            title={`Done${ev.xpOnComplete ? ` · +${ev.xpOnComplete}` : ""}`}
+                            onPress={() => completeEvent.mutate(ev.id)}
+                          />
+                          <Button
+                            title="Dismiss"
+                            variant="ghost"
+                            onPress={() => dismissEvent.mutate(ev.id)}
+                          />
+                        </View>
+                      </View>
+                    ))}
+                    {reviews.map((r) => (
+                      <View key={r.id} style={agentPanel(t)}>
+                        <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
+                          {r.prompt}
+                        </Text>
+                        <Button
+                          title="Complete review"
+                          onPress={() => completeReview.mutate(r.id)}
+                          style={{ alignSelf: "flex-start" }}
+                        />
+                      </View>
+                    ))}
+                  </View>
                 ) : null}
-              </View>
-            ))}
-          </View>
-        ) : null}
+
+                <View>
+                  <SectionHeader title="Today's shape" />
+                  <DayTimeline segments={dashQ.data?.timeline ?? []} />
+                </View>
+
+                {dashQ.data?.vsYesterday ? (
+                  <View>
+                    <SectionHeader title="Today vs yesterday" />
+                    <VsYesterdayRow vs={dashQ.data.vsYesterday} />
+                  </View>
+                ) : null}
+
+                <XpChart series={dashQ.data?.xpSeries7 ?? []} />
+              </>
+            }
+            right={
+              <>
+                {groups.length === 0 ? (
+                  <Body>Nothing scheduled. Your agent will fill this in.</Body>
+                ) : (
+                  groups.map((g) => (
+                    <View key={g.key} style={{ gap: 10 }}>
+                      <SectionHeader
+                        title={labelDay(g.key)}
+                        right={
+                          <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 11 }}>
+                            {g.cards.length}
+                          </Text>
+                        }
+                      />
+                      {g.cards.map((c) => (
+                        <CardRow
+                          key={c.id}
+                          card={c}
+                          urgent={Boolean(c.notifiedAt && c.flash)}
+                          onStart={() => start.mutate(c.id)}
+                          onComplete={() => complete.mutate(c.id)}
+                        />
+                      ))}
+                    </View>
+                  ))
+                )}
+
+                {doneToday.length > 0 ? (
+                  <View style={{ gap: 8 }}>
+                    <SectionHeader title="Done today" />
+                    {doneToday.map((c) => (
+                      <View
+                        key={c.id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 10,
+                          paddingVertical: 9,
+                          paddingHorizontal: 12,
+                          borderRadius: radius.md,
+                          backgroundColor: t.surface,
+                          opacity: 0.65,
+                          borderCurve: "continuous",
+                        }}
+                      >
+                        <Text style={{ fontSize: 16 }}>{c.emoji || "✓"}</Text>
+                        <Text
+                          style={{
+                            color: t.muted,
+                            fontFamily: font.bodyMedium,
+                            fontSize: 14,
+                            textDecorationLine: "line-through",
+                            flex: 1,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {c.title}
+                        </Text>
+                        {c.xpOnComplete > 0 ? (
+                          <Text style={{ color: t.positive, fontFamily: font.mono, fontSize: 12 }}>
+                            +{c.xpOnComplete} XP
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            }
+          />
+        </PageBody>
       </ScrollView>
     </SwipeTabs>
   );

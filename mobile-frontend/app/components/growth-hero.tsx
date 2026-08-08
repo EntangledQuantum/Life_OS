@@ -1,9 +1,14 @@
-import { Text, useWindowDimensions, View } from "react-native";
+import { useState } from "react";
+import { Text, View } from "react-native";
 import type { UserProgress, VsYesterday } from "@/lib/types";
 import { deltaColor, font, radius, rgba } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
+import { useLayout } from "@/lib/responsive";
 import { formatDelta } from "@/lib/format";
 import { GrowthMeter, type CelebrationIntensity } from "./growth-meter";
+
+/** How big the meter is allowed to get, per window size class. */
+const METER_CAP = { compact: 248, medium: 300, expanded: 360 } as const;
 
 /**
  * The whole point of the phone screen: the meter is big and central, and the
@@ -22,17 +27,40 @@ export function GrowthHero({
   celebrationIntensity?: CelebrationIntensity;
 }) {
   const t = useTokens();
-  const { width } = useWindowDimensions();
+  const { width, sizeClass } = useLayout();
+  /**
+   * Measured, not derived from the window: on a tablet this component sits in
+   * one pane of a two-pane layout and the window width says nothing about how
+   * much room it actually has.
+   */
+  const [measured, setMeasured] = useState(0);
+  const avail = measured || width - 36;
 
   // Leave room for a stat block on each side, but never go tiny.
-  const meter = Math.max(176, Math.min(248, width - 150));
-  const box = meter + 62;
+  const meter = Math.max(176, Math.min(METER_CAP[sizeClass], avail - 150));
+  const box = meter + (sizeClass === "compact" ? 62 : 84);
   const remainder = Math.max(0, progress.dailyXpTarget - progress.dailyXp);
   const full = progress.efficiencyPct >= 100;
 
   return (
-    <View style={{ alignItems: "center", gap: 14 }}>
-      <View style={{ width: "100%", height: box, justifyContent: "center", alignItems: "center" }}>
+    <View
+      style={{ alignItems: "center", gap: 14 }}
+      onLayout={(e) => setMeasured(e.nativeEvent.layout.width)}
+    >
+      {/*
+       * Capped, not full-width. The four stats are pinned to the left and right
+       * edges of this box; without a cap they fly to the far edges of a tablet
+       * window and stop reading as belonging to the meter at all.
+       */}
+      <View
+        style={{
+          width: "100%",
+          maxWidth: meter + 260,
+          height: box,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
         <GrowthMeter
           efficiencyPct={progress.efficiencyPct}
           style={progress.growthStyle ?? "sprout"}
@@ -63,7 +91,7 @@ export function GrowthHero({
       </View>
 
       {/* the XP line the meter is actually filling with */}
-      <View style={{ width: "100%", gap: 7 }}>
+      <View style={{ width: "100%", maxWidth: meter + 260, gap: 7 }}>
         <View
           style={{
             height: 6,

@@ -1,5 +1,5 @@
 import { useMemo, useRef, type ReactNode } from "react";
-import { PanResponder, useWindowDimensions, View } from "react-native";
+import { PanResponder, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Animated, {
@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useTokens } from "@/lib/theme-provider";
+import { useLayout } from "@/lib/responsive";
 
 /** Left-to-right tab order. Must match the order in `app/(tabs)/_layout.tsx`. */
 export const TAB_ROUTES = [
@@ -40,17 +41,23 @@ export function SwipeTabs({
 }) {
   const router = useRouter();
   const t = useTokens();
-  const { width } = useWindowDimensions();
+  const { width, wide } = useLayout();
   const drag = useSharedValue(0);
   // Guards against a second navigation while the first is still settling.
   const navigating = useRef(false);
+  /**
+   * Harder to trigger on a large screen: the rail is already showing every tab,
+   * so a horizontal drag there is far more likely to be a stray thumb than an
+   * attempt to navigate.
+   */
+  const claim = wide ? 40 : 18;
 
   const responder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_e, g) =>
           enabled &&
-          Math.abs(g.dx) > 18 &&
+          Math.abs(g.dx) > claim &&
           Math.abs(g.dx) > Math.abs(g.dy) * 2,
         onPanResponderMove: (_e, g) => {
           const atEdge =
@@ -82,7 +89,7 @@ export function SwipeTabs({
           drag.value = withSpring(0, { damping: 20, stiffness: 180 });
         },
       }),
-    [enabled, index, width, router, drag],
+    [enabled, index, width, claim, router, drag],
   );
 
   const style = useAnimatedStyle(() => ({

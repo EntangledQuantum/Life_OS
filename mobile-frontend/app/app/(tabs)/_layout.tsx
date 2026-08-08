@@ -2,6 +2,7 @@ import { Tabs } from "expo-router";
 import { TabBar } from "@/components/tab-bar";
 import { font } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
+import { useLayout } from "@/lib/responsive";
 
 /**
  * Screen order here is the left-to-right swipe order — keep it in sync with
@@ -9,6 +10,7 @@ import { useTokens } from "@/lib/theme-provider";
  */
 export default function TabLayout() {
   const t = useTokens();
+  const { wide } = useLayout();
 
   return (
     <Tabs
@@ -20,6 +22,12 @@ export default function TabLayout() {
         headerShadowVisible: false,
         sceneStyle: { backgroundColor: t.bg },
         animation: "shift",
+        /*
+         * From `medium` up the bar becomes a left rail. The navigator reads
+         * this to switch its own container to a row and render the bar first;
+         * `components/tab-bar.tsx` changes shape to match.
+         */
+        tabBarPosition: wide ? "left" : "bottom",
       }}
     >
       <Tabs.Screen name="index" options={{ headerShown: false }} />

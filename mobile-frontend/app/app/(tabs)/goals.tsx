@@ -4,12 +4,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import { api } from "@/lib/api";
 import { font, radius, rgba } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
-import { Body, Card, Loading, SectionHeader } from "@/components/ui";
+import { useLayout } from "@/lib/responsive";
+import { Body, Card, Loading, PageBody, SectionHeader } from "@/components/ui";
 import { SwipeTabs } from "@/components/swipe-tabs";
 
 /** Read-only. Creating goals is the agent's job — see CLIENT_GUIDE §8. */
 export default function GoalsScreen() {
   const t = useTokens();
+  const { gutter, twoPane } = useLayout();
 
   const dashQ = useQuery({
     queryKey: ["dashboard"],
@@ -26,7 +28,7 @@ export default function GoalsScreen() {
     <SwipeTabs index={2}>
       <ScrollView
         style={{ flex: 1, backgroundColor: t.bg }}
-        contentContainerStyle={{ padding: 18, paddingBottom: 36, gap: 16 }}
+        contentContainerStyle={{ padding: gutter, paddingBottom: 36 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -36,6 +38,7 @@ export default function GoalsScreen() {
           />
         }
       >
+        <PageBody gap={16}>
         <Body>
           Goals are set by your agent. This screen is read-only on purpose —
           deciding what to want is the executive-function tax Life OS removes.
@@ -46,7 +49,14 @@ export default function GoalsScreen() {
             <Body>No goals yet. When your agent sets one, it shows up here.</Body>
           </Card>
         ) : (
-          goals.map((g) => {
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 16,
+            }}
+          >
+          {goals.map((g) => {
             const pct = Math.min(100, Math.max(0, g.progressPct));
             const tint = g.themeColor || t.accent;
             const done = g.status === "achieved";
@@ -54,6 +64,10 @@ export default function GoalsScreen() {
               <View
                 key={g.id}
                 style={{
+                  // Two up when there is room; `flexBasis` rather than a width
+                  // so the gap comes out of the row, not out of the last card.
+                  flexBasis: twoPane ? "48%" : "100%",
+                  flexGrow: 1,
                   borderRadius: radius.lg,
                   borderWidth: 1,
                   borderColor: g.celebrationPending ? tint : t.border,
@@ -133,7 +147,8 @@ export default function GoalsScreen() {
                 </LinearGradient>
               </View>
             );
-          })
+          })}
+          </View>
         )}
 
         {props.length > 0 ? (
@@ -149,7 +164,7 @@ export default function GoalsScreen() {
                     borderWidth: 1,
                     borderColor: t.border,
                     padding: 14,
-                    minWidth: "45%",
+                    minWidth: twoPane ? "22%" : "45%",
                     flexGrow: 1,
                     borderCurve: "continuous",
                   }}
@@ -178,6 +193,7 @@ export default function GoalsScreen() {
             </View>
           </View>
         ) : null}
+        </PageBody>
       </ScrollView>
     </SwipeTabs>
   );

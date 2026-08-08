@@ -52,6 +52,7 @@ no goal-creation UI; never colour a bad day red.
 |------|------|
 | `components/growth-meter.tsx` | Sprout + orb visuals; **must** draw ghosted 100% state behind live state |
 | `components/growth-hero.tsx` | Centres the meter and hangs the day's four numbers in the corners |
+| Readout placement | Per style, not shared — `OrbReadout` centres, `SproutReadout` sits at the right edge |
 | Leaf thresholds | `0.16 0.32 0.46 0.62 0.78 0.90` then bloom at 1.0 (match web) |
 | Web reference | `apps/web/src/components/graphics/GrowthMeter.tsx` (read only — copy patterns, don't import) |
 | Settings | `reducedMotion`, `celebrationIntensity`, `progress.growthStyle` |
@@ -69,6 +70,54 @@ Two things in the orb are load-bearing and easy to undo by accident:
 - Each crest scrolls by **exactly its own period** (`periodA = inner/2`,
   `periodB = inner/3`). Any other distance and the tiled sine visibly jumps once
   per loop. Do not give both waves the same drift distance.
+
+The percentage is placed **per style**, and the two cases are not variations of
+each other. The orb has an empty middle and the number is its contents, so it is
+centred and large. The sprout has no empty middle — a centred number lands on
+the pot and the roots — so it goes to the right edge, vertically centred, where
+the viewBox is empty at every growth level (stem at x≈100/200, widest leaf tip
+x≈130/200). Do not re-merge them into one `Readout`.
+
+## Screen sizes
+
+`lib/responsive.ts` → `useLayout()`. Everything reads from
+`useWindowDimensions()`, never from `Device.deviceType`: on an iPad the app is
+routinely *not* the size of the screen — Split View and Slide Over hand it a
+third or a half, and resize it while it runs.
+
+| class | width | what it is | layout |
+|---|---|---|---|
+| `compact` | `< 600` | phones, iPad Slide Over | bottom bar, one column |
+| `medium` | `600–899` | iPad portrait, 1/2 split, phone landscape | **left rail**, one column |
+| `expanded` | `>= 900` | iPad landscape | left rail, **two columns** |
+
+- `components/tab-bar.tsx` is one component with two shapes. `_layout.tsx` sets
+  `tabBarPosition: wide ? "left" : "bottom"` to match — that is what makes the
+  navigator's own container a row and renders the bar first. The rail's pill
+  travels the *content* box, so `span` subtracts the vertical padding.
+- `PageBody` (in `ui.tsx`) caps line length and centres; `TwoPane` splits into
+  columns only when `expanded` and otherwise emits both halves straight into the
+  parent so they inherit its `gap`.
+- `GrowthHero` measures itself with `onLayout` rather than reading the window —
+  in two-pane it lives in one column and the window width says nothing useful.
+  Its hero box is **capped at `meter + 260`**: the four stats are pinned to that
+  box's left and right edges, and without the cap they fly to the far edges of a
+  tablet window.
+
+## Orientation
+
+Top-level `"orientation": "portrait"` stays — it is what keeps
+`android:screenOrientation="portrait"` in the manifest, so the phone does not
+start rotating. iPad is unlocked with a device-variant Info.plist key instead:
+
+```json
+"UISupportedInterfaceOrientations~ipad": [ ...all four... ]
+```
+
+Expo's iOS orientation plugin only ever writes the un-suffixed
+`UISupportedInterfaceOrientations` (`@expo/config-plugins/build/ios/Orientation.js`),
+so the `~ipad` key passes through untouched and iPadOS prefers it. Do not
+"simplify" this to `"orientation": "default"` — that unlocks the phone too.
 
 ## Swiping and tabs
 

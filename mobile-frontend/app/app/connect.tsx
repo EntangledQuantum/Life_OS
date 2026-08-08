@@ -80,6 +80,10 @@ export default function ConnectScreen() {
           paddingTop: 72,
           gap: 16,
           flexGrow: 1,
+          // A token field has no business being 1300pt wide on an iPad.
+          width: "100%",
+          maxWidth: 520,
+          alignSelf: "center",
         }}
         keyboardShouldPersistTaps="handled"
       >

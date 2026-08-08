@@ -84,7 +84,11 @@ export function GrowthMeter({
         <Sprout pct={pct} full={full} size={size} t={t} reduce={reducedMotion} />
       )}
       {showReadout ? (
-        <Readout pct={pct} full={full} size={size} t={t} style={style} />
+        style === "orb" ? (
+          <OrbReadout pct={pct} full={full} size={size} t={t} />
+        ) : (
+          <SproutReadout pct={pct} full={full} size={size} t={t} />
+        )
       ) : null}
     </View>
   );
@@ -647,21 +651,21 @@ function leafPath(leaf: (typeof LEAVES)[number], s: number): string {
 
 /* -------------------------------------------------------------- readout */
 
-/** The number lives inside the visual — it is the point of the visual. */
-function Readout({
+/**
+ * In the orb the number *is* the contents of the sphere, so it goes dead centre
+ * and goes big. Nothing else is competing for that space.
+ */
+function OrbReadout({
   pct,
   full,
   size,
   t,
-  style,
 }: {
   pct: number;
   full: boolean;
   size: number;
   t: Tokens;
-  style: GrowthStyle;
 }) {
-  const orb = style === "orb";
   return (
     <View
       pointerEvents="none"
@@ -669,8 +673,8 @@ function Readout({
         position: "absolute",
         left: 0,
         right: 0,
-        top: orb ? 0 : size * 0.62,
-        height: orb ? size : size * 0.3,
+        top: 0,
+        height: size,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -678,8 +682,8 @@ function Readout({
       <Text
         style={{
           fontFamily: font.monoBold,
-          fontSize: orb ? size * 0.27 : size * 0.2,
-          lineHeight: orb ? size * 0.31 : size * 0.23,
+          fontSize: size * 0.27,
+          lineHeight: size * 0.31,
           color: t.text,
           fontVariant: ["tabular-nums"],
           textShadowColor: rgba(t.accent, 0.6),
@@ -687,9 +691,7 @@ function Readout({
         }}
       >
         {Math.round(pct)}
-        <Text style={{ fontSize: orb ? size * 0.11 : size * 0.09, color: t.muted }}>
-          %
-        </Text>
+        <Text style={{ fontSize: size * 0.11, color: t.muted }}>%</Text>
       </Text>
       <Text
         style={{
@@ -703,6 +705,86 @@ function Readout({
       >
         {full ? "target met" : "of today"}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * The sprout has no empty middle — centring the number lands it on the pot and
+ * the roots, which is where it used to sit. It goes to the right edge instead,
+ * beside the stem.
+ *
+ * That column is empty by construction and stays empty at every growth level:
+ * the stem runs down x≈100/200 and the widest leaf tip reaches x≈130/200, so
+ * everything past `0.68 * size` is clear. Vertically centred keeps it above the
+ * pot (y≈166–200) and below the bloom (y≈26).
+ *
+ * No `of today` caption here — the number is a marginal note next to a drawing,
+ * and a caption would make it a second focal point. `target met` stays, because
+ * that one is news.
+ */
+function SproutReadout({
+  pct,
+  full,
+  size,
+  t,
+}: {
+  pct: number;
+  full: boolean;
+  size: number;
+  t: Tokens;
+}) {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        right: 0,
+        top: 0,
+        bottom: 0,
+        alignItems: "flex-end",
+        justifyContent: "center",
+        gap: 3,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+        {/* a tick, so the number reads as a gauge rather than floating text */}
+        <View
+          style={{
+            width: 2,
+            height: size * 0.1,
+            borderRadius: 1,
+            backgroundColor: rgba(t.accent, full ? 0.9 : 0.45),
+          }}
+        />
+        <Text
+          style={{
+            fontFamily: font.monoBold,
+            fontSize: size * 0.135,
+            lineHeight: size * 0.16,
+            color: t.text,
+            fontVariant: ["tabular-nums"],
+            textShadowColor: rgba(t.accent, 0.45),
+            textShadowRadius: 12,
+          }}
+        >
+          {Math.round(pct)}
+          <Text style={{ fontSize: size * 0.068, color: t.muted }}>%</Text>
+        </Text>
+      </View>
+      {full ? (
+        <Text
+          style={{
+            fontFamily: font.bodySemi,
+            fontSize: 10,
+            letterSpacing: 1.1,
+            textTransform: "uppercase",
+            color: t.accent,
+          }}
+        >
+          target met
+        </Text>
+      ) : null}
     </View>
   );
 }

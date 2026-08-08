@@ -15,10 +15,19 @@ import { api, ApiError } from "@/lib/api";
 import { useConnection } from "@/lib/connection";
 import { font, pulseColor, radius, rgba } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-provider";
+import { useLayout } from "@/lib/responsive";
 import { isSilenced } from "@/lib/schedule";
 import { cacheDashboard, readDashboardCache } from "@/lib/storage";
 import type { DashboardToday, Activity } from "@/lib/types";
-import { Body, Button, Chip, Loading, SectionHeader } from "@/components/ui";
+import {
+  Body,
+  Button,
+  Chip,
+  Loading,
+  PageBody,
+  SectionHeader,
+  TwoPane,
+} from "@/components/ui";
 import { GrowthHero } from "@/components/growth-hero";
 import { HabitRow } from "@/components/habit-row";
 import { CardRow } from "@/components/card-row";
@@ -34,6 +43,7 @@ export default function TodayScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t, osReducedMotion } = useTheme();
+  const { gutter, wide } = useLayout();
   const { authenticated, refreshHealth } = useConnection();
   const [stale, setStale] = useState(false);
   const [cached, setCached] = useState<DashboardToday | null>(null);
@@ -216,9 +226,8 @@ export default function TodayScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + 12,
-          paddingHorizontal: 18,
+          paddingHorizontal: gutter,
           paddingBottom: 32,
-          gap: 24,
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -229,153 +238,169 @@ export default function TodayScreen() {
           />
         }
       >
-        {/* ---------------------------------------------------------- header */}
-        <View style={{ gap: 10 }}>
-          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-            <Chip label={data.date} />
-            {stale ? <Chip label="offline · cached" color={t.warning} dot /> : null}
-            {settings?.doNotDisturb ? (
-              <Chip label="Do not disturb" color={t.warning} dot />
-            ) : quietOnly ? (
-              <Chip label="Quiet hours" color={t.muted} dot />
-            ) : null}
-          </View>
-          <Text
-            style={{
-              color: pulseColor(data.pulse, t),
-              fontFamily: font.display,
-              fontSize: 38,
-              letterSpacing: -1,
-            }}
-          >
-            {data.pulse}
-          </Text>
-          <Body>{data.pulseExplanation}</Body>
-        </View>
-
-        {/* ------------------------------------------------------------ hero */}
-        <GrowthHero
-          progress={data.progress}
-          vs={data.vsYesterday}
-          reducedMotion={reduce}
-          celebrationIntensity={settings?.celebrationIntensity ?? "full"}
-        />
-
-        {/* ---------------------------------------------------- agent cards */}
-        {setupCard || contentCards.length > 0 ? (
-          <View style={{ gap: 12 }}>
-            <SectionHeader title="From your agent" />
-            {setupCard ? <AgentSetupStrip card={setupCard} /> : null}
-            {contentCards.map((c) => (
-              <AgentCard key={c.id} card={c} onComplete={() => completeCard.mutate(c.id)} />
-            ))}
-          </View>
-        ) : null}
-
-        {/* ------------------------------------------------------- right now */}
-        <ActivitySession
-          active={data.activeSession}
-          onSelect={(a) => setActivity.mutate(a)}
-          onClear={() => clearActivity.mutate()}
-        />
-
-        {/* --------------------------------------------- up next (15 min) */}
-        {upcoming.length > 0 ? (
-          <View style={{ gap: 10 }}>
-            <SectionHeader
-              title="Up next"
-              right={
-                laterCount > 0 ? (
-                  <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 12 }}>
-                    +{laterCount} on Timeline
+        <PageBody>
+          <TwoPane
+            /* The hero is the anchor; on a tablet the lists sit beside it
+               instead of under 900pt of whitespace. */
+            left={
+              <>
+                {/* ---------------------------------------------------------- header */}
+                <View style={{ gap: 10 }}>
+                  <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                    <Chip label={data.date} />
+                    {stale ? <Chip label="offline · cached" color={t.warning} dot /> : null}
+                    {settings?.doNotDisturb ? (
+                      <Chip label="Do not disturb" color={t.warning} dot />
+                    ) : quietOnly ? (
+                      <Chip label="Quiet hours" color={t.muted} dot />
+                    ) : null}
+                  </View>
+                  <Text
+                    style={{
+                      color: pulseColor(data.pulse, t),
+                      fontFamily: font.display,
+                      fontSize: 38,
+                      letterSpacing: -1,
+                    }}
+                  >
+                    {data.pulse}
                   </Text>
-                ) : null
-              }
-            />
-            {upcoming.map((c) => (
-              <CardRow
-                key={c.id}
-                card={c}
-                urgent={Boolean(c.flash && c.notifiedAt)}
-                onStart={() => startCard.mutate(c.id)}
-                onComplete={() => completeCard.mutate(c.id)}
-              />
-            ))}
-          </View>
-        ) : null}
+                  <Body>{data.pulseExplanation}</Body>
+                </View>
 
-        {/* ----------------------------------------------------------- habits */}
-        <View style={{ gap: 10 }}>
-          <SectionHeader
-            title="Habits"
-            right={
-              (data.habits ?? []).length > 0 ? (
-                <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 12 }}>
-                  {(data.habits ?? []).filter((h) => h.completedToday).length}/
-                  {(data.habits ?? []).length}
-                </Text>
-              ) : null
+                {/* ------------------------------------------------------------ hero */}
+                <GrowthHero
+                  progress={data.progress}
+                  vs={data.vsYesterday}
+                  reducedMotion={reduce}
+                  celebrationIntensity={settings?.celebrationIntensity ?? "full"}
+                />
+
+                {/* ------------------------------------------------------- right now */}
+                <ActivitySession
+                  active={data.activeSession}
+                  onSelect={(a) => setActivity.mutate(a)}
+                  onClear={() => clearActivity.mutate()}
+                />
+                      </>
+                    }
+                    right={
+                      <>
+                {/* ---------------------------------------------------- agent cards */}
+                {setupCard || contentCards.length > 0 ? (
+                  <View style={{ gap: 12 }}>
+                    <SectionHeader title="From your agent" />
+                    {setupCard ? <AgentSetupStrip card={setupCard} /> : null}
+                    {contentCards.map((c) => (
+                      <AgentCard key={c.id} card={c} onComplete={() => completeCard.mutate(c.id)} />
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* --------------------------------------------- up next (15 min) */}
+                {upcoming.length > 0 ? (
+                  <View style={{ gap: 10 }}>
+                    <SectionHeader
+                      title="Up next"
+                      right={
+                        laterCount > 0 ? (
+                          <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 12 }}>
+                            +{laterCount} on Timeline
+                          </Text>
+                        ) : null
+                      }
+                    />
+                    {upcoming.map((c) => (
+                      <CardRow
+                        key={c.id}
+                        card={c}
+                        urgent={Boolean(c.flash && c.notifiedAt)}
+                        onStart={() => startCard.mutate(c.id)}
+                        onComplete={() => completeCard.mutate(c.id)}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* ----------------------------------------------------------- habits */}
+                <View style={{ gap: 10 }}>
+                  <SectionHeader
+                    title="Habits"
+                    right={
+                      (data.habits ?? []).length > 0 ? (
+                        <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 12 }}>
+                          {(data.habits ?? []).filter((h) => h.completedToday).length}/
+                          {(data.habits ?? []).length}
+                        </Text>
+                      ) : null
+                    }
+                  />
+                  {(data.habits ?? []).length === 0 ? (
+                    <Body>No habits yet. Ask your agent to build some.</Body>
+                  ) : (
+                    (data.habits ?? []).map((h) => (
+                      <HabitRow
+                        key={h.id}
+                        habit={h}
+                        streaksEnabled={settings?.streaksEnabled !== false}
+                        busy={completeHabit.isPending || undoHabit.isPending}
+                        onToggle={() => {
+                          if (h.completedToday) undoHabit.mutate(h.id);
+                          else completeHabit.mutate(h.id);
+                        }}
+                      />
+                    ))
+                  )}
+                </View>
+
+                {/* Agent items live on Timeline; Today just says how many are waiting. */}
+                {agentCount > 0 ? (
+                  <Pressable
+                    onPress={() => router.navigate("/(tabs)/timeline")}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      backgroundColor: rgba(t.accent, 0.1),
+                      borderWidth: 1,
+                      borderColor: rgba(t.accent, 0.28),
+                      borderRadius: radius.md,
+                      paddingVertical: 13,
+                      paddingHorizontal: 14,
+                      opacity: pressed ? 0.8 : 1,
+                      borderCurve: "continuous",
+                    })}
+                  >
+                    <Text style={{ fontSize: 15 }}>✦</Text>
+                    <Text
+                      style={{ color: t.text, fontFamily: font.bodySemi, fontSize: 14, flex: 1 }}
+                    >
+                      {agentCount} item{agentCount === 1 ? "" : "s"} from your agent need
+                      you
+                    </Text>
+                    <Text style={{ color: t.accent, fontFamily: font.bodySemi, fontSize: 13 }}>
+                      Timeline →
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
             }
           />
-          {(data.habits ?? []).length === 0 ? (
-            <Body>No habits yet. Ask your agent to build some.</Body>
-          ) : (
-            (data.habits ?? []).map((h) => (
-              <HabitRow
-                key={h.id}
-                habit={h}
-                streaksEnabled={settings?.streaksEnabled !== false}
-                busy={completeHabit.isPending || undoHabit.isPending}
-                onToggle={() => {
-                  if (h.completedToday) undoHabit.mutate(h.id);
-                  else completeHabit.mutate(h.id);
-                }}
-              />
-            ))
-          )}
-        </View>
 
-        {/* Agent items live on Timeline; Today just says how many are waiting. */}
-        {agentCount > 0 ? (
-          <Pressable
-            onPress={() => router.navigate("/(tabs)/timeline")}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-              backgroundColor: rgba(t.accent, 0.1),
-              borderWidth: 1,
-              borderColor: rgba(t.accent, 0.28),
-              borderRadius: radius.md,
-              paddingVertical: 13,
-              paddingHorizontal: 14,
-              opacity: pressed ? 0.8 : 1,
-              borderCurve: "continuous",
-            })}
-          >
-            <Text style={{ fontSize: 15 }}>✦</Text>
+          {/* Pointless once the rail is showing every tab at once. */}
+          {wide ? null : (
             <Text
-              style={{ color: t.text, fontFamily: font.bodySemi, fontSize: 14, flex: 1 }}
+              style={{
+                textAlign: "center",
+                color: t.faint,
+                fontFamily: font.body,
+                fontSize: 12,
+              }}
             >
-              {agentCount} item{agentCount === 1 ? "" : "s"} from your agent need
-              you
+              Swipe left for your timeline
             </Text>
-            <Text style={{ color: t.accent, fontFamily: font.bodySemi, fontSize: 13 }}>
-              Timeline →
-            </Text>
-          </Pressable>
-        ) : null}
-
-        <Text
-          style={{
-            textAlign: "center",
-            color: t.faint,
-            fontFamily: font.body,
-            fontSize: 12,
-          }}
-        >
-          Swipe left for your timeline
-        </Text>
+          )}
+        </PageBody>
       </ScrollView>
 
       {toast ? (
