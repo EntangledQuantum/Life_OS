@@ -42,7 +42,7 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | GET | `/api/v1/dashboard/today` | Full dashboard (primary read) |
 | GET | `/api/v1/dashboard/vs-yesterday` | Deltas |
 | GET | `/api/v1/dashboard/pulse` | Pulse |
-| GET | `/api/v1/analytics` | Analytics payload |
+| GET | `/api/v1/analytics?range=` | Analytics over `7d` \| `30d` \| `90d` \| `all` |
 | GET/POST/DELETE | `/api/v1/session/active` | What you are doing right now — set by hand, never by a task |
 | GET/POST | `/api/v1/quests` | Quests |
 | GET/POST | `/api/v1/achievements` | Achievements |
@@ -195,6 +195,39 @@ A task can carry one widget the agent owns:
 deliberately **not** a completion: an agent asking *"how did that feel, 1–10"* wants the answer,
 not the card gone. Slider values are clamped into `[min, max]` and snapped to `step`, the same
 as an `<input type=range>`.
+
+---
+
+## Analytics
+
+`GET /api/v1/analytics?range=7d|30d|90d|all` (default `30d`).
+
+Every series carries its own history, and **where there is a target, the target rides the
+same axis as the actual**. A number without its target is not a measurement — the old page
+was an XP chart, a list of category percentages and a wall of achievements, which is three
+snapshots of *now* on a page whose only reason to exist is "is this getting better or worse".
+
+| Field | What it is |
+|-------|------------|
+| `daily[]` | Per day: `xp` vs `xpTarget`, `efficiencyPct` vs `efficiencyTarget` (100), habits done vs possible, consistency, study minutes |
+| `habits[]` | Per habit: completion rate, current streak, and a day-by-day `history`. Rate is over the days the habit **existed**, not the whole window |
+| `adherence` | Scheduled vs completed vs completed-late, overall and per day |
+| `study` | Minutes and sessions, overall and per day |
+| `properties[]` | Every agent counter, its current value, its change across the window, and its curve |
+| `goals[]` | Progress curves toward each goal's condition |
+
+### Where the history comes from
+
+`daily_snapshots` already recorded XP, habits, study and consistency once a day. Agent
+properties and goal progress had no past at all — each is a single number overwritten in
+place, and "books read: 14" does not answer "am I reading more than I was in June".
+
+Two tables record them now, `property_history` and `goal_progress_history`, written **only
+when the value actually changes**. A counter nobody touches costs nothing, and the goal
+re-check that runs after every write does not put a row in on every request.
+
+Existing databases get one seeded point each, dated when the value was last touched. It is a
+single honest point — "this was the value when history began" — not a fabricated back-story.
 
 ---
 

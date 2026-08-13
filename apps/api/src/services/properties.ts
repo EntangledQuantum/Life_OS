@@ -15,6 +15,7 @@ import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
 import type { AgentProperty } from "@life-os/shared";
 import { nowIso } from "./helpers.js";
+import { recordPropertyValue } from "./history.js";
 
 type Row = typeof schema.agentProperties.$inferSelect;
 
@@ -102,7 +103,9 @@ export function createProperty(
     })
     .run();
 
-  return { property: getProperty(db, input.key)! };
+  const created = getProperty(db, input.key)!;
+  recordPropertyValue(db, created.uid, created.key, created.value);
+  return { property: created };
 }
 
 export function updateProperty(
@@ -123,7 +126,9 @@ export function updateProperty(
     .set({ ...input, updatedAt: nowIso() })
     .where(eq(schema.agentProperties.key, key))
     .run();
-  return getProperty(db, key);
+  const next = getProperty(db, key);
+  if (next) recordPropertyValue(db, next.uid, next.key, next.value);
+  return next;
 }
 
 /**
@@ -172,7 +177,9 @@ export function incrementProperty(
     .where(eq(schema.agentProperties.key, key))
     .run();
 
-  return { property: getProperty(db, key)!, created };
+  const updated = getProperty(db, key)!;
+  recordPropertyValue(db, updated.uid, updated.key, updated.value);
+  return { property: updated, created };
 }
 
 export function deleteProperty(db: LifeOsDb, key: string) {

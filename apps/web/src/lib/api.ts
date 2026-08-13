@@ -1,4 +1,8 @@
-import { PROTOCOL_HEADER, PROTOCOL_VERSION } from "@life-os/shared";
+import {
+  PROTOCOL_HEADER,
+  PROTOCOL_VERSION,
+  type AnalyticsPayload,
+} from "@life-os/shared";
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 function getToken(): string | null {
@@ -44,7 +48,9 @@ export const api = {
   me: () => request<{ username: string; role: string }>("/api/v1/auth/me"),
   dashboard: () =>
     request<import("@life-os/shared").DashboardToday>("/api/v1/dashboard/today"),
-  analytics: () => request<any>("/api/v1/analytics"),
+  /** Range is `7d` | `30d` | `90d` | `all`; anything else falls back to 30d. */
+  analytics: (range = "30d") =>
+    request<AnalyticsPayload>(`/api/v1/analytics?range=${range}`),
   habits: () =>
     request<import("@life-os/shared").HabitWithToday[]>("/api/v1/habits"),
   completeHabit: (id: string) =>

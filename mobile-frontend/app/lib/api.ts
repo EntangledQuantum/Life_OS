@@ -1,4 +1,6 @@
 import type {
+  AnalyticsPayload,
+  AnalyticsRange,
   AppSettings,
   DashboardToday,
   GamificationConfig,
@@ -337,5 +339,7 @@ export const api = {
       body: JSON.stringify({ ...body, source: "user" }),
     }),
 
-  analytics: () => request<unknown>("/api/v1/analytics"),
+  /** Range is `7d` | `30d` | `90d` | `all`. */
+  analytics: (range: AnalyticsRange = "30d") =>
+    request<AnalyticsPayload>(`/api/v1/analytics?range=${range}`),
 };

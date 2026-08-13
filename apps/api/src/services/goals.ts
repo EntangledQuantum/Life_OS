@@ -12,6 +12,7 @@ import {
   type GoalWindow,
 } from "@life-os/shared";
 import { computeStreaks, getDayResetTime, nowIso } from "./helpers.js";
+import { recordGoalProgress } from "./history.js";
 import { propertyNumber } from "./properties.js";
 import { fireAgentWebhook } from "./webhook.js";
 
@@ -384,6 +385,12 @@ export function evaluateGoals(db: LifeOsDb): GoalEvaluation[] {
         .set(patch)
         .where(eq(schema.goals.id, goal.id))
         .run();
+      /*
+       * Only inside `changed`. This loop runs after every write in the app, so
+       * recording unconditionally would put a row in for every request and bury
+       * the actual movement in noise.
+       */
+      recordGoalProgress(db, goal.id, progressPct);
     }
 
     out.push({

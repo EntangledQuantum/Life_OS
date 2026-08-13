@@ -11,6 +11,7 @@ import {
   incrementAgentPropertySchema,
   updateAgentPropertySchema,
   agentSetupSchema,
+  isAnalyticsRange,
   ACTIVITIES,
   GOAL_CONDITION_SYNTAX,
   REPEAT_RULES,
@@ -53,6 +54,7 @@ import * as backups from "./services/backups.js";
 import * as setup from "./services/setup.js";
 import * as webhook from "./services/webhook.js";
 import * as tasks from "./services/tasks.js";
+import { getAnalytics } from "./services/analytics.js";
 import { isAllowedOrigin, isExposed } from "./net.js";
 import { env } from "./env.js";
 /** Typed context so `c.get("username")` is checked rather than inferred as never. */
@@ -456,7 +458,15 @@ export function createApp() {
     c.json(snapshots.getVsYesterday(getDb())),
   );
   api.get("/dashboard/pulse", (c) => c.json(snapshots.getPulse(getDb())));
-  api.get("/analytics", (c) => c.json(dashboard.getAnalytics(getDb())));
+  /**
+   * Analytics over a window. Every series carries its own history and, where
+   * there is a target, the target rides the same axis as the actual.
+   */
+  api.get("/analytics", (c) => {
+    const raw = c.req.query("range");
+    const range = isAnalyticsRange(raw) ? raw : "30d";
+    return c.json(getAnalytics(getDb(), range));
+  });
 
   api.get("/session/active", (c) => {
     const d = dashboard.getDashboard(getDb());

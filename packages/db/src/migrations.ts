@@ -685,6 +685,78 @@ const unifiedTasks: Migration = {
   },
 };
 
+/**
+ * History for the two things that move but leave no trace.
+ *
+ * `daily_snapshots` already records XP, habits, study and consistency once a
+ * day, so those have a past. Agent properties and goal progress do not: both
+ * are a single current number, overwritten in place. "Books read: 14" is not an
+ * answer to "am I reading more than I was in June" — and that question is the
+ * entire point of the analytics page.
+ *
+ * Rows are only written when the value actually changes, so a counter nobody
+ * touches costs nothing.
+ */
+const changeHistory: Migration = {
+  version: 7,
+  name: "property and goal-progress history",
+  up(db) {
+    if (!hasTable(db, "property_history")) {
+      db.exec(`
+        CREATE TABLE property_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          uid TEXT NOT NULL,
+          key TEXT NOT NULL,
+          value REAL NOT NULL,
+          at TEXT NOT NULL
+        );
+      `);
+      db.exec("CREATE INDEX property_history_uid_idx ON property_history (uid, at)");
+
+      /*
+       * Seed one point per existing property, so a counter that has been
+       * running for months does not draw as a line starting today. It is a
+       * single honest point — "this was the value when history began" — not a
+       * fabricated back-story.
+       */
+      if (hasTable(db, "agent_properties")) {
+        const now = new Date().toISOString();
+        // `agent_properties.id` *is* the stable uid — the service maps it to
+        // `uid` on the way out, and there is no column by that name.
+        db.exec(`
+          INSERT INTO property_history (uid, key, value, at)
+          SELECT id, key, COALESCE(value, 0), COALESCE(updated_at, '${now}')
+          FROM agent_properties
+          WHERE value IS NOT NULL
+        `);
+      }
+    }
+
+    if (!hasTable(db, "goal_progress_history")) {
+      db.exec(`
+        CREATE TABLE goal_progress_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          goal_id TEXT NOT NULL,
+          pct REAL NOT NULL,
+          at TEXT NOT NULL
+        );
+      `);
+      db.exec(
+        "CREATE INDEX goal_progress_history_goal_idx ON goal_progress_history (goal_id, at)",
+      );
+
+      if (hasTable(db, "goals")) {
+        const now = new Date().toISOString();
+        db.exec(`
+          INSERT INTO goal_progress_history (goal_id, pct, at)
+          SELECT id, COALESCE(progress_pct, 0), COALESCE(updated_at, '${now}')
+          FROM goals
+        `);
+      }
+    }
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -693,6 +765,7 @@ export const MIGRATIONS: Migration[] = [
   reminderLead,
   webhooks,
   unifiedTasks,
+  changeHistory,
 ];
 
 /** The version a database is brought to by `runMigrations`. */

@@ -309,31 +309,3 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
  * callers and routes keep working.
  */
 export { setActiveSession, clearActiveSession } from "./sessions.js";
-
-export function getAnalytics(db: LifeOsDb) {
-  const dash = getDashboard(db);
-  const snaps = db.select().from(schema.dailySnapshots).all();
-
-  const byCategory: Record<string, { completed: number; total: number }> = {};
-  for (const h of dash.habits) {
-    const cat = h.category;
-    if (!byCategory[cat]) byCategory[cat] = { completed: 0, total: 0 };
-    byCategory[cat].total += 1;
-    if (h.completedToday) byCategory[cat].completed += 1;
-  }
-
-  return {
-    consistency7: dash.consistency7,
-    xpSeries7: dash.xpSeries7,
-    byCategory: Object.entries(byCategory).map(([category, v]) => ({
-      category,
-      pct: v.total ? Math.round((v.completed / v.total) * 100) : 0,
-    })),
-    achievements: dash.achievements,
-    progress: dash.progress,
-    pulse: dash.pulse,
-    pulseHistory: snaps
-      .slice(-14)
-      .map((s) => ({ date: s.date, pulse: s.improvementPulse })),
-  };
-}

@@ -11,3 +11,5 @@ export * as tasks from "./tasks.js";
 export * as webhook from "./webhook.js";
 export * as properties from "./properties.js";
 export * as backups from "./backups.js";
+export * as analytics from "./analytics.js";
+export * as history from "./history.js";

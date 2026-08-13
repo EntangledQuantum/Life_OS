@@ -33,6 +33,7 @@ const TABS = [
   { name: "timeline", label: "Timeline", icon: "⌗" },
   { name: "study", label: "Study", icon: "❑" },
   { name: "goals", label: "Goals", icon: "◈" },
+  { name: "analytics", label: "Stats", icon: "◪" },
   { name: "settings", label: "Settings", icon: "⚙" },
 ] as const;
 

@@ -502,6 +502,31 @@ export const activityLog = sqliteTable("activity_log", {
   source: text("source").notNull().default("user"),
 });
 
+/**
+ * Every value an agent counter has held.
+ *
+ * The counter itself is one number overwritten in place, which cannot answer
+ * "am I reading more than I was in June". Written only when the value actually
+ * changes, so a counter nobody touches costs nothing.
+ */
+export const propertyHistory = sqliteTable("property_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** The property's stable uid — survives a rename of `key`. */
+  uid: text("uid").notNull(),
+  /** The key as it was at the time, for readable series without a join. */
+  key: text("key").notNull(),
+  value: real("value").notNull(),
+  at: text("at").notNull(),
+});
+
+/** Every progress percentage a goal has passed through. Same reasoning. */
+export const goalProgressHistory = sqliteTable("goal_progress_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  goalId: text("goal_id").notNull(),
+  pct: real("pct").notNull(),
+  at: text("at").notNull(),
+});
+
 /*
  * `auth_sessions` used to live here. It stored session tokens minted by the old
  * username/password login. Auth is a single bearer token now — nothing issued,

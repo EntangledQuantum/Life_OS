@@ -17,6 +17,7 @@ export const TAB_ROUTES = [
   "/(tabs)/timeline",
   "/(tabs)/study",
   "/(tabs)/goals",
+  "/(tabs)/analytics",
   "/(tabs)/settings",
 ] as const;
 

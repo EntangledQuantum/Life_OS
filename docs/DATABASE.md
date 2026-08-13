@@ -78,6 +78,7 @@ what it does. Each runs in its own transaction and rolls back on failure.
 | `goals`, `goal_habit_links` | Agent-set goals: the serialized condition, when it was met, and whether the user has seen the celebration |
 | `agent_properties` | Counters the agent invented and maintains (`books_read`, …), each with a stable uid that goal conditions read |
 | `daily_snapshots` | Per-day aggregates that power "you vs yesterday" |
+| `property_history`, `goal_progress_history` | Every value an agent counter and each goal has held. Written only on an actual change — the current number alone cannot answer "is this moving" |
 | `user_progress` | Lifetime XP and the latest improvement pulse |
 | `gamification_config` | Daily XP pool, multipliers, growth-meter style |
 | `settings` | Day reset time, quiet hours, theme, agent webhook |
