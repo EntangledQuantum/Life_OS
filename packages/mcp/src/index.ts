@@ -13,6 +13,11 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { getDb } from "@life-os/db";
+import {
+  getDaySummary,
+  getRangeSummary,
+  searchHistory,
+} from "../../../apps/api/src/services/narrative.js";
 import { z } from "zod";
 
 // Load root .env
@@ -93,6 +98,75 @@ import {
 const db = getDb();
 
 const tools = [
+  /*
+   * ---------------------------------------------------------------------
+   * Agent-shaped tools.
+   *
+   * These exist because MCP and REST are different surfaces on purpose. The
+   * REST API is built for a screen — one dashboard payload, polled. An agent
+   * asking "what happened last Tuesday" through CRUD tools has to fetch tasks,
+   * then habit logs, then study sessions, then reassemble them, and it cannot
+   * ask the dashboard for a past date at all.
+   *
+   * One call, one answer, already summarised. Everything below this block is
+   * the CRUD, which is for writing rather than for understanding.
+   * ---------------------------------------------------------------------
+   */
+  {
+    name: "lifeos_get_day",
+    description:
+      "What actually happened on one day, summarised: XP against target, which habits closed and which did not, which scheduled things were done, missed, late or dismissed, study minutes, and what the user said they were doing. Returns a `story` line you can quote. Use this instead of assembling a day out of several list calls.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        date: {
+          type: "string",
+          description: "YYYY-MM-DD. Defaults to today (the life-day, which rolls at dayResetTime).",
+        },
+      },
+    },
+  },
+  {
+    name: "lifeos_get_range",
+    description:
+      "A window of days in one call: totals, per-habit completion rates, a line per day, and a `story` naming which habits are holding and which are slipping. Use this for 'how has this week/month gone' rather than calling lifeos_get_day repeatedly. Capped at 90 days.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        days: { type: "number", description: "How many days back. Default 7, max 90." },
+        to: { type: "string", description: "Last day, YYYY-MM-DD. Defaults to today." },
+      },
+    },
+  },
+  {
+    name: "lifeos_search_history",
+    description:
+      "Free-text search across tasks, study sessions and habits — titles, subtitles and bodies. Answers 'when did I last touch X' without scanning tables by hand.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "What to look for." },
+        limit: { type: "number", description: "Max results, default 25." },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "lifeos_bulk_create_tasks",
+    description:
+      "Create many tasks in one call — this is how you schedule a day or a week. Each entry takes the same fields as lifeos_create_task. Returns what was created and, separately, anything that was rejected with the reason, so a bad entry does not silently swallow the good ones.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        tasks: {
+          type: "array",
+          description: "The tasks to create.",
+          items: { type: "object" as const },
+        },
+      },
+      required: ["tasks"],
+    },
+  },
   {
     name: "lifeos_list_habits",
     description: "List all active habits with today status, streaks, and themes",
@@ -747,8 +821,45 @@ const tools = [
   },
 ];
 
+/** Today's life-day key — the day rolls at dayResetTime, not midnight. */
+function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+}
+
 async function handleTool(name: string, args: Record<string, unknown>) {
   switch (name) {
+    /* ---- agent-shaped ------------------------------------------------ */
+    case "lifeos_get_day":
+      return getDaySummary(db, args.date ? String(args.date) : todayKey());
+    case "lifeos_get_range":
+      return getRangeSummary(
+        db,
+        args.to ? String(args.to) : todayKey(),
+        args.days === undefined ? 7 : Number(args.days),
+      );
+    case "lifeos_search_history":
+      return searchHistory(
+        db,
+        String(args.query ?? ""),
+        args.limit === undefined ? 25 : Number(args.limit),
+      );
+    case "lifeos_bulk_create_tasks": {
+      const input = Array.isArray(args.tasks) ? args.tasks : [];
+      const created: unknown[] = [];
+      const rejected: { index: number; error: string }[] = [];
+      input.forEach((entry, index) => {
+        const result = createTask(db, entry as any);
+        // Report each failure with its index rather than throwing: one bad
+        // entry in a week's schedule must not discard the other thirty.
+        if ("error" in result) rejected.push({ index, error: result.error });
+        else created.push(result.task);
+      });
+      return { created: created.length, rejected, tasks: created };
+    }
+
     case "lifeos_list_habits":
       return listHabits(db);
     case "lifeos_create_habit":
@@ -818,7 +929,7 @@ async function handleTool(name: string, args: Record<string, unknown>) {
     case "lifeos_get_capabilities":
       return {
         name: "Life OS",
-        version: "0.5.0",
+        version: "0.6.0",
         maxPinnedTasks: 2,
         taskKinds: TASK_KINDS,
         activityTags: ACTIVITIES,
@@ -992,10 +1103,13 @@ const READ_ONLY_TOOLS = new Set([
   "lifeos_list_goals",
   "lifeos_list_backups",
   "lifeos_export_json",
+  "lifeos_get_day",
+  "lifeos_get_range",
+  "lifeos_search_history",
 ]);
 
 const server = new Server(
-  { name: "life-os", version: "0.4.0" },
+  { name: "life-os", version: "0.6.0" },
   { capabilities: { tools: {} } },
 );
 
