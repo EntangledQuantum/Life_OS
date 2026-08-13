@@ -36,7 +36,7 @@ WEB_URL=http://localhost:5174 pnpm screenshots
 | `dashboard.png` | The Overview dashboard, down to the growth meter and Quick log | ✅ |
 | `mobile-1.jpeg` | Android / mobile beta — overview | ✅ |
 | `mobile-2.jpeg` | Android / mobile beta — day ribbon and habits | ✅ |
-| `layers.png` | "Three layers, one job each" | ✅ |
+| `layers.png` | "Two layers, one job each" | ✅ |
 | `growth-meter.png` | The growth meter, with the 100% state ghosted behind | ✅ |
 | `agents.png` | The agent integration diagram | ✅ |
 | `landing.png` | Landing page hero | — |

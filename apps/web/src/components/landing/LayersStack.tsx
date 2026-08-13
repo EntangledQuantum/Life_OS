@@ -154,10 +154,14 @@ export function LayersStack() {
                   className="h-3.5 w-3.5"
                   style={{ color: LAYERS[i + 1]!.color }}
                 />
+                {/*
+                  One connector, because there are two layers. It used to read
+                  "escalates only what is genuinely special", which described
+                  Life OS handing things up to an Obsidian vault — a layer that
+                  no longer appears here and that most people never had.
+                */}
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--faint)]">
-                  {i === 0
-                    ? "escalates only what is genuinely special"
-                    : "reads the day, writes the structure"}
+                  reads the day, writes the structure
                 </span>
               </div>
             </Reveal>
@@ -167,8 +171,8 @@ export function LayersStack() {
 
       <Reveal delay={300}>
         <p className="pt-2 text-center font-mono text-[11px] text-[var(--faint)]">
-          Life OS never writes to your vault. Only your agent does, and only
-          when something is worth keeping.
+          Life OS never decides anything. It records what happened and shows you
+          what is next.
         </p>
       </Reveal>
     </div>

@@ -298,7 +298,7 @@ function HowItWorks() {
     <section id="how" className="mx-auto max-w-6xl px-5 py-24">
       <SectionHeading
         eyebrow="How it fits together"
-        title="Three layers, one job each"
+        title="Two layers, one job each"
         lede="Most systems collapse because one tool tries to be your tracker and your planner at once, and you end up maintaining the tool. Life OS only holds what you did. Deciding what you should do is your agent's job."
       />
 
@@ -317,7 +317,7 @@ function HowItWorks() {
             {
               icon: Bot,
               title: "You are not maintaining a system",
-              body: "Habits, schedule blocks, quests, reviews, card content, XP weights, themes — all set through the API. No settings archaeology, no rebuilding your tracker every month.",
+              body: "Habits, tomorrow's schedule, what you are reading, XP weights, goals, themes — all set by your agent. No settings archaeology, no rebuilding your tracker every month.",
             },
             {
               icon: Moon,
@@ -349,7 +349,7 @@ const FEATURE_ROWS = [
   {
     eyebrow: "Day timeline",
     title: "One continuous ribbon, midnight to midnight",
-    body: "Your agent lays out the day as coloured blocks. Gaps close automatically, so the timeline reads as a solid band of intent instead of a broken bar full of dead space. Start a block and the Right Now timer takes over.",
+    body: "Your agent lays out the day as coloured blocks. Behind the now-marker the ribbon is what you actually did; ahead of it, it is only the plan, drawn differently so the two are never confused. Nothing on it starts — you tick things off, and what you are doing is yours to set.",
     art: TimelineArt,
   },
   {

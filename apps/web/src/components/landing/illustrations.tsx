@@ -260,7 +260,7 @@ export function LayersDiagram({ className }: { className?: string }) {
         </g>
       ))}
 
-      {/* agent reads up into Life OS, and escalates into the vault */}
+      {/* the agent reads the day out of Life OS and writes the next one back */}
       <g>
         <path
           d="M230 178 L230 158"
@@ -307,7 +307,7 @@ export function LayersDiagram({ className }: { className?: string }) {
         fontSize="9"
         fontFamily="JetBrains Mono, monospace"
       >
-        the app never writes to your vault
+        one file, on your machine
       </text>
     </svg>
   );
