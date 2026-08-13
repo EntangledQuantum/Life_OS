@@ -8,27 +8,6 @@ import { Reveal } from "@/components/landing/Reveal";
  * "owns / never does" line.
  */
 
-function ObsidianMark() {
-  // Simplified faceted crystal — reads as Obsidian without copying the logo.
-  return (
-    <svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden>
-      <defs>
-        <linearGradient id="obs-a" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#C4B5FD" />
-          <stop offset="100%" stopColor="#7C3AED" />
-        </linearGradient>
-        <linearGradient id="obs-b" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#A78BFA" />
-          <stop offset="100%" stopColor="#5B21B6" />
-        </linearGradient>
-      </defs>
-      <path d="M24 3 L41 17 L33 44 L15 44 L7 17 Z" fill="url(#obs-b)" />
-      <path d="M24 3 L41 17 L24 24 Z" fill="url(#obs-a)" opacity="0.95" />
-      <path d="M24 3 L7 17 L24 24 Z" fill="#DDD6FE" opacity="0.55" />
-      <path d="M24 24 L33 44 L15 44 Z" fill="#8B5CF6" opacity="0.6" />
-    </svg>
-  );
-}
 
 function AgentMark() {
   // An orbiting core: a mind with things circling it.
@@ -77,15 +56,6 @@ interface Layer {
 
 const LAYERS: Layer[] = [
   {
-    key: "vault",
-    mark: <ObsidianMark />,
-    name: "Obsidian vault",
-    role: "Your permanent brain",
-    owns: "Notes, knowledge, and the handful of moments worth keeping forever.",
-    tags: ["knowledge", "written by your agent only"],
-    color: "#A78BFA",
-  },
-  {
     key: "lifeos",
     mark: (
       <img src={asset("icon.png?v=3")} alt="" className="h-8 w-8" />
@@ -93,8 +63,8 @@ const LAYERS: Layer[] = [
     name: "Life OS",
     role: "Where the doing happens",
     owns:
-      "Every habit tick, study timer, schedule block, and XP award. The day you actually lived.",
-    tags: ["this app", "local SQLite"],
+      "Every habit tick, every task, every completion, every XP award. The day you actually lived, in one file on your machine.",
+    tags: ["this app", "local SQLite", "no account"],
     color: "var(--accent)",
     highlight: true,
   },
@@ -104,8 +74,8 @@ const LAYERS: Layer[] = [
     name: "Your AI agent",
     role: "The one doing the thinking",
     owns:
-      "Designs your habits, plans the day, sets XP weights, injects reviews, and adjusts when you drift.",
-    tags: ["Hermes", "OpenClaw", "Claude Code", "any HTTP agent"],
+      "Designs your habits, plans tomorrow, sets XP weights, attaches what you need to read, and adjusts when you drift.",
+    tags: ["Hermes", "OpenClaw", "Claude Code", "any MCP client"],
     color: "#34D399",
   },
 ];

@@ -199,27 +199,21 @@ export function DashboardMock({ className }: { className?: string }) {
   );
 }
 
-/* ---------------------------------------------------------- three layers */
+/* ------------------------------------------------------------ two layers */
 
 export function LayersDiagram({ className }: { className?: string }) {
   const layers = [
     {
-      y: 14,
-      title: "Obsidian vault",
-      sub: "permanent brain · knowledge & special memories",
-      color: "#A78BFA",
-    },
-    {
-      y: 96,
+      y: 50,
       title: "Life OS",
-      sub: "execution layer · completions, streaks, XP, timeline",
+      sub: "what you did · habits, tasks, XP, the timeline",
       color: "var(--accent)",
       highlight: true,
     },
     {
-      y: 178,
-      title: "Hermes · OpenClaw · any agent",
-      sub: "intelligence · designs habits, blocks, quests, XP rules",
+      y: 148,
+      title: "Hermes · OpenClaw · any MCP agent",
+      sub: "what you should do · designs habits, plans tomorrow, adjusts",
       color: "#34D399",
     },
   ];
@@ -229,7 +223,7 @@ export function LayersDiagram({ className }: { className?: string }) {
       viewBox="0 0 460 260"
       className={className}
       role="img"
-      aria-label="Three layers: Obsidian vault, Life OS, and agents"
+      aria-label="Two layers: Life OS and your agent"
     >
       {layers.map((l) => (
         <g key={l.title}>

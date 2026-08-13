@@ -5,6 +5,8 @@ import {
   ArrowRight,
   Bot,
   CalendarClock,
+  Check,
+  Copy,
   Database,
   Download,
   Github,
@@ -35,6 +37,8 @@ import {
   XpPoolDiagram,
 } from "@/components/landing/illustrations";
 import {
+  AGENT_ONE_LINER,
+  AGENT_SETUP_URL,
   ANDROID_APK_URL,
   asset,
   IS_PAGES,
@@ -61,6 +65,7 @@ export function LandingPage() {
         {/* Getting running is one story — start the server, hand it the brief.
             It sits here rather than at the bottom because it is what someone
             who has just decided they want this actually needs next. */}
+        <Webhooks />
         <QuickStart />
         <Features />
         <GrowthSection />
@@ -98,9 +103,75 @@ function Background() {
  */
 function PrimaryCta({ className }: { className?: string }) {
   return (
-    <a href="#start" className={cn("btn btn-primary", className)}>
-      Get started <ArrowRight className="h-4 w-4" />
+    <a href="#start" className={cn("btn", className)}>
+      Manual setup <ArrowRight className="h-4 w-4" />
     </a>
+  );
+}
+
+/**
+ * The one thing most people need from this page.
+ *
+ * Setting Life OS up *is* an agent task — installing it, running it as a
+ * service, and being interviewed about your day is more than a Get Started
+ * button can carry. So the page hands over the sentence that starts that, and
+ * a link to read what the agent will be told before you let it run.
+ */
+function SetupBox({ className }: { className?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(AGENT_ONE_LINER);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocked — the text is selectable, which is the fallback */
+    }
+  }
+
+  return (
+    <div
+      className={cn(
+        "max-w-xl rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent)]/[0.05] p-4",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold">Give this to your agent</h3>
+        <a
+          href={AGENT_SETUP_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-[var(--accent)] hover:underline"
+        >
+          Read what it says first →
+        </a>
+      </div>
+
+      <div className="mt-3 flex items-stretch gap-2">
+        <code className="min-w-0 flex-1 select-all rounded-lg bg-black/30 px-3 py-2.5 font-mono text-[11px] leading-relaxed break-all text-[var(--muted)]">
+          {AGENT_ONE_LINER}
+        </code>
+        <button
+          type="button"
+          onClick={copy}
+          className="btn shrink-0 self-start px-3 py-2.5"
+          aria-label="Copy the setup command"
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-[#34D399]" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+
+      <p className="mt-2.5 text-xs leading-relaxed text-[var(--faint)]">
+        It installs Life OS, runs it as a service, connects over MCP, interviews
+        you about your actual day, and schedules its own nightly check-in.
+      </p>
+    </div>
   );
 }
 
@@ -202,22 +273,7 @@ function Hero() {
             <DashboardLink className="px-6 py-3 text-base" />
           </div>
 
-          <dl className="mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-white/[0.06] pt-7">
-            {[
-              { v: "0", l: "levels · no ranks" },
-              { v: "1", l: "file database" },
-              { v: "04:00", l: "day reset, night-owl" },
-            ].map((s) => (
-              <div key={s.l}>
-                <dt className="font-mono text-2xl font-semibold tracking-tight text-[var(--accent)]">
-                  {s.v}
-                </dt>
-                <dd className="mt-1 text-[11px] uppercase tracking-wider text-[var(--faint)]">
-                  {s.l}
-                </dd>
-              </div>
-            ))}
-          </dl>
+          <SetupBox className="mt-12" />
         </motion.div>
 
         <motion.div
@@ -243,7 +299,7 @@ function HowItWorks() {
       <SectionHeading
         eyebrow="How it fits together"
         title="Three layers, one job each"
-        lede="Most systems collapse because one tool tries to be your notes, your tracker, and your planner at once. Life OS only does the doing — your notes stay in Obsidian, and the planning is your agent's job."
+        lede="Most systems collapse because one tool tries to be your tracker and your planner at once, and you end up maintaining the tool. Life OS only holds what you did. Deciding what you should do is your agent's job."
       />
 
       <div className="mt-14 grid items-start gap-12 lg:grid-cols-12">
@@ -256,7 +312,7 @@ function HowItWorks() {
             {
               icon: Layers,
               title: "Separation that actually holds",
-              body: "Every habit tick, timer, and XP award lives in Life OS. Your notes never fill up with 'drank water ✓'. Your agent decides what was special enough to write into Obsidian.",
+              body: "Every habit tick, task and XP award lives in one SQLite file on your machine. No account, no cloud, no sync — and nothing to cancel.",
             },
             {
               icon: Bot,
@@ -535,55 +591,79 @@ function XpSection() {
   );
 }
 
+/* -------------------------------------------------------------- webhooks */
+
+/**
+ * Webhooks get their own section because the grid could not carry the point.
+ * "We post to a URL" is not interesting; "your agent stops polling and starts
+ * being told" is the whole feature.
+ */
+function Webhooks() {
+  return (
+    <section className="mx-auto max-w-6xl px-5 py-24">
+      <SectionHeading
+        eyebrow="Webhooks"
+        title="Your agent gets told, instead of asking"
+        lede="Without this, an agent that wants to know when you finish something has two options: ask every few minutes, or find out tomorrow. Neither is good. So Life OS can push."
+      />
+
+      <div className="mt-12 grid gap-4 md:grid-cols-3">
+        {[
+          {
+            title: "Per item, not global",
+            body: "The agent sets webhookOnComplete when it creates the thing. A daily water habit does not need to wake anything up; the chapter you have been stuck on for a week might.",
+          },
+          {
+            title: "Signed, and retried",
+            body: "Hermes gets an HMAC over the timestamp and body; OpenClaw gets a bearer token. Failures are recorded with the response and retried three times, so a webhook is not something you find out was broken a month later.",
+          },
+          {
+            title: "Interactions too",
+            body: "If the agent put a slider on a card, it can subscribe to the answer. You move it, the agent hears the number, and the card stays where it is.",
+          },
+        ].map((w, i) => (
+          <Reveal key={w.title} delay={i * 70}>
+            <div className="panel h-full p-5">
+              <Webhook className="h-5 w-5 text-[var(--accent)]" />
+              <h3 className="mt-3 font-semibold">{w.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-[var(--muted)]">
+                {w.body}
+              </p>
+            </div>
+          </Reveal>
+        ))}
+      </div>
+
+      <Reveal className="mt-8">
+        <CodeBlock
+          code={`// what lands on your agent when something is completed
+POST https://your-agent/hooks/lifeos
+X-Webhook-Signature-V2: <hmac-sha256 of "<timestamp>.<body>">
+X-Request-ID: <delivery id — dedupe on this, retries reuse it>
+
+{
+  "event": "card.complete",
+  "task": { "id": "…", "title": "Read chapter 4", "kind": "study" },
+  "xpAwarded": 25,
+  "nextOccurrence": { "eventAt": "2026-08-15T16:30:00Z" }
+}`}
+        />
+      </Reveal>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------ quick start */
 
-const AGENT_BRIEF = `Set up Life OS for me and then run my day with it.
-
-1. Check whether it is already running:
-     curl -s http://127.0.0.1:8787/health
-
-2. If nothing answers, ask me where to put it, then:
-     git clone https://github.com/EntangledQuantum/Life_OS.git Life_OS
-     cd Life_OS
-     pnpm setup
-     pnpm dev
-
-   Needs Node 22.5+ and pnpm. Do not clone or install until I say yes.
-   Setup prints an API token once — ask me for it, do not guess it.
-
-3. Read the skill so you know the whole API:
-     docs/skills/life-os/SKILL.md
-
-4. Authenticate with the API_TOKEN from my .env, on every request:
-     Authorization: Bearer <API_TOKEN>
-
-   There is no username/password login; POST /api/v1/auth/login returns 410.
-   Never print the token back to me or write it into a file you commit.
-
-5. Learn the XP rules before changing anything:
-     GET /api/v1/agent/xp-model
-
-6. Then, from now on:
-   - ask me what I want to build into my days, and create those habits
-   - block out my day on the timeline each morning
-   - put what I am reading or working on into a front-page card
-   - inject reviews and tasks into my Quick log
-   - each night, read GET /api/v1/dashboard/today and tell me how the day went
-
-If you are Hermes:
-  load docs/skills/life-os/SKILL.md as a skill, then ask me before creating
-  any scheduled morning/end-of-day jobs.
-
-If you are OpenClaw:
-  copy docs/skills/life-os/ into your workspace skills/ root, then invoke it
-  with /skill life-os.
-
-If you are Claude Code:
-  claude mcp add life-os -- pnpm --filter @life-os/mcp start
-  or just use the HTTP API above.
-
-Rules: never write to my Obsidian vault from the app. Never add levels or
-compare me to anyone. Ask before installing anything.`;
+/**
+ * The brief, in one sentence.
+ *
+ * This used to be forty lines of shell and rules pasted into a chat window,
+ * which meant every change to setup was a change to this page and a change to
+ * whatever anyone had already copied. It is a fetch of a file in the repo now,
+ * so the instructions travel with the code they describe.
+ */
+const AGENT_BRIEF = AGENT_ONE_LINER;
 
 const CLONE_STEPS = `git clone ${REPO_URL}.git Life_OS
 cd Life_OS
@@ -690,23 +770,18 @@ function QuickStart() {
         {[
           {
             icon: Plug,
-            title: "HTTP and MCP, same brain",
-            body: "A full REST surface under /api/v1, plus an MCP stdio server sharing the same database. Cards, blocks, habits, events, XP rules, and settings are reachable from both.",
-          },
-          {
-            icon: Webhook,
-            title: "Webhooks close the loop",
-            body: "Complete a habit or a card and Life OS posts to your agent with the entity, the XP awarded, and your note — so it can update its own memory or your vault.",
+            title: "MCP for agents, REST for apps",
+            body: "Deliberately two shapes. The REST API is built for a screen — one dashboard payload, polled. The MCP tools are built for an agent — a whole day or a whole range in one call, so it is not reconstructing your week from forty round-trips.",
           },
           {
             icon: Bot,
-            title: "Front-page cards, including SVG",
-            body: "Two content cards plus a dedicated agent-setup card. Agents can ship their own inline SVG artwork; it is sanitized and rendered sandboxed.",
+            title: "Front-page cards, including SVG and controls",
+            body: "Two content slots. An agent can draw a card with its own inline SVG (sanitized, rendered sandboxed) and put a slider or a button on it — asking \"how did that feel, 1–10\" without the card disappearing when you answer.",
           },
           {
             icon: Terminal,
-            title: "No server? It can offer to install one",
-            body: "The skill tells your agent to detect a dead API, ask your permission, then clone the repo and run a single setup command. It never clones behind your back.",
+            title: "It installs itself",
+            body: "One sentence at your agent and it clones the repo, runs it as a service that survives a reboot, connects over MCP, and interviews you before creating anything. It asks before it installs.",
           },
         ].map((f, i) => (
           <Reveal key={f.title} delay={i * 70}>

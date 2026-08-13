@@ -34,3 +34,21 @@ export const ANDROID_APK_URL = `${REPO_URL}/releases/latest/download/life-os.apk
 
 /** Release notes, for anything that wants context rather than the file. */
 export const RELEASES_URL = `${REPO_URL}/releases/latest`;
+
+/**
+ * The setup instructions an agent reads, raw from `master`.
+ *
+ * Deliberately not a link into the repo's HTML view: the sentence below tells
+ * an agent to *fetch* this, and the rendered page is full of GitHub chrome.
+ */
+export const AGENT_SETUP_URL =
+  "https://raw.githubusercontent.com/EntangledQuantum/Life_OS/master/docs/AGENT_SETUP.md";
+
+/**
+ * The one thing to copy off the landing page.
+ *
+ * Setting Life OS up is an agent task — install it, run it as a service,
+ * interview the user, schedule a nightly check-in — so the page hands over the
+ * sentence that starts that rather than a wall of shell commands.
+ */
+export const AGENT_ONE_LINER = `Fetch ${AGENT_SETUP_URL} and set Life OS up for me`;
