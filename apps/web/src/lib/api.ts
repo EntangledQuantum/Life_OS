@@ -56,8 +56,6 @@ export const api = {
     request<import("@life-os/shared").ScheduleBlock[]>("/api/v1/blocks/study"),
   blocks: () =>
     request<import("@life-os/shared").ScheduleBlock[]>("/api/v1/blocks"),
-  startBlock: (id: string) =>
-    request<any>(`/api/v1/blocks/${id}/start`, { method: "POST" }),
   completeBlock: (id: string) =>
     request<any>(`/api/v1/blocks/${id}/complete`, { method: "POST" }),
   events: () =>
@@ -66,6 +64,8 @@ export const api = {
     request(`/api/v1/events/${id}/complete`, { method: "POST" }),
   dismissEvent: (id: string) =>
     request(`/api/v1/events/${id}/dismiss`, { method: "POST" }),
+  completeReview: (id: string) =>
+    request(`/api/v1/reviews/${id}/complete`, { method: "POST" }),
   cards: () =>
     request<import("@life-os/shared").DashboardCard[]>("/api/v1/cards"),
   completeCard: (id: string) =>
@@ -73,9 +73,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ source: "user" }),
     }),
-  /** Start a scheduled card — it takes over the timeline under its activity tag. */
-  startCard: (id: string) =>
-    request<any>(`/api/v1/cards/${id}/start`, { method: "POST" }),
+  /*
+   * There is no `startCard` / `startBlock`. Scheduled things are completed, not
+   * started — what activity you are in is set by hand through `setActiveSession`
+   * and nothing else touches it.
+   */
   /** Confirm the chime actually played, so the reminder fires exactly once. */
   markCardNotified: (id: string) =>
     request<any>(`/api/v1/cards/${id}/notified`, { method: "POST" }),

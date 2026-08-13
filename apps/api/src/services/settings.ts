@@ -3,6 +3,7 @@ import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
 import {
   DEFAULT_GAMIFICATION_CONFIG,
+  IMMINENT_WINDOW_MINUTES,
   isNotificationSound,
   type AccentThemeId,
   type AppSettings,
@@ -40,6 +41,9 @@ export function getSettings(db: LifeOsDb): AppSettings {
     doNotDisturb: (row as { doNotDisturb?: boolean }).doNotDisturb ?? false,
     quietHoursSilent:
       (row as { quietHoursSilent?: boolean }).quietHoursSilent ?? true,
+    reminderLeadMinutes:
+      (row as { reminderLeadMinutes?: number }).reminderLeadMinutes ??
+      IMMINENT_WINDOW_MINUTES,
     plannedWake: row.plannedWake,
     plannedSleepStart: row.plannedSleepStart,
     plannedSleepEnd: row.plannedSleepEnd,
@@ -75,6 +79,7 @@ export function updateSettings(
     notificationSound: NotificationSoundId;
     doNotDisturb: boolean;
     quietHoursSilent: boolean;
+    reminderLeadMinutes: number;
     plannedWake: string;
     plannedSleepStart: string;
     plannedSleepEnd: string;
@@ -93,6 +98,14 @@ export function updateSettings(
 ) {
   const row = getSettingsRow(db);
   const { supabaseKey, agentWebhookUrl, agentWebhookSecret, ...rest } = input;
+  // A negative lead would notify you after the thing; a huge one would put
+  // tomorrow on today's front page.
+  if (rest.reminderLeadMinutes !== undefined) {
+    const n = Number(rest.reminderLeadMinutes);
+    rest.reminderLeadMinutes = Number.isFinite(n)
+      ? Math.min(240, Math.max(0, Math.round(n)))
+      : IMMINENT_WINDOW_MINUTES;
+  }
   db.update(schema.settings)
     .set({
       ...rest,

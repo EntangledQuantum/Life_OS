@@ -72,10 +72,17 @@ export function ensureSchema(dbPath?: string) {
     ["settings", "notification_sound", "TEXT NOT NULL DEFAULT 'chime'"],
     ["settings", "do_not_disturb", "INTEGER NOT NULL DEFAULT 0"],
     ["settings", "quiet_hours_silent", "INTEGER NOT NULL DEFAULT 1"],
-    // A timed session remembers what it interrupted, and when to hand it back.
-    ["active_sessions", "previous_activity", "TEXT"],
-    ["active_sessions", "ends_at", "TEXT"],
+    ["settings", "reminder_lead_minutes", "INTEGER NOT NULL DEFAULT 15"],
   ];
+
+  /*
+   * `active_sessions.previous_activity` and `ends_at` were added for timed
+   * sessions — a scheduled card you "started" would take over the day and hand
+   * it back when it expired. Scheduled things no longer start at all, so
+   * nothing writes those columns any more. They are deliberately NOT dropped:
+   * an existing database keeps them (harmless, always null), and new ones never
+   * grow them.
+   */
 
   /*
    * Tables that outlived their feature. `auth_sessions` backed the old

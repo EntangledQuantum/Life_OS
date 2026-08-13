@@ -334,6 +334,30 @@ export function SettingsPage() {
           />
         </label>
 
+        <div>
+          <label className="label" htmlFor="reminder-lead">
+            Tell me this far ahead
+          </label>
+          <select
+            id="reminder-lead"
+            className="input"
+            value={settings.reminderLeadMinutes}
+            onChange={(e) =>
+              patch({ reminderLeadMinutes: Number(e.target.value) })
+            }
+          >
+            {[0, 5, 10, 15, 30, 60].map((m) => (
+              <option key={m} value={m}>
+                {m === 0 ? "At the time itself" : `${m} minutes before`}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-[var(--faint)]">
+            The same window decides what reaches Quick log — being told about a
+            thing and having it on your plate are the same moment.
+          </p>
+        </div>
+
         {silencedNow && (
           <p className="rounded-lg border border-[var(--border)] bg-white/[0.03] px-3 py-2 font-mono text-[11px] text-[var(--accent)]">
             Reminders are silent right now

@@ -69,7 +69,7 @@ database keeps working after an upgrade.
 | `user_progress` | Lifetime XP and the latest improvement pulse |
 | `gamification_config` | Daily XP pool, multipliers, growth-meter style |
 | `settings` | Day reset time, quiet hours, theme, agent webhook |
-| `achievements`, `sleep_logs`, `active_sessions`, `auth_sessions` | Badges, sleep, the Right Now timer, mock login sessions |
+| `achievements`, `sleep_logs`, `active_sessions`, `activity_log` | Badges, sleep, the current hand-set activity, and the record of what was actually done |
 
 Life OS **never writes to your Obsidian vault.** Agents read from here and escalate
 only what is genuinely special into the vault themselves.

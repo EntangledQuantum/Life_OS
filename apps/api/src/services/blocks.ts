@@ -109,39 +109,28 @@ export function deleteBlock(db: LifeOsDb, id: string) {
   return { ok: true };
 }
 
-/** Start block → Right Now session */
-export function startBlock(db: LifeOsDb, id: string) {
-  const block = db
-    .select()
-    .from(schema.scheduleBlocks)
-    .where(eq(schema.scheduleBlocks.id, id))
-    .get();
-  if (!block) return { error: "Block not found" as const };
-
-  const started = nowIso();
-  db.update(schema.scheduleBlocks)
-    .set({ status: "active", actualStart: started })
-    .where(eq(schema.scheduleBlocks.id, id))
-    .run();
-
-  db.delete(schema.activeSessions).run();
-  db.insert(schema.activeSessions)
-    .values({
-      activity: block.category,
-      startedAt: started,
-      blockId: id,
-    })
-    .run();
-
-  return {
-    block: mapBlock(
-      db.select().from(schema.scheduleBlocks).where(eq(schema.scheduleBlocks.id, id)).get()!,
-    ),
-    activeSession: { activity: block.category, startedAt: started, blockId: id },
+/** Minutes between two `HH:mm` strings, wrapping past midnight. */
+function plannedMinutes(start: string | null, end: string | null): number | null {
+  if (!start || !end) return null;
+  const toMin = (s: string) => {
+    const [h, m] = s.split(":").map(Number);
+    return Number.isFinite(h) && Number.isFinite(m) ? h! * 60 + m! : null;
   };
+  const a = toMin(start);
+  const b = toMin(end);
+  if (a === null || b === null) return null;
+  return b > a ? b - a : b + 24 * 60 - a;
 }
 
-/** Complete block — duration from active session or planned window */
+/**
+ * Complete a block.
+ *
+ * There is no start, so there is no elapsed time to measure — the duration is
+ * the window the agent planned. That is the honest number anyway: the old code
+ * timed you from whenever you happened to press Start, which meant a block you
+ * forgot to start was recorded as one minute long, and one you forgot to finish
+ * ran until you noticed.
+ */
 export function completeBlock(db: LifeOsDb, id: string) {
   const block = db
     .select()
@@ -150,30 +139,20 @@ export function completeBlock(db: LifeOsDb, id: string) {
     .get();
   if (!block) return { error: "Block not found" as const };
 
-  const active = db.select().from(schema.activeSessions).limit(1).get();
   const ended = nowIso();
-  let actualStart = block.actualStart;
-  if (active?.blockId === id) {
-    actualStart = active.startedAt;
-  }
-  if (!actualStart) actualStart = ended;
-
-  const durationMs = new Date(ended).getTime() - new Date(actualStart).getTime();
-  const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
+  const durationMinutes =
+    plannedMinutes(block.plannedStart, block.plannedEnd) ?? 30;
 
   db.update(schema.scheduleBlocks)
     .set({
       status: "done",
-      actualStart,
+      // Kept for rows that were started under the old model; never set now.
+      actualStart: block.actualStart,
       actualEnd: ended,
       completedAt: ended,
     })
     .where(eq(schema.scheduleBlocks.id, id))
     .run();
-
-  if (active?.blockId === id) {
-    db.delete(schema.activeSessions).run();
-  }
 
   let studyResult = null;
   if (block.category.toLowerCase() === "study") {

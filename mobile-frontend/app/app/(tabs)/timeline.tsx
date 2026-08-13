@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { font, radius, rgba, type Tokens } from "@/lib/theme";
@@ -30,6 +31,8 @@ export default function TimelineScreen() {
   const qc = useQueryClient();
   const t = useTokens();
   const { gutter } = useLayout();
+  /** `?card=` arrives from a tapped notification — that row gets highlighted. */
+  const { card: focusId } = useLocalSearchParams<{ card?: string }>();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -41,11 +44,6 @@ export default function TimelineScreen() {
     queryKey: ["dashboard"],
     queryFn: api.dashboard,
     refetchInterval: 15_000,
-  });
-
-  const start = useMutation({
-    mutationFn: (id: string) => api.startCard(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
   const complete = useMutation({
@@ -205,8 +203,7 @@ export default function TimelineScreen() {
                         <CardRow
                           key={c.id}
                           card={c}
-                          urgent={Boolean(c.notifiedAt && c.flash)}
-                          onStart={() => start.mutate(c.id)}
+                          urgent={Boolean(c.notifiedAt && c.flash) || focusId === c.id}
                           onComplete={() => complete.mutate(c.id)}
                         />
                       ))}

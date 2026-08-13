@@ -178,6 +178,49 @@ export default function SettingsScreen() {
                 </View>
 
                 <View>
+                  <SectionHeader title="Tell me this far ahead" />
+                  <Card style={{ gap: 10 }}>
+                    <Body>
+                      The same window decides what reaches Quick log — being told
+                      about a thing and having it on your plate are the same
+                      moment.
+                    </Body>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                      {[0, 5, 10, 15, 30, 60].map((m) => {
+                        const on = (s.reminderLeadMinutes ?? 15) === m;
+                        return (
+                          <Pressable
+                            key={m}
+                            onPress={() => {
+                              void Haptics.selectionAsync();
+                              patch.mutate({ reminderLeadMinutes: m });
+                            }}
+                            style={{
+                              paddingHorizontal: 13,
+                              paddingVertical: 8,
+                              borderRadius: radius.pill,
+                              backgroundColor: on ? rgba(t.accent, 0.2) : t.surface2,
+                              borderWidth: 1,
+                              borderColor: on ? t.accent : "transparent",
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: on ? t.accent : t.muted,
+                                fontFamily: font.mono,
+                                fontSize: 13,
+                              }}
+                            >
+                              {m === 0 ? "on time" : `${m}m`}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </Card>
+                </View>
+
+                <View>
                   <SectionHeader title="Notification sound" />
                   <Card style={{ gap: 2 }}>
                     {NOTIFICATION_SOUNDS.map((opt) => (

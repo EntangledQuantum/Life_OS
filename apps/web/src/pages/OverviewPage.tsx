@@ -9,9 +9,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { Link } from "react-router-dom";
 import {
   ACTIVITIES,
   GROWTH_STYLES,
+  type DashboardCard,
   type GrowthStyle,
   type HabitWithToday,
 } from "@life-os/shared";
@@ -22,16 +24,20 @@ import { cn, formatDelta, formatElapsed } from "@/lib/utils";
 import { GrowthMeter } from "@/components/graphics/GrowthMeter";
 import { AgentCard } from "@/components/AgentCard";
 import { AgentCardsSection } from "@/components/AgentCardsSection";
-import { UpcomingRail } from "@/components/UpcomingRail";
 import { ReminderRunner } from "@/components/ReminderRunner";
 import { GoalCelebration } from "@/components/GoalCelebration";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { Check, ExternalLink, Undo2, X } from "lucide-react";
+import { Check, Undo2 } from "lucide-react";
 
 /**
- * Open dashboard. Quick log prioritizes agent tasks (revision/reviews);
- * habits only when no pending agent work.
+ * The dashboard.
+ *
+ * Quick log is the act-now list, in the order you act: scheduled things landing
+ * inside the lead window first, then habits — habits *always*, which is the one
+ * rule this page previously broke. Everything the agent has queued lives on the
+ * Timeline tab, and there is no separate "Up next" rail duplicating the top of
+ * this list.
  */
 export function OverviewPage() {
   const qc = useQueryClient();
@@ -67,39 +73,6 @@ export function OverviewPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
-  const completeEvent = useMutation({
-    mutationFn: (id: string) => api.completeEvent(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Logged · agent task complete");
-    },
-  });
-
-  const dismissEvent = useMutation({
-    mutationFn: (id: string) => api.dismissEvent(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
-  });
-
-  const completeReview = useMutation({
-    mutationFn: (id: string) =>
-      fetch(
-        (import.meta.env.VITE_API_URL ?? "") + `/api/v1/reviews/${id}/complete`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
-          },
-        },
-      ).then(async (r) => {
-        if (!r.ok) throw new Error("Failed");
-        return r.json();
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Review complete");
-    },
-  });
-
   const completeCard = useMutation({
     mutationFn: (id: string) =>
       fetch((import.meta.env.VITE_API_URL ?? "") + `/api/v1/cards/${id}/complete`, {
@@ -121,16 +94,6 @@ export function OverviewPage() {
           ? `Card done · +${res.xpAwarded} XP`
           : "Card complete · agent notified if webhook set",
       );
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  /** Starting a scheduled card hands the timeline over to its activity tag. */
-  const startCard = useMutation({
-    mutationFn: (id: string) => api.startCard(id),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success(`Started · ${res.block?.category ?? "session"} running`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -187,11 +150,19 @@ export function OverviewPage() {
   const p = data.progress;
   const growthMode: GrowthStyle = p.growthStyle === "orb" ? "orb" : "sprout";
 
-  const pendingEvents = data.agentEvents.filter((e) => e.status === "pending");
-  const pendingReviews = (data.lightReviews ?? []).filter((r) => !r.completedAt);
-  const agentQueueCount = pendingEvents.length + pendingReviews.length;
-  /** When agent has work: Quick log shows only that. Habits return when queue is clear. */
-  const showHabitsInQuickLog = agentQueueCount === 0;
+  /**
+   * Agent-queued work lives on Timeline now, next to the rest of what the agent
+   * has planned. Quick log is for the two things you act on without thinking:
+   * what is landing in the next few minutes, and your habits.
+   */
+  const agentQueueCount =
+    data.agentEvents.filter((e) => e.status === "pending").length +
+    (data.lightReviews ?? []).filter((r) => !r.completedAt).length;
+  /**
+   * Scheduled things that are current — the server has already applied the
+   * lead window and dropped anything past its own end time.
+   */
+  const imminent = data.upcoming ?? [];
 
   const deltas = [
     {
@@ -454,57 +425,42 @@ export function OverviewPage() {
           <div className="flex items-baseline justify-between gap-2">
             <SectionLabel className="mb-0">Quick log</SectionLabel>
             {agentQueueCount > 0 && (
-              <span className="font-mono text-[10px] text-[var(--accent)]">
-                {agentQueueCount} agent · flash until done
-              </span>
+              <Link
+                to="/app/timeline"
+                className="font-mono text-[10px] text-[var(--accent)] hover:underline"
+              >
+                {agentQueueCount} waiting on Timeline →
+              </Link>
             )}
           </div>
 
           <ul className="mt-3 divide-y divide-white/[0.05]">
-            {/* Agent revision / reviews / tasks first — flash until complete */}
-            {pendingReviews.map((r) => (
-              <QuickLogAgentItem
-                key={`rev-${r.id}`}
-                kind="review"
-                title={r.prompt}
-                body="Light review · stored for Hermes retrieval"
-                link={r.link}
-                onComplete={() => completeReview.mutate(r.id)}
-              />
-            ))}
-            {pendingEvents.map((ev) => (
-              <QuickLogAgentItem
-                key={ev.id}
-                kind={ev.kind}
-                title={ev.title}
-                body={ev.body}
-                link={ev.link}
-                onComplete={() => completeEvent.mutate(ev.id)}
-                onDismiss={() => dismissEvent.mutate(ev.id)}
+            {/* What is landing now, ahead of the habits. No Start — a scheduled
+                thing is done or it isn't. */}
+            {imminent.map((card) => (
+              <QuickLogScheduled
+                key={card.id}
+                card={card}
+                busy={completeCard.isPending}
+                onComplete={() => completeCard.mutate(card.id)}
               />
             ))}
 
-            {showHabitsInQuickLog &&
-              data.habits.slice(0, 6).map((h) => (
-                <HabitRow
-                  key={h.id}
-                  habit={h}
-                  busy={complete.isPending || undo.isPending}
-                  onComplete={() => complete.mutate(h.id)}
-                  onUndo={() => undo.mutate(h.id)}
-                />
-              ))}
+            {/* Habits are always here. They used to be hidden whenever the agent
+                had anything queued, which against a standing queue meant never. */}
+            {data.habits.slice(0, 6).map((h) => (
+              <HabitRow
+                key={h.id}
+                habit={h}
+                busy={complete.isPending || undo.isPending}
+                onComplete={() => complete.mutate(h.id)}
+                onUndo={() => undo.mutate(h.id)}
+              />
+            ))}
 
-            {!showHabitsInQuickLog && agentQueueCount > 0 && (
-              <li className="py-3 text-xs text-[var(--faint)]">
-                Habits hidden while agent work is open — complete or dismiss above.
-                Full habit list stays under Habits tab.
-              </li>
-            )}
-
-            {showHabitsInQuickLog && data.habits.length === 0 && agentQueueCount === 0 && (
+            {data.habits.length === 0 && imminent.length === 0 && (
               <li className="py-3 text-sm text-[var(--muted)]">
-                Nothing queued. Hermes can inject reviews/tasks anytime.
+                Nothing right now. Ask your agent for some habits to start with.
               </li>
             )}
           </ul>
@@ -570,15 +526,9 @@ export function OverviewPage() {
         </section>
       </div>
 
-      {/* Last on purpose: the top of the page is how today is *going*; what is
-          about to happen is the hand-off to the next thing. */}
-      <UpcomingRail
-        cards={data.upcoming ?? []}
-        scheduledCount={(data.scheduled ?? []).length}
-        busy={startCard.isPending || completeCard.isPending}
-        onStart={(id) => startCard.mutate(id)}
-        onComplete={(id) => completeCard.mutate(id)}
-      />
+      {/* No "Up next" rail. What is about to happen is the top of the Quick log
+          — one list, in the order you act on it, instead of the same scheduled
+          card appearing twice on one page. */}
     </motion.div>
   );
 }
@@ -602,57 +552,78 @@ function SectionLabel({
   );
 }
 
-function QuickLogAgentItem({
-  kind,
-  title,
-  body,
-  link,
+/**
+ * A scheduled thing that is landing now. One action: Complete.
+ *
+ * The time shown is when it was meant to start, not a countdown and not a
+ * running clock — you are being told what is on your plate, not raced.
+ */
+function QuickLogScheduled({
+  card,
   onComplete,
-  onDismiss,
+  busy,
 }: {
-  kind: string;
-  title: string;
-  body?: string | null;
-  link?: string | null;
+  card: DashboardCard;
   onComplete: () => void;
-  onDismiss?: () => void;
+  busy?: boolean;
 }) {
+  const when = card.eventAt
+    ? new Date(card.eventAt).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  const late = card.eventAt ? new Date(card.eventAt).getTime() < Date.now() : false;
+
   return (
-    <li className="quicklog-flash relative flex flex-wrap items-start gap-3 py-3 pl-3">
-      <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-[var(--accent)]" />
-      <span className="relative mt-1.5 flex h-2 w-2 shrink-0">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-60" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent)]" />
-      </span>
+    <li
+      className={cn(
+        "relative flex flex-wrap items-start gap-3 py-3 pl-3",
+        card.flash && card.notifiedAt && "quicklog-flash",
+      )}
+    >
+      <span
+        className="absolute inset-y-1 left-0 w-0.5 rounded-full"
+        style={{ background: card.themeColor ?? "var(--accent)" }}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
-            {kind}
+          {when && (
+            <span
+              className={cn(
+                "font-mono text-[10px] uppercase tracking-wider",
+                late ? "text-[var(--warning,#FBBF24)]" : "text-[var(--accent)]",
+              )}
+            >
+              {when}
+            </span>
+          )}
+          {card.activityTag && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--faint)]">
+              {card.activityTag}
+            </span>
+          )}
+          <span className="font-medium">
+            {card.emoji ? `${card.emoji} ` : ""}
+            {card.title}
           </span>
-          <span className="font-medium">{title}</span>
         </div>
-        {body && <p className="mt-1 text-sm text-[var(--muted)]">{body}</p>}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {link && (
-          <a
-            href={link}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-primary py-1.5 text-sm"
-          >
-            Do it <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-        )}
-        <button type="button" className="btn btn-primary py-1.5 text-sm" onClick={onComplete}>
-          <Check className="h-3.5 w-3.5" /> Complete
-        </button>
-        {onDismiss && (
-          <button type="button" className="btn py-1.5 text-sm" onClick={onDismiss}>
-            <X className="h-3.5 w-3.5" />
-          </button>
+        {(card.subtitle || card.purpose) && (
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            {card.subtitle ?? card.purpose}
+          </p>
         )}
       </div>
+      <button
+        type="button"
+        className="btn btn-primary py-1.5 text-sm"
+        disabled={busy}
+        onClick={onComplete}
+      >
+        <Check className="h-3.5 w-3.5" />
+        Complete
+        {card.xpOnComplete > 0 ? ` · +${card.xpOnComplete}` : ""}
+      </button>
     </li>
   );
 }

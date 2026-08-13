@@ -199,11 +199,6 @@ export function createApp() {
   api.delete("/blocks/:id", (c) =>
     c.json(blocks.deleteBlock(getDb(), c.req.param("id"))),
   );
-  api.post("/blocks/:id/start", (c) => {
-    const r = blocks.startBlock(getDb(), c.req.param("id"));
-    if ("error" in r) return c.json(r, 404);
-    return c.json(r);
-  });
   api.post("/blocks/:id/complete", (c) => {
     const r = blocks.completeBlock(getDb(), c.req.param("id"));
     if ("error" in r) return c.json(r, 404);
@@ -267,15 +262,12 @@ export function createApp() {
     return c.json(result);
   });
 
-  /** Start a scheduled card — it takes over the timeline under its activity tag. */
-  api.post("/cards/:id/start", (c) => {
-    const result = cards.startCard(getDb(), c.req.param("id"));
-    if ("error" in result) {
-      return c.json(result, result.error === "Card not found" ? 404 : 409);
-    }
-    return c.json(result);
-  });
-
+  /*
+   * There is no `/cards/:id/start`, and there never will be again. A scheduled
+   * card has a target time and a completion; it does not run, and completing it
+   * does not change what activity you are in. That is set by hand, from
+   * `/sessions/active`.
+   */
   api.post("/cards/:id/complete", async (c) => {
     let body: { note?: string | null; source?: "user" | "agent"; progress?: number } =
       { source: "user" };
@@ -410,13 +402,6 @@ export function createApp() {
   });
   api.delete("/session/active", (c) =>
     c.json(dashboard.clearActiveSession(getDb())),
-  );
-  /**
-   * Finish the running session and hand the day back to whatever it
-   * interrupted. DELETE stops everything; this stops just this one.
-   */
-  api.post("/session/end", (c) =>
-    c.json({ activeSession: dashboard.endActiveSession(getDb()) }),
   );
 
   api.get("/quests", (c) => c.json(quests.listQuests(getDb())));

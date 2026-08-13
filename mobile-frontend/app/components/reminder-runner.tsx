@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DashboardCard } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -6,6 +7,7 @@ import { isSilenced } from "@/lib/schedule";
 import {
   ensureNotificationChannels,
   fireLocalReminder,
+  onNotificationTapped,
   requestNotificationPermission,
   scheduleUpcomingReminders,
 } from "@/lib/notifications";
@@ -21,6 +23,7 @@ export function ReminderRunner({
   scheduled?: DashboardCard[];
 }) {
   const qc = useQueryClient();
+  const router = useRouter();
   const firedRef = useRef<Set<string>>(new Set());
 
   const { data: settings } = useQuery({
@@ -38,6 +41,21 @@ export function ReminderRunner({
     void requestNotificationPermission();
     void ensureNotificationChannels(settings?.notificationSound ?? "chime");
   }, [settings?.notificationSound]);
+
+  /**
+   * Tapping the notification opens Timeline with that card in front of you and
+   * one button left to press. A notification you can only dismiss is just noise.
+   */
+  useEffect(() => {
+    const sub = onNotificationTapped((cardId) => {
+      router.navigate(
+        cardId
+          ? { pathname: "/(tabs)/timeline", params: { card: cardId } }
+          : "/(tabs)/timeline",
+      );
+    });
+    return () => sub?.();
+  }, [router]);
 
   useEffect(() => {
     const silent = isSilenced(settings);

@@ -5,36 +5,37 @@ import * as schema from "@life-os/db";
 import { getLocalDayBounds, nowIso } from "./helpers.js";
 
 /**
- * The running session, and the record of what actually happened.
+ * What you are doing right now, at the level the timeline cares about — Deep
+ * Work, Study, Sleep, Life Admin. You set it by hand, from *Right now* on the
+ * web and the picker on mobile, and it is the **only** thing that decides what
+ * the ribbon behind the now-marker is made of.
  *
- * `active_sessions` holds a single row that is replaced on every switch. On its
- * own that means the interval which just ended is discarded — so the part of
- * the day you have already lived could not be drawn, only the part that was
- * planned. Every mutation here also closes out and opens `activity_log` rows,
- * which is what makes the past recoverable.
+ * This is deliberately not connected to the things an agent schedules. A
+ * scheduled card or a study block has a target time and a completion, and
+ * nothing else; it never starts, never runs, and never changes what activity
+ * you are in. Those two ideas used to be tangled together — a card you started
+ * silently became your new default activity — and untangling them is the whole
+ * point of this module being small.
+ *
+ * `active_sessions` holds a single row that is replaced on every switch, so on
+ * its own the interval that just ended would be discarded. Every mutation here
+ * also closes and opens `activity_log` rows, which is what makes the lived part
+ * of the day drawable at all.
  */
 
 export interface ActiveSession {
   activity: string;
   startedAt: string;
   blockId: string | null;
-  previousActivity: string | null;
-  endsAt: string | null;
 }
 
 function readActive(db: LifeOsDb): ActiveSession | null {
   const row = db.select().from(schema.activeSessions).limit(1).get();
   if (!row) return null;
-  const r = row as typeof row & {
-    previousActivity?: string | null;
-    endsAt?: string | null;
-  };
   return {
     activity: row.activity,
     startedAt: row.startedAt,
     blockId: row.blockId ?? null,
-    previousActivity: r.previousActivity ?? null,
-    endsAt: r.endsAt ?? null,
   };
 }
 
@@ -66,34 +67,20 @@ function openLog(
     .run();
 }
 
-/**
- * Switch what is running now. `previousActivity` and `endsAt` are only set by
- * timed sessions (see `startTimedSession`); a plain switch clears them, because
- * choosing something by hand means you meant to stay there.
- */
+/** Switch what is running now. Stays put until you switch it again. */
 export function setActiveSession(
   db: LifeOsDb,
   activity: string,
   startedAt?: string,
   blockId?: string | null,
-  opts: {
-    previousActivity?: string | null;
-    endsAt?: string | null;
-    source?: "user" | "agent";
-  } = {},
+  opts: { source?: "user" | "agent" } = {},
 ): ActiveSession {
   const started = startedAt ?? nowIso();
 
   closeOpenLog(db, started);
   db.delete(schema.activeSessions).run();
   db.insert(schema.activeSessions)
-    .values({
-      activity,
-      startedAt: started,
-      blockId: blockId ?? null,
-      previousActivity: opts.previousActivity ?? null,
-      endsAt: opts.endsAt ?? null,
-    })
+    .values({ activity, startedAt: started, blockId: blockId ?? null })
     .run();
   openLog(db, activity, started, blockId ?? null, opts.source ?? "user");
 
@@ -105,85 +92,6 @@ export function clearActiveSession(db: LifeOsDb): { ok: true } {
   closeOpenLog(db, nowIso());
   db.delete(schema.activeSessions).run();
   return { ok: true };
-}
-
-/**
- * Start a session that knows how to end: it remembers what it interrupted and
- * when it is due to finish, so `settleActiveSession` can hand the day back.
- */
-export function startTimedSession(
-  db: LifeOsDb,
-  activity: string,
-  durationMinutes: number | null,
-  blockId: string | null,
-  /**
-   * What to return to afterwards. Pass this explicitly when something earlier
-   * in the call has already changed the running session — `startBlock` does,
-   * so reading it here would just find the session we are about to replace.
-   */
-  previousActivity?: string | null,
-): ActiveSession {
-  const current = readActive(db);
-  const started = nowIso();
-  const endsAt =
-    durationMinutes && durationMinutes > 0
-      ? new Date(Date.parse(started) + durationMinutes * 60_000).toISOString()
-      : null;
-
-  return setActiveSession(db, activity, started, blockId, {
-    // Do not chain a timed session onto another timed session's "previous" —
-    // returning two steps back is not something the user asked for.
-    previousActivity:
-      previousActivity !== undefined ? previousActivity : (current?.activity ?? null),
-    endsAt,
-  });
-}
-
-/**
- * End the running session and restore whatever it interrupted.
- * Returns the session that is running afterwards, or null if nothing is.
- */
-export function endActiveSession(db: LifeOsDb): ActiveSession | null {
-  const current = readActive(db);
-  if (!current) return null;
-
-  if (current.previousActivity) {
-    // Hand the day back rather than dropping the user into nothing.
-    return setActiveSession(db, current.previousActivity, nowIso(), null);
-  }
-  clearActiveSession(db);
-  return null;
-}
-
-/**
- * Expire a timed session whose window has passed.
- *
- * Called on every dashboard read rather than from a timer: a personal app is
- * not running a scheduler at 3am, and reading is the only moment the answer
- * matters. Returns true when something changed.
- */
-export function settleActiveSession(db: LifeOsDb, now = new Date()): boolean {
-  const current = readActive(db);
-  if (!current?.endsAt) return false;
-  if (Date.parse(current.endsAt) > now.getTime()) return false;
-
-  const at = current.endsAt;
-  closeOpenLog(db, at);
-  db.delete(schema.activeSessions).run();
-
-  if (current.previousActivity) {
-    db.insert(schema.activeSessions)
-      .values({
-        activity: current.previousActivity,
-        startedAt: at,
-        blockId: null,
-        previousActivity: null,
-        endsAt: null,
-      })
-      .run();
-    openLog(db, current.previousActivity, at, null, "user");
-  }
-  return true;
 }
 
 export function getActiveSession(db: LifeOsDb): ActiveSession | null {

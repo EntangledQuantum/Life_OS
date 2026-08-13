@@ -215,6 +215,11 @@ export interface AppSettings {
   notificationSound: NotificationSoundId;
   doNotDisturb: boolean;
   quietHoursSilent: boolean;
+  /**
+   * Minutes before a scheduled thing that you are notified — and the window
+   * that puts it in Quick log. One number for both.
+   */
+  reminderLeadMinutes: number;
   plannedWake: string;
   plannedSleepStart: string;
   plannedSleepEnd: string;
@@ -254,6 +259,12 @@ export interface TimelineBlock {
   endHour: number;
   color: string;
   status: string;
+  /**
+   * True behind the now-marker — this is what you actually did, from the
+   * activity log. False ahead of it, where the ribbon is only the plan. The two
+   * must be drawn differently or the day reads as already lived.
+   */
+  actual: boolean;
 }
 
 export interface DashboardToday {

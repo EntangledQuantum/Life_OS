@@ -115,8 +115,9 @@ export function isCardVisible(
 }
 
 /**
- * How close a scheduled card has to be before it earns a place on the
- * dashboard. Everything else lives on the Timeline tab.
+ * How far ahead of a thing the user is told about it, and how close it has to
+ * be before it earns a place on the front page. One number, because they are
+ * the same idea: the window in which a scheduled thing is your problem.
  *
  * The dashboard answers "what am I doing *now*"; a card three hours out is
  * planning, not doing, and pushing it into the same view is how a clean
@@ -124,12 +125,56 @@ export function isCardVisible(
  */
 export const IMMINENT_WINDOW_MINUTES = 15;
 
+/** @deprecated spelling kept for callers; use `IMMINENT_WINDOW_MINUTES`. */
+export const DEFAULT_REMINDER_LEAD_MINUTES = IMMINENT_WINDOW_MINUTES;
+
+function instant(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const t = new Date(value).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
 /**
- * Is this card about to happen (or already overdue)?
+ * When this card should ping.
  *
- * True when the event lands within the next 15 minutes, when it has slipped
- * into the past unfinished, or when its reminder has already fired. A card with
- * no times at all is never imminent — it has nothing to be close to.
+ * `remindAt` if the agent set one explicitly, otherwise derived from `eventAt`
+ * minus the user's lead. Deriving it matters: `remindAt` is optional and most
+ * agents only set `eventAt`, which used to mean the card was never scheduled on
+ * the phone and never appeared in `dueReminders` — so it either fired late, the
+ * next time the app happened to open, or not at all.
+ */
+export function notifyAt(
+  card: { remindAt?: string | null; eventAt?: string | null },
+  leadMinutes = IMMINENT_WINDOW_MINUTES,
+): string | null {
+  if (card.remindAt) return card.remindAt;
+  const event = instant(card.eventAt);
+  if (event === null) return null;
+  const lead = Number.isFinite(leadMinutes) ? Math.max(0, leadMinutes) : 0;
+  return new Date(event - lead * 60_000).toISOString();
+}
+
+/**
+ * When a scheduled thing stops being current. Its own window, not its
+ * completion: something you were meant to do at 09:00 for 30 minutes is no
+ * longer *now* at 10:00, whether or not you ticked it off. Otherwise every
+ * missed item piles up on the front page forever, which is exactly the to-do
+ * list this app refuses to be.
+ */
+export function expiresAt(card: {
+  eventAt?: string | null;
+  durationMinutes?: number | null;
+}): number | null {
+  const event = instant(card.eventAt);
+  if (event === null) return null;
+  const mins =
+    card.durationMinutes && card.durationMinutes > 0 ? card.durationMinutes : 0;
+  return event + mins * 60_000;
+}
+
+/**
+ * Is this card current — close enough to be on the front page, and not yet
+ * past its own window?
  */
 export function isCardImminent(
   card: {
@@ -137,6 +182,7 @@ export function isCardImminent(
     showAt?: string | null;
     remindAt?: string | null;
     eventAt?: string | null;
+    durationMinutes?: number | null;
   },
   now = new Date(),
   windowMinutes = IMMINENT_WINDOW_MINUTES,
@@ -145,30 +191,35 @@ export function isCardImminent(
   if (!isCardVisible(card, now)) return false;
 
   const ms = now.getTime();
-  const at = (value: string | null | undefined) => {
-    if (!value) return null;
-    const t = new Date(value).getTime();
-    return Number.isNaN(t) ? null : t;
-  };
+  const event = instant(card.eventAt);
 
-  const event = at(card.eventAt);
-  const remind = at(card.remindAt);
+  if (event !== null) {
+    const gone = expiresAt(card);
+    if (gone !== null && ms > gone) return false;
+    return event - ms <= windowMinutes * 60_000;
+  }
 
-  if (event !== null) return event - ms <= windowMinutes * 60_000;
   // No event time, but the ping has landed — the user has been told, so it
   // belongs in front of them until they deal with it.
-  return remind !== null && remind <= ms;
+  const ping = instant(notifyAt(card, windowMinutes));
+  return ping !== null && ping <= ms;
 }
 
-/** Is this card's reminder due (and not yet fired)? */
+/** Is this card's notification due (and not yet fired)? */
 export function isReminderDue(
-  card: { remindAt?: string | null; notifiedAt?: string | null; status?: string },
+  card: {
+    remindAt?: string | null;
+    eventAt?: string | null;
+    notifiedAt?: string | null;
+    status?: string;
+  },
   now = new Date(),
+  leadMinutes = IMMINENT_WINDOW_MINUTES,
 ): boolean {
-  if (!card.remindAt || card.notifiedAt) return false;
+  if (card.notifiedAt) return false;
   if (card.status === "done" || card.status === "hidden") return false;
-  const ms = new Date(card.remindAt).getTime();
-  return !Number.isNaN(ms) && ms <= now.getTime();
+  const ms = instant(notifyAt(card, leadMinutes));
+  return ms !== null && ms <= now.getTime();
 }
 
 function minutesOfDay(hhmm: string): number | null {

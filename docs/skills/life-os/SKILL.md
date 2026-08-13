@@ -135,7 +135,7 @@ GET /api/v1/export/json          # full dump
 |-------|---------------|
 | `habits` · `progress` · `vsYesterday` · `pulse` | The day's numbers |
 | `cards` | The pinned front-page cards (slots 0, 1, and the setup card) |
-| `upcoming` | Only what is **imminent** — due within 15 min, overdue, or already pinged |
+| `upcoming` | Only what is **current** — inside the reminder lead window and not past its own end |
 | `scheduled` | Every visible scheduled card (this is what the Timeline tab shows) |
 | `dueReminders` | Reminders that should chime **now** and have not yet |
 | `pendingCelebrations` | Goals that are met but that the user has not yet *seen* |
@@ -165,6 +165,7 @@ PATCH /api/v1/settings
   "notificationSound": "chime",
   "doNotDisturb": false,
   "quietHoursSilent": true,
+  "reminderLeadMinutes": 15,
   "gamificationEnabled": true,
   "streaksEnabled": true,
   "pointsEnabled": true,
@@ -364,7 +365,7 @@ There are two families:
 | Family | Kinds | Where it lives | How many |
 |--------|-------|----------------|----------|
 | **Pinned** | `task`, `agent-setup` | The front page | 2 content slots + 1 setup card |
-| **Scheduled** | `event`, `reminder` | The Upcoming rail | Effectively unlimited (200 live) |
+| **Scheduled** | `event`, `reminder` | Quick log when current, Timeline always | Effectively unlimited (200 live) |
 
 Scheduled cards **never consume a pinned slot**, so you can queue a week of spaced-repetition
 reviews without evicting whatever the user actually needs to look at today. If you send a card
@@ -506,12 +507,25 @@ own id, returned as `nextOccurrence` on the complete response. Nothing is silent
 
 ```bash
 GET  /api/v1/cards/upcoming        # visible scheduled cards, soonest first
-GET  /api/v1/cards/imminent        # only the next 15 minutes (+ anything overdue)
+GET  /api/v1/cards/imminent        # only what is current (see the window below)
 GET  /api/v1/cards/due             # reminders that should chime now
 POST /api/v1/cards/:id/notified    # the client confirms it chimed (fires once)
-POST /api/v1/cards/:id/start       # take over the timeline under the activity tag
 POST /api/v1/cards/:id/complete    # done; schedules the next rung if repeating
 ```
+
+### There is no start. Do not look for one.
+
+**A scheduled thing has exactly two properties that matter: when the user should be doing it,
+and whether it is done.** It does not run. It has no timer. Completing it does not change what
+the user is doing.
+
+What the user is *doing* — `Deep Work`, `Study`, `Sleep`, `Life Admin` — is a separate,
+higher-level thing they set by hand, and it is what paints their timeline. You can read it
+(`activeSession`) but treat it as theirs. `activityTag` on a card says which bucket the card
+belongs to for grouping and colour; it does not take the day over.
+
+If you find yourself wanting to "start" something for the user, what you actually want is
+either a card with an `eventAt`, or nothing.
 
 ### Where a scheduled card actually shows up
 
@@ -519,8 +533,13 @@ Schedule freely — the UI splits it for you:
 
 | Where | What lands there |
 |-------|------------------|
-| **Dashboard → Up next** | Only the imminent ones: due within 15 minutes, overdue, or already pinged. A compact one-line list. |
+| **Dashboard → Quick log** | Only what is current, above the habits. |
 | **Timeline tab** | Everything, grouped by day, against the clock. |
+
+A card is current from `eventAt - reminderLeadMinutes` (the user's setting, default 15) until
+`eventAt + durationMinutes`, then it leaves Quick log whether or not it was completed. Set
+`durationMinutes` on anything that takes time — without it the card vanishes from Quick log the
+moment its start time passes.
 
 The dashboard answers "what am I doing *now*". A card three hours out is planning, not doing,
 so it stays on the Timeline tab. This means you can queue a whole week without making the
@@ -538,8 +557,11 @@ If do-not-disturb or quiet hours are active, all of that is suppressed and only 
 card remains. `sound: false` / `flash: false` on the card are your own per-card switches on top
 of that.
 
-You normally do not call `/notified` yourself; the browser does. Call `/start` on the user's
-behalf only if they asked you to.
+You normally do not call `/notified` yourself; the client does.
+
+The notification is actionable: tapping it opens the Timeline with that card in front of the
+user and a single Done button. So the notification body is worth writing properly — it is the
+thing they read at the moment they decide whether to act.
 
 ---
 
@@ -637,14 +659,14 @@ carry the day; event XP is for genuinely extra work you asked for.
 
 ## 8. Study blocks & timeline
 
-You own the blocks; the user starts and completes them, and real elapsed time is logged.
+You own the blocks; the user ticks them off. There is no start here either — the duration
+recorded is the window you planned, so plan windows that mean something.
 
 ```bash
 GET    /api/v1/blocks
 POST   /api/v1/blocks
 PATCH  /api/v1/blocks/:id
 DELETE /api/v1/blocks/:id
-POST   /api/v1/blocks/:id/start
 POST   /api/v1/blocks/:id/complete
 ```
 
@@ -926,8 +948,8 @@ the same SQLite file. Prefer HTTP when in doubt.
 | `lifeos_update_settings` / `lifeos_get_settings` | **Every** setting, not a subset |
 | `lifeos_schedule_card` | Events and reminders, with the ordering rule enforced |
 | `lifeos_list_upcoming_cards` / `lifeos_list_due_reminders` | The rail and the chime queue |
-| `lifeos_start_card` / `lifeos_mark_card_notified` | Take over the timeline · confirm a chime |
-| `lifeos_start_block` / `lifeos_complete_block` | Timeline sessions |
+| `lifeos_mark_card_notified` | Confirm a chime fired (the client normally does this) |
+| `lifeos_complete_block` | Tick off a timeline block |
 | `lifeos_list_properties` / `lifeos_define_property` / `lifeos_set_property` / `lifeos_increment_property` / `lifeos_delete_property` | Your own counters |
 | `lifeos_get_goal_syntax` | The condition language + worked examples |
 | `lifeos_list_goals` / `lifeos_create_goal` / `lifeos_update_goal` / `lifeos_delete_goal` | Goals |

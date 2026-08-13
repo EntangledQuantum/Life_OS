@@ -67,6 +67,41 @@ export async function ensureNotificationChannels(
   void soundId;
 }
 
+/**
+ * Call `handler` when the user taps a Life OS notification, with the card id it
+ * carried. Returns an unsubscribe function (or null off-device).
+ *
+ * Registration is async because `expo-notifications` is lazily imported, so the
+ * returned closure has to be able to cancel a subscription that may not exist
+ * yet — hence the flag rather than just returning `sub.remove`.
+ */
+export function onNotificationTapped(
+  handler: (cardId: string | null) => void,
+): (() => void) | null {
+  if (!isNative) return null;
+
+  let cancelled = false;
+  let remove: (() => void) | null = null;
+
+  void (async () => {
+    const N = await Notifications();
+    if (!N || cancelled) return;
+    const sub = N.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as
+        | { cardId?: string }
+        | undefined;
+      handler(data?.cardId ?? null);
+    });
+    if (cancelled) sub.remove();
+    else remove = () => sub.remove();
+  })();
+
+  return () => {
+    cancelled = true;
+    remove?.();
+  };
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!isNative) return false;
   await ensureHandler();

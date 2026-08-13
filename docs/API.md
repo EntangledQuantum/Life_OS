@@ -34,8 +34,7 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | GET | `/api/v1/blocks/study` | Study blocks only |
 | POST | `/api/v1/blocks` | Create a timeline block |
 | PATCH/DELETE | `/api/v1/blocks/:id` | Update / delete |
-| POST | `/api/v1/blocks/:id/start` | Start → Right Now timer |
-| POST | `/api/v1/blocks/:id/complete` | Complete → logs real elapsed study time |
+| POST | `/api/v1/blocks/:id/complete` | Complete → logs the planned duration as study time |
 | GET/POST | `/api/v1/study` | List / log study |
 | GET/POST | `/api/v1/goals` | List / create goals (create takes a `condition`) |
 | PATCH/DELETE | `/api/v1/goals/:id` | Update / delete |
@@ -49,7 +48,7 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | GET | `/api/v1/dashboard/vs-yesterday` | Deltas |
 | GET | `/api/v1/dashboard/pulse` | Pulse |
 | GET | `/api/v1/analytics` | Analytics payload |
-| GET/POST/DELETE | `/api/v1/session/active` | Right Now timer |
+| GET/POST/DELETE | `/api/v1/session/active` | What you are doing right now — set by hand, never by a card |
 | GET/POST | `/api/v1/events` | Quick log agent events |
 | POST | `/api/v1/events/:id/complete` | Complete → awards `xpOnComplete` |
 | POST | `/api/v1/events/:id/dismiss` | Dismiss without XP |
@@ -61,11 +60,10 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | GET/PATCH | `/api/v1/gamification/config` | `dailyXpTarget`, `growthStyle`, multipliers |
 | GET/POST | `/api/v1/cards` | List / create cards (pinned or scheduled) |
 | GET | `/api/v1/cards/upcoming` | Visible scheduled cards, soonest first |
-| GET | `/api/v1/cards/imminent` | Only the next 15 minutes, plus anything overdue |
+| GET | `/api/v1/cards/imminent` | Only what is inside the reminder lead window and not yet past its own end |
 | GET | `/api/v1/cards/due` | Reminders that should chime now |
 | GET/PATCH/DELETE | `/api/v1/cards/:id` | Read / update / delete card |
 | POST | `/api/v1/cards/:id/notified` | Client confirms the chime played (fires once) |
-| POST | `/api/v1/cards/:id/start` | Start → timeline block under the activity tag |
 | POST | `/api/v1/cards/:id/complete` | Complete → XP + webhook + next repeat occurrence |
 | GET/POST | `/api/v1/backups` | List snapshots / snapshot now |
 | GET | `/api/v1/export/json` | Full export |
@@ -139,10 +137,21 @@ POST /api/v1/cards
 
 ### Where they surface
 
-`dashboard/today` splits them: `upcoming` holds only the **imminent** cards (due within 15
-minutes, overdue, or already pinged) for the dashboard's Up next list, while `scheduled` holds
-every visible one for the Timeline tab. Agents can schedule as far ahead as they like without
-crowding the dashboard.
+`dashboard/today` splits them: `upcoming` holds only the **current** cards for the dashboard's
+Quick log, while `scheduled` holds every visible one for the Timeline tab. Agents can schedule
+as far ahead as they like without crowding the dashboard.
+
+A card is current from `eventAt - reminderLeadMinutes` (a setting, default 15) until
+`eventAt + durationMinutes`. It leaves Quick log when its own window ends, completed or not —
+otherwise every missed thing piles up on the front page forever, which is the to-do list this
+app refuses to be. It is still on Timeline.
+
+### There is no start
+
+A scheduled card has a target time and a completion. It does not run, it has no timer, and
+completing it does **not** change what activity the user is in — that is set by hand from
+`/api/v1/session/active` and nothing else writes it. `POST /api/v1/cards/:id/start` and
+`POST /api/v1/blocks/:id/start` have been removed.
 
 ### The ordering rule
 
@@ -159,9 +168,8 @@ re-arms the chime when either instant changes.
 ### Activity tags
 
 A closed set: `Deep Work` · `Study` · `Sleep` · `Exercise` · `Break` · `Life Admin` ·
-`Exploration`. Anything else is `400`. `POST /api/v1/cards/:id/start` creates a timeline block
-in that bucket and makes it the running session, so a tagged card counts toward the day
-automatically.
+`Exploration`. Anything else is `400`. The tag says which bucket of the day the thing belongs
+to, for grouping and colour — it does not make the card take over the timeline.
 
 ### Repetition
 

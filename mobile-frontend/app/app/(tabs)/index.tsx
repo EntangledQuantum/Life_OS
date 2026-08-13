@@ -145,15 +145,6 @@ export default function TodayScreen() {
     },
   });
 
-  const startCard = useMutation({
-    mutationFn: (id: string) => api.startCard(id),
-    onSuccess: (res) => {
-      invalidate();
-      setToast(`Started · ${res.block?.category ?? "session"}`);
-    },
-    onError: (e: Error) => setToast(e.message),
-  });
-
   const celebrate = useMutation({
     mutationFn: (id: string) => api.markCelebrationSeen(id),
     onSuccess: invalidate,
@@ -297,59 +288,76 @@ export default function TodayScreen() {
                   </View>
                 ) : null}
 
-                {/* --------------------------------------------- up next (15 min) */}
-                {upcoming.length > 0 ? (
-                  <View style={{ gap: 10 }}>
-                    <SectionHeader
-                      title="Up next"
-                      right={
-                        laterCount > 0 ? (
-                          <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 12 }}>
-                            +{laterCount} on Timeline
-                          </Text>
-                        ) : null
-                      }
-                    />
-                    {upcoming.map((c) => (
-                      <CardRow
-                        key={c.id}
-                        card={c}
-                        urgent={Boolean(c.flash && c.notifiedAt)}
-                        onStart={() => startCard.mutate(c.id)}
-                        onComplete={() => completeCard.mutate(c.id)}
-                      />
-                    ))}
-                  </View>
-                ) : null}
-
-                {/* ----------------------------------------------------------- habits */}
+                {/*
+                  Quick log: what is landing now, then habits. One list, in the
+                  order you act on it — no separate "Up next" section putting
+                  the same card on screen twice.
+                */}
                 <View style={{ gap: 10 }}>
                   <SectionHeader
-                    title="Habits"
+                    title="Quick log"
                     right={
-                      (data.habits ?? []).length > 0 ? (
-                        <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 12 }}>
-                          {(data.habits ?? []).filter((h) => h.completedToday).length}/
-                          {(data.habits ?? []).length}
+                      laterCount > 0 ? (
+                        <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 12 }}>
+                          +{laterCount} on Timeline
                         </Text>
                       ) : null
                     }
                   />
+
+                  {upcoming.map((c) => (
+                    <CardRow
+                      key={c.id}
+                      card={c}
+                      urgent={Boolean(c.flash && c.notifiedAt)}
+                      onComplete={() => completeCard.mutate(c.id)}
+                    />
+                  ))}
+
+                  {/* Habits are always here — see AGENTS.md, this client
+                      deliberately diverges from CLIENT_GUIDE §3.7. */}
                   {(data.habits ?? []).length === 0 ? (
-                    <Body>No habits yet. Ask your agent to build some.</Body>
+                    upcoming.length === 0 ? (
+                      <Body>No habits yet. Ask your agent to build some.</Body>
+                    ) : null
                   ) : (
-                    (data.habits ?? []).map((h) => (
-                      <HabitRow
-                        key={h.id}
-                        habit={h}
-                        streaksEnabled={settings?.streaksEnabled !== false}
-                        busy={completeHabit.isPending || undoHabit.isPending}
-                        onToggle={() => {
-                          if (h.completedToday) undoHabit.mutate(h.id);
-                          else completeHabit.mutate(h.id);
+                    <>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          marginTop: upcoming.length > 0 ? 6 : 0,
                         }}
-                      />
-                    ))
+                      >
+                        <Text
+                          style={{
+                            color: t.faint,
+                            fontFamily: font.bodySemi,
+                            fontSize: 11,
+                            letterSpacing: 1.1,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Habits
+                        </Text>
+                        <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 12 }}>
+                          {(data.habits ?? []).filter((h) => h.completedToday).length}/
+                          {(data.habits ?? []).length}
+                        </Text>
+                      </View>
+                      {(data.habits ?? []).map((h) => (
+                        <HabitRow
+                          key={h.id}
+                          habit={h}
+                          streaksEnabled={settings?.streaksEnabled !== false}
+                          busy={completeHabit.isPending || undoHabit.isPending}
+                          onToggle={() => {
+                            if (h.completedToday) undoHabit.mutate(h.id);
+                            else completeHabit.mutate(h.id);
+                          }}
+                        />
+                      ))}
+                    </>
                   )}
                 </View>
 

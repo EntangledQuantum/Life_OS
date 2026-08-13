@@ -27,6 +27,20 @@ export function DayTimeline({ segments }: { segments: TimelineBlock[] }) {
     );
   }
 
+  /**
+   * One swatch per distinct category, in the order they first appear. Without
+   * this the ribbon is a row of unexplained colours — the web client has always
+   * had a key and the phone never did.
+   */
+  const legend = [
+    ...new Map(
+      segments.map((s) => [
+        s.category,
+        s.color || activityColor(s.category, t.accent),
+      ]),
+    ).entries(),
+  ];
+
   return (
     <View style={{ gap: 8 }}>
       <View
@@ -41,7 +55,14 @@ export function DayTimeline({ segments }: { segments: TimelineBlock[] }) {
         {segments.map((seg) => {
           const left = (seg.startHour / 24) * 100;
           const width = Math.max(0.4, ((seg.endHour - seg.startHour) / 24) * 100);
+          const color = seg.color || activityColor(seg.category, t.accent);
           const done = seg.status === "done";
+          /*
+           * Behind the now-marker the ribbon is what you actually did, painted
+           * solid. Ahead of it it is only the plan, so it is drawn as a faint
+           * tint with an outline — the two must never look alike, or the day
+           * reads as already lived.
+           */
           return (
             <View
               key={seg.id}
@@ -51,9 +72,11 @@ export function DayTimeline({ segments }: { segments: TimelineBlock[] }) {
                 width: `${width}%`,
                 marginLeft: -0.2, // overdraw to hide subpixel seams
                 height: "100%",
-                backgroundColor:
-                  seg.color || activityColor(seg.category, t.accent),
-                opacity: done ? 0.5 : 1,
+                backgroundColor: seg.actual ? color : rgba(color, 0.18),
+                borderTopWidth: seg.actual ? 0 : 1,
+                borderBottomWidth: seg.actual ? 0 : 1,
+                borderColor: rgba(color, 0.5),
+                opacity: seg.actual && done ? 0.6 : 1,
               }}
             />
           );
@@ -92,6 +115,33 @@ export function DayTimeline({ segments }: { segments: TimelineBlock[] }) {
           </Text>
         ))}
       </View>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 2 }}>
+        {legend.map(([category, color]) => (
+          <View
+            key={category}
+            style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+          >
+            <View
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 4,
+                backgroundColor: color,
+              }}
+            />
+            <Text
+              style={{ color: t.muted, fontFamily: font.bodyMedium, fontSize: 11 }}
+            >
+              {category}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 10 }}>
+        Solid is what you did · outlined is planned
+      </Text>
     </View>
   );
 }

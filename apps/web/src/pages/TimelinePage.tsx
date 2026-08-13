@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { Bell, Calendar, Check, ExternalLink, Play, Repeat } from "lucide-react";
+import { Bell, Calendar, Check, ExternalLink, Repeat } from "lucide-react";
 import type { DashboardCard, ScheduleBlock, TimelineBlock } from "@life-os/shared";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,13 @@ import { cn } from "@/lib/utils";
  */
 export function TimelinePage() {
   const qc = useQueryClient();
+  /**
+   * `?card=<id>` arrives from a clicked OS notification. The row is highlighted
+   * and scrolled to, so the notification lands you on the thing itself with one
+   * button left to press.
+   */
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("card");
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -40,14 +48,30 @@ export function TimelinePage() {
     refetchInterval: 15_000,
   });
 
-  const start = useMutation({
-    mutationFn: (id: string) => api.startCard(id),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      qc.invalidateQueries({ queryKey: ["cards"] });
-      toast.success(`Started · ${res.block?.category ?? "session"} running`);
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+    qc.invalidateQueries({ queryKey: ["cards"] });
+  };
+
+  const completeEvent = useMutation({
+    mutationFn: (id: string) => api.completeEvent(id),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Done");
     },
-    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const dismissEvent = useMutation({
+    mutationFn: (id: string) => api.dismissEvent(id),
+    onSuccess: invalidate,
+  });
+
+  const completeReview = useMutation({
+    mutationFn: (id: string) => api.completeReview(id),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Review complete");
+    },
   });
 
   const complete = useMutation({
@@ -85,6 +109,37 @@ export function TimelinePage() {
     );
   }, [cards]);
 
+  /** Agent events and light reviews, flattened into one actionable list. */
+  const needsYou = useMemo(() => {
+    const events = (dashboard?.agentEvents ?? [])
+      .filter((e) => e.status === "pending")
+      .map((e) => ({
+        key: `ev-${e.id}`,
+        kind: e.kind,
+        title: e.title,
+        body: e.body,
+        link: e.link,
+        xp: e.xpOnComplete,
+        onComplete: () => completeEvent.mutate(e.id),
+        onDismiss: () => dismissEvent.mutate(e.id),
+      }));
+    const reviews = (dashboard?.lightReviews ?? [])
+      .filter((r) => !r.completedAt)
+      .map((r) => ({
+        key: `rev-${r.id}`,
+        kind: "review",
+        title: r.prompt,
+        body: null as string | null,
+        link: r.link ?? null,
+        xp: 0,
+        onComplete: () => completeReview.mutate(r.id),
+        onDismiss: undefined,
+      }));
+    return [...reviews, ...events];
+    // The mutation objects are stable; depending on them would rebuild forever.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard?.agentEvents, dashboard?.lightReviews]);
+
   const doneToday = cards.filter(
     (c) =>
       (c.kind === "event" || c.kind === "reminder") &&
@@ -108,6 +163,69 @@ export function TimelinePage() {
         </p>
       </header>
 
+      {/*
+        Agent-queued work lives here, next to the rest of what the agent has
+        planned. It used to sit in the dashboard's Quick log and push the habits
+        out of it entirely whenever the queue was non-empty — which, against an
+        agent that always has something queued, was always.
+      */}
+      {needsYou.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--faint)]">
+            Needs you
+          </h2>
+          <ul className="space-y-2">
+            {needsYou.map((item) => (
+              <li
+                key={item.key}
+                className="flex flex-wrap items-start gap-3 rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent)]/[0.07] p-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
+                      {item.kind}
+                    </span>
+                    <span className="font-medium">{item.title}</span>
+                  </div>
+                  {item.body && (
+                    <p className="mt-1 text-sm text-[var(--muted)]">{item.body}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {item.link && (
+                    <a
+                      href={item.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn py-1.5 text-sm"
+                    >
+                      Open <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary py-1.5 text-sm"
+                    onClick={item.onComplete}
+                  >
+                    <Check className="h-3.5 w-3.5" /> Done
+                    {item.xp ? ` · +${item.xp}` : ""}
+                  </button>
+                  {item.onDismiss && (
+                    <button
+                      type="button"
+                      className="btn py-1.5 text-sm"
+                      onClick={item.onDismiss}
+                    >
+                      Dismiss
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {dashboard && (
         <DayRibbon timeline={dashboard.timeline} blocks={blocks} now={now} />
       )}
@@ -129,8 +247,8 @@ export function TimelinePage() {
           dayKeyValue={key}
           cards={items}
           now={now}
-          busy={start.isPending || complete.isPending}
-          onStart={(id) => start.mutate(id)}
+          busy={complete.isPending}
+          focusId={focusId}
           onComplete={(id) => complete.mutate(id)}
         />
       ))}
@@ -227,14 +345,24 @@ function DayRibbon({
         {timeline.map((b, i) => (
           <div
             key={`${b.id}-${i}`}
-            title={`${b.label} · ${b.category}`}
+            title={`${b.label} · ${b.category}${b.actual ? "" : " · planned"}`}
             className="absolute top-0 bottom-0"
             style={{
               left: `${(b.startHour / 24) * 100}%`,
               // Overdraw a hair to kill subpixel seams between neighbours.
               width: `calc(${((b.endHour - b.startHour) / 24) * 100}% + 0.2px)`,
-              backgroundColor: b.color,
-              opacity: b.status === "done" ? 0.55 : 1,
+              /*
+               * Behind the marker the ribbon is what you actually did, so it is
+               * painted solid. Ahead of it, it is only the plan — drawn as a
+               * faint wash with a hatch, so the two are never mistaken for each
+               * other at a glance.
+               */
+              backgroundColor: b.actual ? b.color : "transparent",
+              backgroundImage: b.actual
+                ? undefined
+                : `repeating-linear-gradient(135deg, ${b.color}55 0 3px, transparent 3px 7px)`,
+              boxShadow: b.actual ? undefined : `inset 0 0 0 1px ${b.color}44`,
+              opacity: b.actual && b.status === "done" ? 0.75 : 1,
             }}
           />
         ))}
@@ -251,6 +379,9 @@ function DayRibbon({
         <span>18</span>
         <span>24</span>
       </div>
+      <p className="mt-1 text-[10px] text-[var(--faint)]">
+        Solid is what you did · hatched is what is planned
+      </p>
 
       {blocks.length > 0 && (
         <ul className="mt-4 space-y-1">
@@ -280,16 +411,16 @@ function DayGroup({
   dayKeyValue,
   cards,
   now,
-  onStart,
   onComplete,
   busy,
+  focusId,
 }: {
   dayKeyValue: string;
   cards: DashboardCard[];
   now: number;
-  onStart: (id: string) => void;
   onComplete: (id: string) => void;
   busy?: boolean;
+  focusId?: string | null;
 }) {
   return (
     <section>
@@ -307,7 +438,7 @@ function DayGroup({
             card={card}
             now={now}
             busy={busy}
-            onStart={() => onStart(card.id)}
+            focused={focusId === card.id}
             onComplete={() => onComplete(card.id)}
           />
         ))}
@@ -320,24 +451,34 @@ function DayGroup({
 function AgendaRow({
   card,
   now,
-  onStart,
   onComplete,
   busy,
+  focused,
 }: {
   card: DashboardCard;
   now: number;
-  onStart: () => void;
   onComplete: () => void;
   busy?: boolean;
+  focused?: boolean;
 }) {
   const color = card.themeColor ?? "#5B8CFF";
   const when = card.eventAt ?? card.remindAt;
   const past = Boolean(when && new Date(when).getTime() < now);
-  const running = Boolean(card.linkedBlockId);
-  const startable = card.kind === "event" && !running;
+  const ref = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focused]);
 
   return (
-    <li className="flex gap-3 py-2.5">
+    <li
+      ref={ref}
+      className={cn(
+        "flex gap-3 py-2.5",
+        focused &&
+          "-mx-2 rounded-xl bg-[var(--accent)]/[0.08] px-2 ring-1 ring-[var(--accent)]/40",
+      )}
+    >
       <div className="w-14 shrink-0 pt-0.5 text-right font-mono text-[11px] tabular-nums">
         <div className={past ? "text-[var(--accent)]" : "text-[var(--muted)]"}>
           {when ? clockTime(when) : "—"}
@@ -411,9 +552,6 @@ function AgendaRow({
               +{card.xpOnComplete} XP
             </span>
           )}
-          {running && (
-            <span className="font-mono text-[11px] text-[var(--accent)]">running</span>
-          )}
           {card.ctaLink && (
             <a
               href={card.ctaLink}
@@ -425,25 +563,20 @@ function AgendaRow({
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           )}
-          {startable && (
-            <button
-              type="button"
-              className={cn("btn px-3 py-1.5 text-xs", past && "btn-primary")}
-              disabled={busy}
-              onClick={onStart}
-              title="Takes over the day timeline under this card's activity tag"
-            >
-              <Play className="h-3 w-3" /> Start
-            </button>
-          )}
+          {/* One action. A scheduled thing is done or it isn't — it never runs. */}
           <button
             type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.05] text-[var(--muted)] transition-colors hover:bg-white/[0.1] hover:text-[var(--text)]"
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors",
+              past
+                ? "btn btn-primary"
+                : "bg-white/[0.05] text-[var(--muted)] hover:bg-white/[0.1] hover:text-[var(--text)]",
+            )}
             disabled={busy}
             onClick={onComplete}
             title="Mark done"
           >
-            <Check className="h-4 w-4" />
+            <Check className="h-3.5 w-3.5" /> Done
           </button>
         </div>
       </div>

@@ -5,11 +5,15 @@ import { toast } from "sonner";
 import { celebrate } from "@/lib/celebrate";
 import { useUiStore } from "@/lib/store";
 import { motion } from "motion/react";
-import { Play, Check } from "lucide-react";
+import { Check } from "lucide-react";
 
 /**
- * Study blocks are agent-defined (Hermes). User starts them (Right Now timer)
- * and completes them — real elapsed time is recorded. No free-form "log study".
+ * Study blocks are agent-defined. You complete them; there is nothing to start.
+ *
+ * The recorded duration is the window the agent planned, not a stopwatch. That
+ * is the honest number: timing from whenever you happened to press Start made a
+ * block you forgot to start one minute long, and one you forgot to stop ran
+ * until you noticed.
  */
 export function StudyPage() {
   const qc = useQueryClient();
@@ -24,16 +28,6 @@ export function StudyPage() {
   const { data: dash } = useQuery({
     queryKey: ["dashboard"],
     queryFn: api.dashboard,
-  });
-
-  const start = useMutation({
-    mutationFn: (id: string) => api.startBlock(id),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["study-blocks"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success(`Timer on · ${res.block?.label ?? "Study"}`);
-    },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const complete = useMutation({
@@ -56,21 +50,11 @@ export function StudyPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Study blocks</h1>
         <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
-          Hermes schedules study on your timeline. Start a block to run{" "}
-          <strong className="text-[var(--text)]">Right Now</strong> real time,
-          then complete it — duration is captured automatically. You don’t add or
-          edit blocks here; ask your agent.
+          Your agent schedules study on your timeline. Tick a block off when it
+          is done — there is nothing to start. You don’t add or edit blocks
+          here; ask your agent.
         </p>
       </div>
-
-      {dash?.activeSession && (
-        <div className="card mb-4 border-[var(--accent)]/30 px-4 py-3 text-sm">
-          Live: <span className="text-[var(--accent)]">{dash.activeSession.activity}</span>
-          {dash.activeSession.blockId && (
-            <span className="text-[var(--muted)]"> · linked block</span>
-          )}
-        </div>
-      )}
 
       {isLoading ? (
         <div className="text-[var(--muted)]">Loading…</div>
@@ -84,10 +68,8 @@ export function StudyPage() {
             <BlockRow
               key={b.id}
               block={b}
-              activeBlockId={dash?.activeSession?.blockId}
-              onStart={() => start.mutate(b.id)}
               onComplete={() => complete.mutate(b.id)}
-              busy={start.isPending || complete.isPending}
+              busy={complete.isPending}
             />
           ))}
         </div>
@@ -119,53 +101,31 @@ export function StudyPage() {
 
 function BlockRow({
   block,
-  activeBlockId,
-  onStart,
   onComplete,
   busy,
 }: {
   block: ScheduleBlock;
-  activeBlockId?: string | null;
-  onStart: () => void;
   onComplete: () => void;
   busy?: boolean;
 }) {
-  const isActive = activeBlockId === block.id || block.status === "active";
   const done = block.status === "done";
 
   return (
-    <div
-      className="card flex flex-wrap items-center justify-between gap-3 p-4"
-      style={
-        isActive
-          ? { borderColor: "color-mix(in oklch, var(--accent) 40%, transparent)" }
-          : undefined
-      }
-    >
+    <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-lg">📚</span>
           <span className="font-medium">{block.label}</span>
-          <span className="chip capitalize">{block.status}</span>
+          {done && <span className="chip capitalize">done</span>}
         </div>
         <div className="mt-1 font-mono text-xs text-[var(--muted)]">
-          planned {block.plannedStart ?? "—"} – {block.plannedEnd ?? "—"}
-          {block.actualStart &&
-            ` · actual from ${new Date(block.actualStart).toLocaleTimeString()}`}
+          {block.plannedStart ?? "—"} – {block.plannedEnd ?? "—"}
         </div>
       </div>
       <div className="flex gap-2">
-        {!done && (
-          <button
-            type="button"
-            className="btn"
-            disabled={busy || isActive}
-            onClick={onStart}
-          >
-            <Play className="h-3.5 w-3.5" /> Start
-          </button>
-        )}
-        {!done && (
+        {done ? (
+          <span className="chip text-[var(--accent)]">Recorded</span>
+        ) : (
           <button
             type="button"
             className="btn btn-primary"
@@ -174,9 +134,6 @@ function BlockRow({
           >
             <Check className="h-3.5 w-3.5" /> Complete
           </button>
-        )}
-        {done && (
-          <span className="chip text-[var(--accent)]">Recorded</span>
         )}
       </div>
     </div>

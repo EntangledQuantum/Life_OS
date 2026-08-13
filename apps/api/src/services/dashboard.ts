@@ -20,11 +20,7 @@ import { listProperties } from "./properties.js";
 import { listAchievements } from "./achievements.js";
 import { listLightReviews, listQuests } from "./quests.js";
 import { listAgentEvents } from "./events.js";
-import {
-  getActiveSession,
-  listActivityLog,
-  settleActiveSession,
-} from "./sessions.js";
+import { getActiveSession, listActivityLog } from "./sessions.js";
 import { listStudyBlocks } from "./blocks.js";
 import {
   listDueReminders,
@@ -136,10 +132,6 @@ function buildActualSegments(
 }
 
 export function getDashboard(db: LifeOsDb): DashboardToday {
-  // A timed session that has run out ends here — reading the dashboard is the
-  // only moment the answer matters, and a personal app has no scheduler awake
-  // at 3am to do it on a timer.
-  settleActiveSession(db);
   refreshTodaySnapshot(db);
   const config = loadGamificationConfig(db);
   const progressRow = getProgressRow(db);
@@ -311,11 +303,7 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
  * close and open an `activity_log` interval. Re-exported here so existing
  * callers and routes keep working.
  */
-export {
-  setActiveSession,
-  clearActiveSession,
-  endActiveSession,
-} from "./sessions.js";
+export { setActiveSession, clearActiveSession } from "./sessions.js";
 
 export function getAnalytics(db: LifeOsDb) {
   const dash = getDashboard(db);

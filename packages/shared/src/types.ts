@@ -301,6 +301,13 @@ export interface AppSettings {
   doNotDisturb: boolean;
   /** Treat quietHoursStart–quietHoursEnd as an automatic do-not-disturb window. */
   quietHoursSilent: boolean;
+  /**
+   * Minutes before a scheduled thing that you are notified — and the width of
+   * the window that puts it on the front page. One number for both, because
+   * "you should know about this now" and "this is on your plate now" are the
+   * same statement.
+   */
+  reminderLeadMinutes: number;
   plannedWake: string;
   plannedSleepStart: string;
   plannedSleepEnd: string;

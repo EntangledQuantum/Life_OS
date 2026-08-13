@@ -212,10 +212,11 @@ export const api = {
       },
     ),
 
-  startCard: (id: string) =>
-    request<{ block?: { category?: string } }>(`/api/v1/cards/${id}/start`, {
-      method: "POST",
-    }),
+  /*
+   * No `startCard` / `startBlock`. Scheduled things are completed, never
+   * started, and completing one does not touch the running activity — that is
+   * `setActiveSession` and nothing else.
+   */
 
   markCardNotified: (id: string) =>
     request(`/api/v1/cards/${id}/notified`, { method: "POST" }),
@@ -240,9 +241,6 @@ export const api = {
 
   clearActiveSession: () =>
     request("/api/v1/session/active", { method: "DELETE" }),
-
-  startBlock: (id: string) =>
-    request(`/api/v1/blocks/${id}/start`, { method: "POST" }),
 
   completeBlock: (id: string) =>
     request(`/api/v1/blocks/${id}/complete`, { method: "POST" }),

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { isWithinQuietHours, type DashboardCard } from "@life-os/shared";
@@ -24,6 +25,7 @@ import {
  */
 export function ReminderRunner({ due }: { due: DashboardCard[] }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   /** Ids already fired in this tab — guards against a double render racing the POST. */
   const firedRef = useRef<Set<string>>(new Set());
 
@@ -79,6 +81,10 @@ export function ReminderRunner({ due }: { due: DashboardCard[] }) {
         flash: card.flash,
         soundId: settings?.notificationSound ?? "chime",
         silent,
+        tag: `lifeos-card-${card.id}`,
+        // Clicking the notification is the fast path to finishing the thing:
+        // it lands on Timeline with the card highlighted and a Done button.
+        onClick: () => navigate(`/app/timeline?card=${card.id}`),
       });
 
       // A silenced reminder still leaves a trace you can find on your own terms.

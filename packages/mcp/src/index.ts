@@ -34,7 +34,6 @@ import {
   updateCard,
   deleteCard,
   completeCard,
-  startCard,
   markCardNotified,
 } from "../../../apps/api/src/services/cards.js";
 import {
@@ -42,7 +41,6 @@ import {
   createBlock,
   updateBlock,
   deleteBlock,
-  startBlock,
   completeBlock,
 } from "../../../apps/api/src/services/blocks.js";
 import {
@@ -594,28 +592,8 @@ const tools = [
     inputSchema: { type: "object" as const, properties: {} },
   },
   {
-    name: "lifeos_start_card",
-    description:
-      "Start a scheduled card on the user's behalf — creates a timeline block under the card's " +
-      "activity tag and makes it the running session",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string" } },
-      required: ["id"],
-    },
-  },
-  {
     name: "lifeos_mark_card_notified",
     description: "Record that a reminder has chimed, so it fires only once",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "lifeos_start_block",
-    description: "Start a timeline block as the running session",
     inputSchema: {
       type: "object" as const,
       properties: { id: { type: "string" } },
@@ -926,22 +904,12 @@ async function handleTool(name: string, args: Record<string, unknown>) {
       return listUpcomingCards(db);
     case "lifeos_list_due_reminders":
       return listDueReminders(db);
-    case "lifeos_start_card": {
-      const result = startCard(db, String(args.id));
-      if ("error" in result) throw new Error(result.error);
-      return result;
-    }
     case "lifeos_mark_card_notified": {
       const result = markCardNotified(db, String(args.id));
       if ("error" in result) throw new Error(result.error);
       return result;
     }
 
-    case "lifeos_start_block": {
-      const result = startBlock(db, String(args.id));
-      if ("error" in result) throw new Error(result.error);
-      return result;
-    }
     case "lifeos_complete_block": {
       const result = completeBlock(db, String(args.id));
       if ("error" in result) throw new Error(result.error);

@@ -180,16 +180,48 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   }
 }
 
-export function showSystemNotification(title: string, body?: string): boolean {
+/**
+ * Show an OS notification.
+ *
+ * `onClick` is what makes the notification actionable rather than decorative:
+ * clicking it focuses the tab and hands back the card id, so the app can open
+ * the Timeline with that thing in front of you and one button to finish it.
+ */
+export function showSystemNotification(
+  title: string,
+  body?: string,
+  opts: { tag?: string; onClick?: () => void } = {},
+): boolean {
   if (typeof Notification === "undefined" || Notification.permission !== "granted") {
     return false;
   }
   try {
-    new Notification(title, { body, tag: "lifeos-reminder", icon: "/icon.png" });
+    const n = new Notification(title, {
+      body,
+      // Per-card tag: a shared tag makes each new reminder replace the last,
+      // so two things landing together would only ever show one.
+      tag: opts.tag ?? "lifeos-reminder",
+      icon: notificationIcon(),
+    });
+    n.onclick = () => {
+      window.focus();
+      n.close();
+      opts.onClick?.();
+    };
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * The icon lives under the deploy's base path, which is not `/` on GitHub
+ * Pages — a hardcoded `/icon.png` 404s there and the notification renders with
+ * the browser's generic icon.
+ */
+function notificationIcon(): string {
+  const base = import.meta.env.BASE_URL ?? "/";
+  return `${base.endsWith("/") ? base : `${base}/`}icon.png`;
 }
 
 export interface ReminderAlertOptions {
@@ -200,6 +232,10 @@ export interface ReminderAlertOptions {
   flash?: boolean;
   /** Which chime to play, from settings. */
   soundId?: string;
+  /** Distinguishes one reminder from another in the OS notification stack. */
+  tag?: string;
+  /** Where clicking the notification should take the user. */
+  onClick?: () => void;
   /**
    * Do-not-disturb (manual or quiet hours). Suppresses every interrupting
    * channel while leaving the reminder itself on screen — you see it when you
@@ -224,6 +260,9 @@ export function fireReminderAlert(opts: ReminderAlertOptions): {
     flashTitle(opts.title);
     flash = true;
   }
-  const system = showSystemNotification(opts.title, opts.body ?? undefined);
+  const system = showSystemNotification(opts.title, opts.body ?? undefined, {
+    tag: opts.tag,
+    onClick: opts.onClick,
+  });
   return { sound, flash, system };
 }

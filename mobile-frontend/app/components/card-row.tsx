@@ -5,27 +5,23 @@ import { activityColor, font, radius, rgba } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
 import { formatClock, formatRelative } from "@/lib/format";
 
+/**
+ * One scheduled thing. Complete is the only action — nothing here starts, and
+ * completing it never changes what activity you are in. That is set by hand
+ * from the Right-now picker and nowhere else.
+ */
 export function CardRow({
   card,
   urgent,
-  onStart,
   onComplete,
-  showStart,
 }: {
   card: DashboardCard;
   urgent?: boolean;
-  onStart?: () => void;
   onComplete?: () => void;
-  showStart?: boolean;
 }) {
   const t = useTokens();
   const when = card.eventAt ?? card.remindAt;
   const tint = card.themeColor || activityColor(card.activityTag, t.accent);
-  const canStart =
-    showStart !== false &&
-    card.kind === "event" &&
-    !card.linkedBlockId &&
-    card.status === "active";
 
   return (
     <View
@@ -92,28 +88,6 @@ export function CardRow({
       </View>
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        {canStart && onStart ? (
-          <Pressable
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              onStart();
-            }}
-            style={({ pressed }) => ({
-              backgroundColor: t.accent,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: radius.sm,
-              borderCurve: "continuous",
-              opacity: pressed ? 0.85 : 1,
-            })}
-          >
-            <Text
-              style={{ color: t.onAccent, fontFamily: font.bodySemi, fontSize: 13 }}
-            >
-              Start
-            </Text>
-          </Pressable>
-        ) : null}
         {onComplete ? (
           <Pressable
             onPress={() => {

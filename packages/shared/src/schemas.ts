@@ -269,6 +269,8 @@ export const updateSettingsSchema = z.object({
   notificationSound: z.enum(NOTIFICATION_SOUND_IDS).optional(),
   doNotDisturb: z.boolean().optional(),
   quietHoursSilent: z.boolean().optional(),
+  /** 0 = tell me at the time itself. Capped so tomorrow can't reach today. */
+  reminderLeadMinutes: z.number().int().min(0).max(240).optional(),
   plannedWake: z.string().optional(),
   plannedSleepStart: z.string().optional(),
   plannedSleepEnd: z.string().optional(),

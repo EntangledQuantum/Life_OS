@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
 import {
+  IMMINENT_WINDOW_MINUTES,
   SPACED_OFFSETS_DAYS,
   UNPINNED_SLOT,
   isCardImminent,
@@ -17,10 +18,8 @@ import {
   type DashboardCardKind,
   type RepeatRule,
 } from "@life-os/shared";
-import { addXp, getLocalDayBounds, nowIso } from "./helpers.js";
+import { addXp, getLocalDayBounds, getSettingsRow, nowIso } from "./helpers.js";
 import { fireAgentWebhook } from "./webhook.js";
-import { createBlock, startBlock } from "./blocks.js";
-import { endActiveSession, getActiveSession, startTimedSession } from "./sessions.js";
 
 type WebhookResult = Awaited<ReturnType<typeof fireAgentWebhook>>;
 
@@ -124,12 +123,25 @@ export function listUpcomingCards(db: LifeOsDb, now = new Date()): DashboardCard
  * lives on the Timeline tab instead.
  */
 export function listImminentCards(db: LifeOsDb, now = new Date()): DashboardCard[] {
-  return listUpcomingCards(db, now).filter((c) => isCardImminent(c, now));
+  const lead = reminderLead(db);
+  return listUpcomingCards(db, now).filter((c) => isCardImminent(c, now, lead));
 }
 
-/** Cards whose reminder is due and which have not chimed yet. */
+/** Cards whose notification is due and which have not chimed yet. */
 export function listDueReminders(db: LifeOsDb, now = new Date()): DashboardCard[] {
-  return listCards(db).filter((c) => isReminderDue(c, now));
+  const lead = reminderLead(db);
+  return listCards(db).filter((c) => isReminderDue(c, now, lead));
+}
+
+/**
+ * How many minutes ahead the user wants to be told. Read per call rather than
+ * cached: this is a single-user SQLite app, the row is already in page cache,
+ * and a stale lead would silently change when notifications fire.
+ */
+function reminderLead(db: LifeOsDb): number {
+  const row = getSettingsRow(db) as { reminderLeadMinutes?: number };
+  const n = Number(row.reminderLeadMinutes);
+  return Number.isFinite(n) && n >= 0 ? n : IMMINENT_WINDOW_MINUTES;
 }
 
 export function getCard(db: LifeOsDb, id: string) {
@@ -421,71 +433,6 @@ export function markCardNotified(db: LifeOsDb, id: string) {
   return { card: getCard(db, id)! };
 }
 
-function hhmm(date: Date): string {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
-/**
- * Start a scheduled card: it takes over the day timeline.
- *
- * The card's `activityTag` is one of the abstract day buckets, so the block it
- * creates is already something the timeline and the daily stats understand —
- * a "read one chapter" card tagged Study lands in the Study bucket and starts
- * counting without anyone having to teach the app about books.
- */
-export function startCard(db: LifeOsDb, id: string) {
-  const card = getCard(db, id);
-  if (!card) return { error: "Card not found" as const };
-  if (card.status === "done") return { error: "Card is already complete" as const };
-
-  const category = card.activityTag ?? "Deep Work";
-  // Read this *before* startBlock swaps the running session, or "previous"
-  // would just be the activity we are about to start.
-  const before = getActiveSession(db)?.activity ?? null;
-  const start = new Date();
-  const end = new Date(
-    start.getTime() + (card.durationMinutes ?? 30) * 60_000,
-  );
-
-  const block = createBlock(db, {
-    date: getLocalDayBounds(db).dateStr,
-    category,
-    label: card.title,
-    plannedStart: hhmm(start),
-    plannedEnd: hhmm(end),
-    notes: card.purpose ?? card.subtitle ?? null,
-    source: "user",
-  });
-
-  const started = startBlock(db, block.id);
-  if ("error" in started) return started;
-
-  /*
-   * Re-open the session as a *timed* one. `startBlock` just swaps the running
-   * activity; on its own that meant a started card ran forever and silently
-   * became your new normal. This remembers what it interrupted and when it is
-   * due to finish, so it hands the day back afterwards.
-   */
-  const timed = startTimedSession(
-    db,
-    category,
-    card.durationMinutes ?? null,
-    block.id,
-    before,
-  );
-
-  db.update(schema.dashboardCards)
-    .set({ linkedBlockId: block.id, progress: 1, updatedAt: nowIso() })
-    .where(eq(schema.dashboardCards.id, id))
-    .run();
-
-  return {
-    card: getCard(db, id)!,
-    block: started.block,
-    activeSession: timed,
-  };
-}
-
 /**
  * Complete a card. Recurring cards spawn their next occurrence as a *new* row,
  * so the completed one stays in history (and keeps counting toward XP and the
@@ -507,14 +454,10 @@ export async function completeCard(
   const now = nowIso();
 
   /*
-   * If this card is what is currently running, finishing it also finishes the
-   * session and restores whatever it interrupted. Without this a started card
-   * simply never ended — it quietly became your new default activity.
+   * Completing a card does not touch what you are doing. The activity you are
+   * in is set by hand and stays where you put it; a card is a thing with a
+   * target time and a done flag, and nothing else.
    */
-  const running = getActiveSession(db);
-  if (card.linkedBlockId && running?.blockId === card.linkedBlockId) {
-    endActiveSession(db);
-  }
 
   const xp = card.xpOnComplete > 0 ? card.xpOnComplete : 0;
   if (xp > 0) addXp(db, xp);

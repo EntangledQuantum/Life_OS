@@ -161,7 +161,32 @@ is open. That works when agent items are occasional; against an agent keeping a
 standing queue it means the habit list never renders at all — which is what
 happened here, with six habits invisible behind eight pending events. Agent
 events and light reviews live under "Needs you" on **Timeline**; Today only
-shows a count that links across. Do not move them back.
+shows a count that links across. Do not move them back. (The web client now
+does the same thing, for the same reason.)
+
+## Scheduled things never start
+
+There are two separate ideas and they must not be re-tangled:
+
+- **What you are doing**, at timeline resolution — Deep Work, Study, Sleep. Set
+  by hand from `components/activity-session.tsx`, and the *only* thing that
+  paints the ribbon behind the now-marker.
+- **Things the agent scheduled** — cards and study blocks. They have a target
+  time and a done flag. No Start button, no timer, no running state, and
+  completing one does **not** touch the running activity.
+
+`api.startCard` / `api.startBlock` are gone, and so are the endpoints behind
+them. `CardRow` takes `onComplete` only. If a design asks for "start this", the
+answer is a card with an `eventAt`.
+
+Notification times are derived: `remindAt ?? eventAt - reminderLeadMinutes`
+(a server setting, default 15). The same window decides what reaches Quick log,
+and an item leaves it at `eventAt + durationMinutes` whether or not it was
+completed.
+
+`components/day-timeline.tsx` draws `TimelineBlock.actual` — solid behind the
+marker for what was really done, tinted-and-outlined ahead for the plan — and
+carries the colour legend the phone was missing.
 
 ## Design tokens
 

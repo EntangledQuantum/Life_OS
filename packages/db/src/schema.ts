@@ -305,6 +305,11 @@ export const settings = sqliteTable("settings", {
   quietHoursSilent: integer("quiet_hours_silent", { mode: "boolean" })
     .notNull()
     .default(true),
+  /**
+   * How long before a scheduled thing you are told about it — and, because they
+   * are the same idea, how close it has to be to reach the front page.
+   */
+  reminderLeadMinutes: integer("reminder_lead_minutes").notNull().default(15),
   plannedWake: text("planned_wake").notNull().default("11:00"),
   plannedSleepStart: text("planned_sleep_start").notNull().default("02:00"),
   plannedSleepEnd: text("planned_sleep_end").notNull().default("03:00"),
@@ -327,22 +332,22 @@ export const settings = sqliteTable("settings", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/**
+ * What you are doing right now, at the level the timeline cares about. Set by
+ * hand and only by hand; nothing an agent schedules ever writes here.
+ *
+ * `previous_activity` and `ends_at` used to live here, for sessions that started
+ * themselves from a card and handed the day back when they expired. Scheduled
+ * things no longer start, so those are gone from the model. Databases created
+ * before this still carry the physical columns — harmless, always null — but
+ * Drizzle must not reference them, or every INSERT names a column a fresh
+ * database does not have.
+ */
 export const activeSessions = sqliteTable("active_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   activity: text("activity").notNull(),
   startedAt: text("started_at").notNull(),
   blockId: text("block_id"),
-  /**
-   * What was running before this session took over, so a timed session can hand
-   * the day back instead of leaving whatever it interrupted lost. Null means
-   * there was nothing to return to.
-   */
-  previousActivity: text("previous_activity"),
-  /**
-   * When a timed session should end by itself — set from a card's
-   * `durationMinutes`. Null means it runs until stopped.
-   */
-  endsAt: text("ends_at"),
 });
 
 /**
