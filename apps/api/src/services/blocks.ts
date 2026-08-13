@@ -5,6 +5,7 @@ import * as schema from "@life-os/db";
 import type { ScheduleBlock, Source } from "@life-os/shared";
 import { getLocalDayBounds, nowIso } from "./helpers.js";
 import { createStudySession } from "./study.js";
+import { fireAgentWebhook } from "./webhook.js";
 
 function mapBlock(b: typeof schema.scheduleBlocks.$inferSelect): ScheduleBlock {
   return {
@@ -165,11 +166,21 @@ export function completeBlock(db: LifeOsDb, id: string) {
     });
   }
 
-  return {
-    block: mapBlock(
-      db.select().from(schema.scheduleBlocks).where(eq(schema.scheduleBlocks.id, id)).get()!,
-    ),
-    durationMinutes,
-    study: studyResult,
-  };
+  const completed = mapBlock(
+    db.select().from(schema.scheduleBlocks).where(eq(schema.scheduleBlocks.id, id)).get()!,
+  );
+
+  if ((block as { webhookOnComplete?: boolean }).webhookOnComplete) {
+    const event = completed.category.toLowerCase() === "study"
+      ? "study.complete"
+      : "block.complete";
+    void fireAgentWebhook(db, event, {
+      block: completed,
+      label: completed.label,
+      durationMinutes,
+      study: studyResult,
+    });
+  }
+
+  return { block: completed, durationMinutes, study: studyResult };
 }

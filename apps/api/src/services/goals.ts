@@ -13,6 +13,7 @@ import {
 } from "@life-os/shared";
 import { computeStreaks, getDayResetTime, nowIso } from "./helpers.js";
 import { propertyNumber } from "./properties.js";
+import { fireAgentWebhook } from "./webhook.js";
 
 type Row = typeof schema.goals.$inferSelect;
 
@@ -194,7 +195,20 @@ export function markCelebrationSeen(db: LifeOsDb, id: string) {
     })
     .where(eq(schema.goals.id, id))
     .run();
-  return { goal: getGoal(db, id)! };
+
+  const achieved = getGoal(db, id)!;
+  /*
+   * Fired here rather than when the condition first evaluated true: a goal is
+   * not finished until the user has actually seen the celebration, and telling
+   * the agent "achieved" before that would have it congratulate them for
+   * something they have not been shown yet.
+   */
+  void fireAgentWebhook(db, "goal.achieved", {
+    goal: achieved,
+    title: achieved.title,
+  });
+
+  return { goal: achieved };
 }
 
 // ---------------------------------------------------------------------------

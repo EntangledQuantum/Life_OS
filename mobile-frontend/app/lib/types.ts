@@ -118,6 +118,9 @@ export interface DashboardCard {
   meta: Record<string, unknown> | null;
   xpOnComplete: number;
   webhookOnComplete: boolean;
+  /** One interactive widget the agent put on the card. */
+  control: CardControl | null;
+  webhookOnInteract: boolean;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -250,6 +253,23 @@ export interface VsYesterday {
   };
   efficiency: VsMetric;
 }
+
+/**
+ * An agent-placed widget on a card. Mirrors `CardControl` in the shared
+ * package — this client does not import from the monorepo (see AGENTS.md), so
+ * the contract is restated rather than shared.
+ */
+export type CardControl =
+  | {
+      kind: "slider";
+      label: string;
+      min: number;
+      max: number;
+      step?: number;
+      value: number;
+      unit?: string;
+    }
+  | { kind: "button"; label: string; pressedAt?: string | null };
 
 export interface TimelineBlock {
   id: string;

@@ -9,8 +9,14 @@ import { env } from "./env.js";
 // fresh clone without a separate migrate step.
 const boot = bootstrapDatabase();
 console.log(
-  `Life OS database ${boot.created ? "created" : "ready"} at ${boot.dbPath}`,
+  `Life OS database ${boot.created ? "created" : "ready"} at ${boot.dbPath} ` +
+    `(schema v${boot.schemaVersion})`,
 );
+// Say what actually changed. A silent upgrade is the thing that makes people
+// distrust a migration system.
+for (const m of boot.appliedMigrations) {
+  console.log(`  migrated v${m.version}: ${m.name}`);
+}
 if (boot.note) console.warn(`  migration note: ${boot.note}`);
 
 getDb();

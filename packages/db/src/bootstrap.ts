@@ -1,9 +1,10 @@
 /**
  * Database bootstrap shared by the API and CLI entry points.
  *
- * Runs the Drizzle migration folder and the additive `ensureSchema()` pass so a
- * freshly cloned repo works from `pnpm dev` alone — no manual migrate step and
- * no half-created schema if someone skips `pnpm setup`.
+ * Two stages, in order: the Drizzle migration folder creates the tables for a
+ * brand-new file, then the versioned migrations in `migrations.ts` bring any
+ * database — new or years old — up to `LATEST_VERSION`. A freshly cloned repo
+ * works from `pnpm dev` alone, and an existing one upgrades in place.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -20,6 +21,10 @@ export interface BootstrapResult {
   created: boolean;
   migrated: boolean;
   note?: string;
+  /** Schema version before and after this boot, and what ran in between. */
+  schemaVersion: number;
+  schemaVersionBefore: number;
+  appliedMigrations: { version: number; name: string }[];
 }
 
 /**
@@ -40,11 +45,19 @@ export function bootstrapDatabase(dbPath?: string): BootstrapResult {
     migrated = true;
   } catch (e) {
     // A DB created before the migration journal existed will report a conflict.
-    // ensureSchema() below still reconciles it, so this is not fatal.
+    // The versioned migrations below still reconcile it, so this is not fatal.
     note = e instanceof Error ? e.message : String(e);
   }
 
-  ensureSchema(dbPath);
+  const schema = ensureSchema(dbPath);
 
-  return { dbPath: file, created, migrated, note };
+  return {
+    dbPath: file,
+    created,
+    migrated,
+    note,
+    schemaVersion: schema.to,
+    schemaVersionBefore: schema.from,
+    appliedMigrations: schema.applied,
+  };
 }

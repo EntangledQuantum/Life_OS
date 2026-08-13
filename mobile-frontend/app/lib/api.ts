@@ -221,6 +221,13 @@ export const api = {
   markCardNotified: (id: string) =>
     request(`/api/v1/cards/${id}/notified`, { method: "POST" }),
 
+  /** Move a card's slider or press its button. Not a completion. */
+  interactWithCard: (id: string, body: { value?: number; pressed?: boolean }) =>
+    request(`/api/v1/cards/${id}/interact`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   completeEvent: (id: string) =>
     request(`/api/v1/events/${id}/complete`, { method: "POST" }),
 

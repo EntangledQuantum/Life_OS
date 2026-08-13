@@ -11,6 +11,7 @@ import type {
   RepeatRule,
 } from "./constants.js";
 import type { GoalCondition } from "./conditions.js";
+import type { CardControl } from "./webhooks.js";
 
 export type Source = "user" | "agent";
 
@@ -83,8 +84,15 @@ export interface DashboardCard {
   flash: boolean;
   /** Set once the client has actually fired the notification. */
   notifiedAt: string | null;
-  /** Timeline block created when the user started this card. */
+  /** @deprecated cards no longer start; kept so old rows still deserialize. */
   linkedBlockId: string | null;
+  /**
+   * One interactive widget the agent can put on the card — a slider to ask
+   * "how did that feel, 1–10", or a button for a plain acknowledgement.
+   */
+  control: CardControl | null;
+  /** Tell the agent when the control is used. Off unless it asked. */
+  webhookOnInteract: boolean;
   title: string;
   subtitle: string | null;
   body: string | null;

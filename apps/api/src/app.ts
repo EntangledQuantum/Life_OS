@@ -29,6 +29,11 @@ import {
   updateScheduleBlockSchema,
   updateSettingsSchema,
   activeSessionSchema,
+  cardInteractSchema,
+  createWebhookTargetSchema,
+  updateWebhookTargetSchema,
+  WEBHOOK_EVENTS,
+  WEBHOOK_PRESETS,
   XP_MODEL_DOC,
 } from "@life-os/shared";
 import { requireAuth, type AuthVars } from "./middleware/auth.js";
@@ -47,6 +52,7 @@ import * as cards from "./services/cards.js";
 import * as properties from "./services/properties.js";
 import * as backups from "./services/backups.js";
 import * as setup from "./services/setup.js";
+import * as webhook from "./services/webhook.js";
 import { isAllowedOrigin, isExposed } from "./net.js";
 import { env } from "./env.js";
 /** Typed context so `c.get("username")` is checked rather than inferred as never. */
@@ -268,6 +274,22 @@ export function createApp() {
    * does not change what activity you are in. That is set by hand, from
    * `/sessions/active`.
    */
+
+  /** Move a card's slider or press its button. Not a completion. */
+  api.post("/cards/:id/interact", async (c) => {
+    let body: { value?: number; pressed?: boolean } = {};
+    try {
+      body = cardInteractSchema.parse(await c.req.json());
+    } catch {
+      /* a bare button press has no body */
+    }
+    const result = await cards.interactWithCard(getDb(), c.req.param("id"), body);
+    if ("error" in result) {
+      return c.json(result, result.error === "Card not found" ? 404 : 400);
+    }
+    return c.json(result);
+  });
+
   api.post("/cards/:id/complete", async (c) => {
     let body: { note?: string | null; source?: "user" | "agent"; progress?: number } =
       { source: "user" };
@@ -358,6 +380,49 @@ export function createApp() {
   });
   api.delete("/properties/:key", (c) =>
     c.json(properties.deleteProperty(getDb(), c.req.param("key"))),
+  );
+
+  /*
+   * Webhook targets. Secrets go in and never come back out — the API returns
+   * `secretSet` so the UI can say "configured" without ever handing the value
+   * to a browser, a screenshot, or a log.
+   */
+  api.get("/webhooks/targets", (c) =>
+    c.json(webhook.listWebhookTargets(getDb())),
+  );
+  api.post("/webhooks/targets", async (c) => {
+    const body = createWebhookTargetSchema.parse(await c.req.json());
+    const result = webhook.createWebhookTarget(getDb(), body);
+    if ("error" in result) return c.json(result, 400);
+    return c.json(result, 201);
+  });
+  api.patch("/webhooks/targets/:id", async (c) => {
+    const body = updateWebhookTargetSchema.parse(await c.req.json());
+    const result = webhook.updateWebhookTarget(getDb(), c.req.param("id"), body);
+    if ("error" in result) return c.json(result, 404);
+    return c.json(result);
+  });
+  api.delete("/webhooks/targets/:id", (c) =>
+    c.json(webhook.deleteWebhookTarget(getDb(), c.req.param("id"))),
+  );
+  /** Send a throwaway event, so a target can be proven before it is relied on. */
+  api.post("/webhooks/targets/:id/test", async (c) => {
+    const result = await webhook.testWebhookTarget(getDb(), c.req.param("id"));
+    if ("error" in result) return c.json(result, 404);
+    return c.json(result);
+  });
+  api.get("/webhooks/deliveries", (c) => {
+    const limit = Number(c.req.query("limit") ?? 50);
+    return c.json(
+      webhook.listWebhookDeliveries(
+        getDb(),
+        Number.isFinite(limit) ? Math.min(200, Math.max(1, limit)) : 50,
+      ),
+    );
+  });
+  /** What an agent can subscribe to, so it does not have to guess event names. */
+  api.get("/webhooks/events", (c) =>
+    c.json({ events: WEBHOOK_EVENTS, presets: WEBHOOK_PRESETS }),
   );
 
   // Database snapshots

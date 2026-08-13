@@ -14,6 +14,7 @@ import {
   type GrowthStyle,
 } from "./constants.js";
 import { MAX_SVG_LENGTH } from "./svg.js";
+import { WEBHOOK_EVENTS, WEBHOOK_PRESETS } from "./webhooks.js";
 import { parseGoalCondition, type GoalCondition } from "./conditions.js";
 
 /**
@@ -64,6 +65,32 @@ const isoInstant = z
     message: "must be an ISO 8601 date-time, e.g. 2026-08-04T19:30:00Z",
   });
 
+/**
+ * A card's interactive control. Shape-checked here, range-checked in
+ * `validateCardControl` — zod cannot express "value must sit inside min..max"
+ * without a refinement that reports a worse message than the validator's.
+ *
+ * Declared above `createDashboardCardSchema` because that schema references it,
+ * and a `const` referenced before its initializer is a runtime error, not a
+ * type error TypeScript would have caught.
+ */
+export const cardControlSchema = z.union([
+  z.object({
+    kind: z.literal("slider"),
+    label: z.string().min(1).max(80),
+    min: z.number(),
+    max: z.number(),
+    step: z.number().positive().optional(),
+    value: z.number().optional(),
+    unit: z.string().max(16).optional(),
+  }),
+  z.object({
+    kind: z.literal("button"),
+    label: z.string().min(1).max(80),
+    pressedAt: z.string().nullable().optional(),
+  }),
+]);
+
 export const createDashboardCardSchema = z.object({
   /**
    * 0 and 1 are content slots; slot 2 is implied by kind:"agent-setup";
@@ -112,6 +139,10 @@ export const createDashboardCardSchema = z.object({
   meta: z.record(z.unknown()).nullable().optional(),
   xpOnComplete: z.number().int().min(0).max(500).default(0),
   webhookOnComplete: z.boolean().default(true),
+  /** One interactive widget — a slider to ask something, or a button. */
+  control: cardControlSchema.nullable().optional(),
+  /** Hear about the control being used. Off by default: a slider fires often. */
+  webhookOnInteract: z.boolean().default(false),
 });
 
 export const updateDashboardCardSchema = createDashboardCardSchema.partial();
@@ -248,6 +279,31 @@ export const injectAgentEventSchema = z.object({
   priority: z.number().int().default(0),
   /** Bonus XP awarded when the user completes it — outside the habit pool. */
   xpOnComplete: z.number().int().min(0).max(500).default(0),
+});
+
+export const cardInteractSchema = z.object({
+  /** Required for a slider; ignored for a button. */
+  value: z.number().optional(),
+  pressed: z.boolean().optional(),
+});
+
+export const createWebhookTargetSchema = z.object({
+  name: z.string().min(1).max(64),
+  url: z.string().url(),
+  preset: z.enum(WEBHOOK_PRESETS).optional(),
+  secret: z.string().max(512).nullable().optional(),
+  /** Empty or omitted means every event. */
+  events: z.array(z.enum(WEBHOOK_EVENTS)).nullable().optional(),
+  active: z.boolean().optional(),
+});
+
+export const updateWebhookTargetSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  url: z.string().url().optional(),
+  preset: z.enum(WEBHOOK_PRESETS).optional(),
+  secret: z.string().max(512).nullable().optional(),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).nullable().optional(),
+  active: z.boolean().optional(),
 });
 
 export const updateSettingsSchema = z.object({

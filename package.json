@@ -17,7 +17,8 @@
     "db:seed": "pnpm --filter @life-os/db seed",
     "db:studio": "pnpm --filter @life-os/db studio",
     "mcp": "pnpm --filter @life-os/mcp start",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r --no-bail test"
   },
   "engines": {
     "node": ">=22.5"

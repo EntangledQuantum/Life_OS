@@ -1,5 +1,9 @@
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { svgToDataUri, type DashboardCard } from "@life-os/shared";
 import { Check } from "lucide-react";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export function AgentCard({
@@ -83,6 +87,8 @@ export function AgentCard({
           </div>
         )}
 
+        {card.control && <CardControlWidget card={card} />}
+
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {card.ctaLink && (
             <a
@@ -115,5 +121,74 @@ export function AgentCard({
         </div>
       </div>
     </article>
+  );
+}
+
+/**
+ * The agent's own widget on a card.
+ *
+ * Deliberately not a completion: an agent asking "how did that feel, 1–10"
+ * wants the answer, not the card gone. The slider commits on release rather
+ * than on every pixel — a drag from 1 to 9 would otherwise be nine POSTs and,
+ * if the agent subscribed, nine webhooks.
+ */
+function CardControlWidget({ card }: { card: DashboardCard }) {
+  const qc = useQueryClient();
+  const control = card.control!;
+  const [draft, setDraft] = useState(
+    control.kind === "slider" ? control.value : 0,
+  );
+
+  const interact = useMutation({
+    mutationFn: (body: { value?: number; pressed?: boolean }) =>
+      api.interactWithCard(card.id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (control.kind === "button") {
+    const pressed = Boolean(control.pressedAt);
+    return (
+      <button
+        type="button"
+        className={cn("btn w-full py-2 text-sm", pressed && "opacity-60")}
+        disabled={interact.isPending || pressed}
+        onClick={() => interact.mutate({ pressed: true })}
+      >
+        {pressed ? `${control.label} ✓` : control.label}
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <label
+          htmlFor={`control-${card.id}`}
+          className="text-xs text-[var(--muted)]"
+        >
+          {control.label}
+        </label>
+        <span className="font-mono text-sm tabular-nums text-[var(--text)]">
+          {draft}
+          {control.unit ? ` ${control.unit}` : ""}
+        </span>
+      </div>
+      <input
+        id={`control-${card.id}`}
+        type="range"
+        className="w-full accent-[var(--accent)]"
+        min={control.min}
+        max={control.max}
+        step={control.step ?? 1}
+        value={draft}
+        disabled={interact.isPending}
+        onChange={(e) => setDraft(Number(e.target.value))}
+        onPointerUp={() => interact.mutate({ value: draft })}
+        onKeyUp={(e) => {
+          if (e.key.startsWith("Arrow")) interact.mutate({ value: draft });
+        }}
+      />
+    </div>
   );
 }

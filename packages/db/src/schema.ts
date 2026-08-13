@@ -20,6 +20,10 @@ export const habits = sqliteTable("habits", {
   themeColor: text("theme_color").notNull().default("#5B8CFF"),
   themeGraphic: text("theme_graphic").notNull().default("ring"),
   iconKey: text("icon_key"),
+  /** Tell the agent when this habit is completed. Off unless it asked. */
+  webhookOnComplete: integer("webhook_on_complete", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   deletedAt: text("deleted_at"),
@@ -79,6 +83,12 @@ export const dashboardCards = sqliteTable("dashboard_cards", {
   webhookOnComplete: integer("webhook_on_complete", { mode: "boolean" })
     .notNull()
     .default(true),
+  /** One interactive widget: a slider to ask something, or a button. JSON. */
+  controlJson: text("control_json"),
+  /** Hear about the control being used. Off by default — a slider fires often. */
+  webhookOnInteract: integer("webhook_on_interact", { mode: "boolean" })
+    .notNull()
+    .default(false),
   completedAt: text("completed_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -120,6 +130,10 @@ export const scheduleBlocks = sqliteTable("schedule_blocks", {
   status: text("status").notNull().default("planned"),
   source: text("source").notNull().default("agent"),
   notes: text("notes"),
+  /** Tell the agent when this block is completed. Off unless it asked. */
+  webhookOnComplete: integer("webhook_on_complete", { mode: "boolean" })
+    .notNull()
+    .default(false),
   completedAt: text("completed_at"),
   createdAt: text("created_at").notNull(),
 });
@@ -330,6 +344,53 @@ export const settings = sqliteTable("settings", {
   backupKeep: integer("backup_keep").notNull().default(24),
   lastBackupAt: text("last_backup_at"),
   updatedAt: text("updated_at").notNull(),
+});
+
+/**
+ * Where completions get delivered.
+ *
+ * More than one, because a person can plausibly run both Hermes and OpenClaw,
+ * and because a single global URL in `settings` gave no way to say *which*
+ * agent asked to be told about *what*.
+ */
+export const webhookTargets = sqliteTable("webhook_targets", {
+  id: text("id").primaryKey(),
+  /** Human label — "Hermes", "OpenClaw dev". */
+  name: text("name").notNull(),
+  /** `hermes` | `openclaw` | `generic`. Decides the auth and body shape. */
+  preset: text("preset").notNull().default("generic"),
+  url: text("url").notNull(),
+  /** HMAC key (hermes) or bearer token (openclaw). Never leaves the server. */
+  secret: text("secret"),
+  /** JSON array of event names. Empty/null = every event. */
+  eventsJson: text("events_json"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/**
+ * Every delivery attempt, kept.
+ *
+ * The old implementation was fire-and-forget with a `console.error` on failure,
+ * which meant a webhook that had been silently failing for a week looked
+ * identical to one that had never been configured. A row per attempt is what
+ * makes "did my agent actually hear about this?" answerable.
+ */
+export const webhookDeliveries = sqliteTable("webhook_deliveries", {
+  id: text("id").primaryKey(),
+  targetId: text("target_id").notNull(),
+  event: text("event").notNull(),
+  /** The exact JSON body sent, so a failure can be inspected or replayed. */
+  payloadJson: text("payload_json").notNull(),
+  /** 1-based; a row is updated in place as retries happen. */
+  attempt: integer("attempt").notNull().default(1),
+  /** `pending` | `delivered` | `failed` */
+  status: text("status").notNull().default("pending"),
+  responseStatus: integer("response_status"),
+  error: text("error"),
+  createdAt: text("created_at").notNull(),
+  deliveredAt: text("delivered_at"),
 });
 
 /**

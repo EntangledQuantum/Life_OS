@@ -11,10 +11,12 @@ import {
   nextOccurrence,
   sanitizeSvg,
   shiftSchedule,
+  validateCardControl,
   validateCardSchedule,
   type Activity,
   type CardSlot,
   type DashboardCard,
+  type CardControl,
   type DashboardCardKind,
   type RepeatRule,
 } from "@life-os/shared";
@@ -66,6 +68,13 @@ function mapCard(row: typeof schema.dashboardCards.$inferSelect): DashboardCard 
     flash: row.flash ?? true,
     notifiedAt: row.notifiedAt ?? null,
     linkedBlockId: row.linkedBlockId ?? null,
+    control: parseJson<CardControl | null>(
+      (row as { controlJson?: string | null }).controlJson ?? null,
+      null,
+    ),
+    webhookOnInteract: Boolean(
+      (row as { webhookOnInteract?: boolean }).webhookOnInteract,
+    ),
     svg: row.svg ?? null,
     title: row.title,
     subtitle: row.subtitle,
@@ -183,6 +192,10 @@ export interface CardScheduleInput {
 export interface CreateCardInput extends CardScheduleInput {
   slot?: CardSlot;
   kind?: DashboardCardKind;
+  /** Optional interactive widget — validated, so a bad one is a 400 not a mess. */
+  control?: unknown;
+  /** Tell the agent when the control is used. */
+  webhookOnInteract?: boolean;
   title: string;
   subtitle?: string | null;
   body?: string | null;
@@ -258,6 +271,15 @@ export function createCard(
     return { error: `Invalid svg: ${sanitized.notes.join("; ")}` };
   }
 
+  // Reject a malformed control now rather than rendering a broken widget — a
+  // slider whose value sits outside its own range has no sensible drawing.
+  let control: CardControl | null = null;
+  if (input.control) {
+    const checked = validateCardControl(input.control);
+    if (!checked.ok) return { error: `Invalid control: ${checked.error}` };
+    control = checked.control;
+  }
+
   // Pinned slots hold exactly one card; scheduled cards stack up instead.
   if (slot >= 0) {
     const occupant = existing.find((c) => c.slot === slot);
@@ -293,6 +315,8 @@ export function createCard(
       flash: input.flash ?? true,
       notifiedAt: null,
       linkedBlockId: null,
+      controlJson: control ? JSON.stringify(control) : null,
+      webhookOnInteract: input.webhookOnInteract ?? false,
       title: input.title,
       subtitle: input.subtitle ?? null,
       body: input.body ?? null,
@@ -434,6 +458,59 @@ export function markCardNotified(db: LifeOsDb, id: string) {
 }
 
 /**
+ * Use a card's control: move the slider, press the button.
+ *
+ * This is deliberately not a completion. An agent asking "how did that feel?"
+ * wants the answer, not the card gone — so the card stays open and only the
+ * control's own state changes. The agent hears about it only if it asked to
+ * (`webhookOnInteract`), because a slider being dragged fires on every release.
+ */
+export async function interactWithCard(
+  db: LifeOsDb,
+  id: string,
+  input: { value?: number; pressed?: boolean },
+) {
+  const card = getCard(db, id);
+  if (!card) return { error: "Card not found" as const };
+  if (!card.control) return { error: "This card has no control" as const };
+
+  let next: CardControl;
+  if (card.control.kind === "slider") {
+    if (typeof input.value !== "number" || !Number.isFinite(input.value)) {
+      return { error: "A slider interaction needs a numeric `value`" as const };
+    }
+    const checked = validateCardControl({ ...card.control, value: input.value });
+    if (!checked.ok) return { error: checked.error };
+    next = checked.control;
+  } else {
+    next = { ...card.control, pressedAt: nowIso() };
+  }
+
+  db.update(schema.dashboardCards)
+    .set({ controlJson: JSON.stringify(next), updatedAt: nowIso() })
+    .where(eq(schema.dashboardCards.id, id))
+    .run();
+
+  const updated = getCard(db, id)!;
+  let webhook: WebhookResult = {
+    sent: false,
+    attempted: 0,
+    delivered: 0,
+    results: [],
+  };
+  if (card.webhookOnInteract) {
+    webhook = await fireAgentWebhook(db, "card.interaction", {
+      card: updated,
+      title: updated.title,
+      control: next,
+      value: next.kind === "slider" ? next.value : true,
+    });
+  }
+
+  return { card: updated, control: next, webhook };
+}
+
+/**
  * Complete a card. Recurring cards spawn their next occurrence as a *new* row,
  * so the completed one stays in history (and keeps counting toward XP and the
  * cards_completed metric) instead of being silently rewound.
@@ -517,7 +594,12 @@ export async function completeCard(
   }
 
   const completed = getCard(db, id)!;
-  let webhook: WebhookResult = { sent: false, error: "webhook_disabled" };
+  let webhook: WebhookResult = {
+    sent: false,
+    attempted: 0,
+    delivered: 0,
+    results: [],
+  };
 
   if (row.webhookOnComplete) {
     webhook = await fireAgentWebhook(db, "card.complete", {

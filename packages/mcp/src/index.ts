@@ -69,6 +69,14 @@ import {
   injectAgentEvent,
 } from "../../../apps/api/src/services/events.js";
 import { createStudySession } from "../../../apps/api/src/services/study.js";
+import {
+  createWebhookTarget,
+  deleteWebhookTarget,
+  listWebhookDeliveries,
+  listWebhookTargets,
+  testWebhookTarget,
+  updateWebhookTarget,
+} from "../../../apps/api/src/services/webhook.js";
 import { getDashboard } from "../../../apps/api/src/services/dashboard.js";
 import { getVsYesterday, getPulse } from "../../../apps/api/src/services/snapshots.js";
 import { injectQuest, injectLightReview, listQuests, listLightReviews } from "../../../apps/api/src/services/quests.js";
@@ -87,6 +95,7 @@ import {
   GOAL_METRICS,
   NOTIFICATION_SOUND_IDS,
   REPEAT_RULES,
+  WEBHOOK_EVENTS,
   localDateString,
   XP_MODEL_DOC,
 } from "@life-os/shared";
@@ -747,6 +756,79 @@ const tools = [
     inputSchema: { type: "object" as const, properties: {} },
   },
   {
+    name: "lifeos_list_webhook_targets",
+    description:
+      "Where Life OS delivers completions. Secrets are never returned — only whether one is set.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_add_webhook_target",
+    description:
+      "Subscribe yourself to completions. preset 'hermes' signs an HMAC over <timestamp>.<body> " +
+      "(X-Webhook-Signature-V2) and needs your route secret; preset 'openclaw' sends a bearer " +
+      "token to /hooks/wake and needs hooks.token; 'generic' sends X-LifeOS-Secret. Omit `events` " +
+      "to receive everything. Every delivery carries X-Request-ID so retries are safe to dedupe.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string" },
+        url: { type: "string" },
+        preset: { type: "string", enum: ["hermes", "openclaw", "generic"] },
+        secret: { type: "string" },
+        events: {
+          type: "array",
+          items: { type: "string", enum: [...WEBHOOK_EVENTS] },
+        },
+      },
+      required: ["name", "url"],
+    },
+  },
+  {
+    name: "lifeos_update_webhook_target",
+    description: "Change a target's url, secret, subscribed events, or active flag",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        url: { type: "string" },
+        preset: { type: "string", enum: ["hermes", "openclaw", "generic"] },
+        secret: { type: "string" },
+        events: { type: "array", items: { type: "string" } },
+        active: { type: "boolean" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_delete_webhook_target",
+    description: "Stop delivering to a target",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_test_webhook_target",
+    description:
+      "Send a throwaway event, so you find out a target works before relying on it for a real completion",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_list_webhook_deliveries",
+    description:
+      "Recent delivery attempts with status and error — use this to find out whether you actually heard about something",
+    inputSchema: {
+      type: "object" as const,
+      properties: { limit: { type: "number" } },
+    },
+  },
+  {
     name: "lifeos_backup_now",
     description: "Snapshot the SQLite database into data/backups/ and prune old snapshots",
     inputSchema: { type: "object" as const, properties: {} },
@@ -966,6 +1048,34 @@ async function handleTool(name: string, args: Record<string, unknown>) {
         // Met but unwitnessed: the user still has to see the animation.
         awaitingCelebration: pendingCelebrations(db),
       };
+
+    case "lifeos_list_webhook_targets":
+      return listWebhookTargets(db);
+    case "lifeos_add_webhook_target": {
+      const result = createWebhookTarget(db, args as never);
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_update_webhook_target": {
+      const { id, ...patch } = args as { id: string };
+      const result = updateWebhookTarget(db, id, patch as never);
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_delete_webhook_target":
+      return deleteWebhookTarget(db, String(args.id));
+    case "lifeos_test_webhook_target": {
+      const result = await testWebhookTarget(db, String(args.id));
+      // A missing target is a caller error and throws; a target that exists but
+      // rejected the delivery is a *result* — that is exactly what was asked.
+      if (!("ok" in result)) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_list_webhook_deliveries": {
+      const raw = Number(args.limit ?? 50);
+      const limit = Number.isFinite(raw) ? Math.min(200, Math.max(1, raw)) : 50;
+      return listWebhookDeliveries(db, limit);
+    }
 
     case "lifeos_backup_now": {
       const result = runBackup(db, { force: true });

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useUiStore } from "@/lib/store";
@@ -408,39 +408,7 @@ export function SettingsPage() {
         )}
       </section>
 
-      <section className="card space-y-4 p-5">
-        <h2 className="font-semibold">Agent webhook</h2>
-        <p className="text-sm text-[var(--muted)]">
-          When the user completes a card or habit, Life OS POSTs JSON to this URL
-          (Hermes / OpenClaw endpoint). Optional secret header{" "}
-          <code className="font-mono text-xs">X-LifeOS-Secret</code>.
-        </p>
-        <div>
-          <label className="label">Webhook URL</label>
-          <input
-            className="input"
-            placeholder="https://…/hooks/lifeos"
-            defaultValue={settings.agentWebhookUrl ?? ""}
-            onBlur={(e) =>
-              patch({ agentWebhookUrl: e.target.value.trim() || null })
-            }
-          />
-        </div>
-        <div>
-          <label className="label">
-            Secret {settings.agentWebhookSecretSet ? "(set)" : "(optional)"}
-          </label>
-          <input
-            className="input"
-            type="password"
-            placeholder="shared secret"
-            onBlur={(e) => {
-              if (e.target.value)
-                patch({ agentWebhookSecret: e.target.value });
-            }}
-          />
-        </div>
-      </section>
+      <WebhookTargets />
 
       <section className="card space-y-4 p-5">
         <h2 className="font-semibold">Database backups</h2>
@@ -509,5 +477,214 @@ export function SettingsPage() {
         </div>
       </section>
     </motion.div>
+  );
+}
+
+/**
+ * Where completions are delivered.
+ *
+ * This is normally the agent's job — it registers itself over MCP with
+ * `lifeos_add_webhook_target`. The UI exists so the user can see who is
+ * listening, prove a target works, and find out when one has been quietly
+ * failing. Secrets go in and never come back out: the API returns `secretSet`,
+ * never the value.
+ */
+function WebhookTargets() {
+  const qc = useQueryClient();
+  const { data: targets = [] } = useQuery({
+    queryKey: ["webhook-targets"],
+    queryFn: api.webhookTargets,
+  });
+  const { data: deliveries = [] } = useQuery({
+    queryKey: ["webhook-deliveries"],
+    queryFn: api.webhookDeliveries,
+    refetchInterval: 20_000,
+  });
+
+  const [form, setForm] = useState({
+    name: "",
+    url: "",
+    preset: "generic",
+    secret: "",
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["webhook-targets"] });
+    qc.invalidateQueries({ queryKey: ["webhook-deliveries"] });
+  };
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.createWebhookTarget({
+        name: form.name || form.preset,
+        url: form.url,
+        preset: form.preset,
+        secret: form.secret || null,
+      }),
+    onSuccess: () => {
+      setForm({ name: "", url: "", preset: "generic", secret: "" });
+      invalidate();
+      toast.success("Target added");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteWebhookTarget(id),
+    onSuccess: invalidate,
+  });
+
+  const test = useMutation({
+    mutationFn: (id: string) => api.testWebhookTarget(id),
+    onSuccess: (res) => {
+      invalidate();
+      if (res.ok) toast.success(`Delivered · HTTP ${res.status}`);
+      else toast.error(res.error ?? `Failed · HTTP ${res.status ?? "?"}`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const failing = deliveries.filter((d) => d.status === "failed").length;
+
+  return (
+    <section className="card space-y-4 p-5">
+      <div>
+        <h2 className="font-semibold">Agent webhooks</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Where Life OS tells your agent that you finished something. Your agent
+          can register itself over MCP; this is here so you can see who is
+          listening and whether it is actually working.
+        </p>
+      </div>
+
+      {targets.length > 0 && (
+        <ul className="space-y-2">
+          {targets.map((t) => (
+            <li
+              key={t.id}
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] p-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{t.name}</span>
+                  <span className="chip font-mono text-[10px]">{t.preset}</span>
+                  {!t.active && <span className="chip text-[10px]">paused</span>}
+                  {!t.secretSet && t.preset !== "generic" && (
+                    <span className="chip text-[10px] text-[#FBBF24]">no secret</span>
+                  )}
+                </div>
+                <div className="truncate font-mono text-[11px] text-[var(--faint)]">
+                  {t.url}
+                </div>
+                <div className="mt-0.5 text-[11px] text-[var(--faint)]">
+                  {t.events.length === 0
+                    ? "every event"
+                    : t.events.join(" · ")}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn py-1.5 text-xs"
+                  disabled={test.isPending}
+                  onClick={() => test.mutate(t.id)}
+                >
+                  Test
+                </button>
+                <button
+                  type="button"
+                  className="btn py-1.5 text-xs"
+                  onClick={() => remove.mutate(t.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input
+          className="input"
+          placeholder="Name (Hermes, OpenClaw…)"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+        <select
+          className="input"
+          value={form.preset}
+          onChange={(e) => setForm({ ...form, preset: e.target.value })}
+        >
+          <option value="generic">Generic (X-LifeOS-Secret)</option>
+          <option value="hermes">Hermes (HMAC signature)</option>
+          <option value="openclaw">OpenClaw (bearer token)</option>
+        </select>
+        <input
+          className="input sm:col-span-2"
+          placeholder={
+            form.preset === "openclaw"
+              ? "http://127.0.0.1:18789/hooks/wake"
+              : form.preset === "hermes"
+                ? "http://127.0.0.1:8644/webhooks/lifeos"
+                : "https://…/hooks/lifeos"
+          }
+          value={form.url}
+          onChange={(e) => setForm({ ...form, url: e.target.value })}
+        />
+        <input
+          className="input sm:col-span-2"
+          type="password"
+          placeholder={
+            form.preset === "openclaw"
+              ? "hooks.token"
+              : form.preset === "hermes"
+                ? "route secret (required — Hermes 401s without it)"
+                : "shared secret (optional)"
+          }
+          value={form.secret}
+          onChange={(e) => setForm({ ...form, secret: e.target.value })}
+        />
+      </div>
+      <button
+        type="button"
+        className="btn btn-primary"
+        disabled={!form.url || create.isPending}
+        onClick={() => create.mutate()}
+      >
+        Add target
+      </button>
+
+      {deliveries.length > 0 && (
+        <div>
+          <div className="mb-1 flex items-baseline justify-between">
+            <span className="label">Recent deliveries</span>
+            {failing > 0 && (
+              <span className="font-mono text-[11px] text-[#FBBF24]">
+                {failing} failing
+              </span>
+            )}
+          </div>
+          <ul className="space-y-1 font-mono text-[11px]">
+            {deliveries.slice(0, 6).map((d) => (
+              <li key={d.id} className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    d.status === "delivered" ? "bg-[#34D399]" : "bg-[#F87171]",
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate text-[var(--muted)]">
+                  {d.event}
+                </span>
+                <span className="text-[var(--faint)]">
+                  {d.responseStatus ?? d.error ?? d.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }

@@ -78,6 +78,30 @@ export const api = {
    * started — what activity you are in is set by hand through `setActiveSession`
    * and nothing else touches it.
    */
+  /** Move a card's slider or press its button. Not a completion. */
+  interactWithCard: (id: string, body: { value?: number; pressed?: boolean }) =>
+    request<any>(`/api/v1/cards/${id}/interact`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  webhookTargets: () =>
+    request<import("@life-os/shared").WebhookTarget[]>("/api/v1/webhooks/targets"),
+  createWebhookTarget: (body: unknown) =>
+    request<any>("/api/v1/webhooks/targets", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteWebhookTarget: (id: string) =>
+    request<any>(`/api/v1/webhooks/targets/${id}`, { method: "DELETE" }),
+  testWebhookTarget: (id: string) =>
+    request<{ ok: boolean; status: number | null; error: string | null }>(
+      `/api/v1/webhooks/targets/${id}/test`,
+      { method: "POST" },
+    ),
+  webhookDeliveries: () =>
+    request<import("@life-os/shared").WebhookDelivery[]>(
+      "/api/v1/webhooks/deliveries?limit=20",
+    ),
   /** Confirm the chime actually played, so the reminder fires exactly once. */
   markCardNotified: (id: string) =>
     request<any>(`/api/v1/cards/${id}/notified`, { method: "POST" }),

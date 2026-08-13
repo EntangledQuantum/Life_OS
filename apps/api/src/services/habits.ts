@@ -251,15 +251,22 @@ export function completeHabit(
   bumpQuestProgress(db, 1);
   refreshTodaySnapshot(db);
 
-  // Notify agent (async fire-and-forget)
-  void fireAgentWebhook(db, "habit.complete", {
-    habit: after,
-    logId,
-    xpAwarded: xp,
-    extraXp,
-    source: opts.source ?? "user",
-    note: opts.note ?? null,
-  });
+  /*
+   * Only if the agent asked. A habit completes many times a day; broadcasting
+   * every one to an agent that never opted in is noise it has to filter, and on
+   * a metered model, noise it pays for.
+   */
+  if ((habit as { webhookOnComplete?: boolean }).webhookOnComplete) {
+    void fireAgentWebhook(db, "habit.complete", {
+      habit: after,
+      name: habit.name,
+      logId,
+      xpAwarded: xp,
+      extraXp,
+      source: opts.source ?? "user",
+      note: opts.note ?? null,
+    });
+  }
 
   return {
     habit: after,

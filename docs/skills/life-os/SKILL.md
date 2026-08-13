@@ -557,6 +557,66 @@ If do-not-disturb or quiet hours are active, all of that is suppressed and only 
 card remains. `sound: false` / `flash: false` on the card are your own per-card switches on top
 of that.
 
+### Hearing about completions
+
+Subscribe yourself — do not poll. One call:
+
+```
+lifeos_add_webhook_target
+  name: "Hermes"
+  url: "http://127.0.0.1:8644/webhooks/lifeos"
+  preset: "hermes"        # hermes | openclaw | generic
+  secret: "<route secret>"
+  events: ["card.complete", "goal.achieved"]   # omit for everything
+```
+
+| preset | endpoint | auth |
+|---|---|---|
+| `hermes` | `POST <base>/webhooks/<route>` | HMAC-SHA256 of `<timestamp>.<body>` in `X-Webhook-Signature-V2`, seconds in `X-Webhook-Timestamp` (±300s) |
+| `openclaw` | `POST <base>/hooks/wake` | `Authorization: Bearer <hooks.token>` |
+| `generic` | anything | `X-LifeOS-Secret` |
+
+Hermes and OpenClaw both **reject unauthenticated requests**, so a target
+without a secret fails every delivery — Life OS refuses to create one rather
+than letting you find out from a week of silent 401s.
+
+Every delivery carries `X-Request-ID`, which both agents deduplicate on, so the
+retry schedule (1s, 8s, 60s) cannot double-count a habit.
+
+Events: `card.complete` · `card.interaction` · `habit.complete` · `habit.undo` ·
+`study.complete` · `block.complete` · `review.complete` · `event.complete` ·
+`goal.achieved` · `property.changed`.
+
+Opt in **per item** with `webhookOnComplete` when you create a card, habit or
+block. It is on for cards and off for habits by default — a habit completes
+several times a day and you probably do not want all of it.
+
+Did it arrive? `lifeos_test_webhook_target` sends a throwaway event now, and
+`lifeos_list_webhook_deliveries` shows attempts, HTTP status and errors.
+
+To have the Life OS server start when *your* gateway starts, see
+`docs/AGENT_HOOKS.md` — it has the OpenClaw `gateway_start` hook and the Hermes
+`~/.hermes/hooks/` pair, ready to paste.
+
+### Asking a question on a card
+
+A card can carry one control, and using it is **not** a completion — the card
+stays open and you get the answer:
+
+```json
+POST /api/v1/cards
+{
+  "title": "Evening check-in",
+  "control": { "kind": "slider", "label": "How did today feel?",
+               "min": 1, "max": 10, "step": 1, "value": 5 },
+  "webhookOnInteract": true
+}
+```
+
+`{ "kind": "button", "label": "I did it" }` is the other shape. Interactions
+fire `card.interaction` with the new value — only if `webhookOnInteract` is set,
+because a slider fires on every release.
+
 You normally do not call `/notified` yourself; the client does.
 
 The notification is actionable: tapping it opens the Timeline with that card in front of the
@@ -954,6 +1014,8 @@ the same SQLite file. Prefer HTTP when in doubt.
 | `lifeos_get_goal_syntax` | The condition language + worked examples |
 | `lifeos_list_goals` / `lifeos_create_goal` / `lifeos_update_goal` / `lifeos_delete_goal` | Goals |
 | `lifeos_evaluate_goals` | Force a re-check; lists goals awaiting celebration |
+| `lifeos_add_webhook_target` / `lifeos_list_webhook_targets` / `lifeos_update_webhook_target` / `lifeos_delete_webhook_target` | Subscribe yourself to completions |
+| `lifeos_test_webhook_target` / `lifeos_list_webhook_deliveries` | Prove a target works · find out if a delivery landed |
 | `lifeos_backup_now` / `lifeos_list_backups` | Database snapshots |
 | `lifeos_export_json` | Full dump |
 
