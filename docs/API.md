@@ -49,6 +49,9 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | GET/PATCH | `/api/v1/settings` | Settings incl. `dayResetTime`, notification sound, do-not-disturb, agent webhook, backups |
 | GET/PATCH | `/api/v1/gamification/config` | `dailyXpTarget`, `growthStyle`, multipliers |
 | GET/POST | `/api/v1/backups` | List snapshots / snapshot now |
+| POST | `/api/v1/pair` | Mint a single-use pairing code for the QR |
+| GET | `/api/v1/pair/reachability` | Every address this instance answers on |
+| POST | `/api/v1/pair/claim` | **Unauthenticated.** Trade a code for the token |
 | GET | `/api/v1/export/json` | Full export |
 | GET | `/api/v1/agent/capabilities` | Task kinds, activity tags, repeat rules, tools |
 | GET | `/api/v1/agent/goal-syntax` | Condition language + worked examples |
@@ -228,6 +231,78 @@ re-check that runs after every write does not put a row in on every request.
 
 Existing databases get one seeded point each, dated when the value was last touched. It is a
 single honest point — "this was the value when history began" — not a fabricated back-story.
+
+---
+
+## Pairing a phone
+
+The token is 43 characters of base64url. Typing that into a phone keyboard is miserable and
+people get it wrong, so the setup that actually happens is *email it to myself* — which puts
+the only credential this app has into a mailbox forever.
+
+So the dashboard mints a short-lived, single-use **code**, draws it as a QR, and the phone
+trades the code for the real token.
+
+```
+dashboard  POST /api/v1/pair        → { code, url, expiresInSeconds }
+           draws url as a QR
+phone      camera opens  <base>/pair#c=CODE
+           taps Open in Life OS  →  lifeos://connect?code=…&url=…
+app        POST /api/v1/pair/claim  → { baseUrl, token }
+```
+
+### Why this is safe with an open claim endpoint
+
+`/pair/claim` takes no auth, and it cannot: a phone that already had the token would not be
+pairing. What makes it acceptable is everything about the code.
+
+- **The token is never in the QR.** A short-lived code that burns on first use beats an
+  "encrypted" token whose key has to travel alongside it.
+- **Single use.** The code is deleted before the token is returned, so a replay finds nothing.
+- **Five minutes.** Long enough to walk to the other room.
+- **Minted only by an authenticated request** — you have to already be in the dashboard.
+- **In the URL fragment, not the query string.** A fragment is never sent to a server, so the
+  code stays out of access logs, out of `Referer` headers, and out of every proxy between.
+- **Compared in constant time**, and a wrong code is indistinguishable from an expired one.
+- **In memory only.** A restart invalidates every outstanding code, which is correct, and it
+  keeps the one thing that can be traded for the token out of the database and out of backups.
+
+The alphabet has no `O`/`0` and no `I`/`l`/`1`, because the QR is the happy path but somebody
+will end up reading it out loud.
+
+### Which URL the phone is given
+
+In order: the public URL if a tunnel is up, then `PUBLIC_URL`, then the address the minting
+request itself arrived on. That last fallback is what makes pairing work with no configuration
+— if the browser reached the server at that address, a phone on the same Wi-Fi can too.
+
+A loopback origin is replaced with a LAN address. `127.0.0.1` on a phone *is* the phone, and
+someone pairing from `localhost` would otherwise scan a QR pointing at their own handset.
+
+---
+
+## Reaching it from outside
+
+**This machine's own address cannot be a public URL.** It is an RFC1918 address behind NAT and
+the router's WAN address is usually dynamic and usually firewalled. A stable public URL needs
+one of:
+
+| option | stable across restarts? | needs |
+|--------|------------------------|-------|
+| **Tailscale Funnel** (default) | **yes** | a free Tailscale account |
+| Cloudflare *named* tunnel | yes | your own domain on Cloudflare |
+| Cloudflare *quick* tunnel | **no** — rotates every restart | nothing |
+
+Tailscale is the default because it is the only free option whose URL does not change, and a
+URL that changes is a phone that stops working every time the machine reboots. It also gives
+real HTTPS.
+
+`TUNNEL=tailscale|cloudflare|off`, and `PUBLIC_URL` overrides detection entirely.
+
+**Nothing here starts a tunnel process.** Detecting one that is already running and reporting
+it honestly is reliable; owning a long-lived child, restarting it and parsing its log output is
+not — and a half-managed tunnel that dies quietly is worse than no tunnel. The boot banner says
+what it found, and what to run if it found nothing.
 
 ---
 

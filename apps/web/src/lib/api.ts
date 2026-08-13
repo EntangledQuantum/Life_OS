@@ -129,6 +129,23 @@ export const api = {
     }),
   clearActiveSession: () =>
     request("/api/v1/session/active", { method: "DELETE" }),
+  /** Mint a single-use pairing code for the QR. The token is never in it. */
+  mintPairing: () =>
+    request<{
+      code: string;
+      url: string;
+      baseUrl: string;
+      expiresAt: string;
+      expiresInSeconds: number;
+    }>("/api/v1/pair", { method: "POST" }),
+  /** Every address this instance answers on, and why there may be no public one. */
+  reachability: () =>
+    request<{
+      publicUrl: string | null;
+      lan: string[];
+      tunnel: string;
+      hint: string | null;
+    }>("/api/v1/pair/reachability"),
   exportJson: () => request("/api/v1/export/json"),
   gamificationConfig: () => request("/api/v1/gamification/config"),
 };

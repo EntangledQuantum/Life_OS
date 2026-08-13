@@ -8,6 +8,7 @@ import {
   playSound,
   requestNotificationPermission,
 } from "@/lib/notify";
+import { PairPhone } from "@/components/PairPhone";
 import { cn } from "@/lib/utils";
 import {
   ACCENT_THEMES,
@@ -89,6 +90,10 @@ export function SettingsPage() {
           targets) is owned by your agent.
         </p>
       </div>
+
+      {/* First, because getting the app on your phone is the first thing
+          anyone wants from this page. */}
+      <PairPhone />
 
       <section className="card space-y-4 p-5">
         <h2 className="font-semibold">Global day reset</h2>

@@ -223,6 +223,43 @@ export async function validateToken(
   }
 }
 
+/**
+ * Trade a pairing code for the real token.
+ *
+ * Unauthenticated by necessity — a phone that already had the token would not
+ * be pairing. The code is high-entropy, expires in five minutes, and burns on
+ * first use, which is what makes an open endpoint acceptable here.
+ */
+export async function claimPairingCode(
+  baseUrl: string,
+  code: string,
+): Promise<{ baseUrl: string; token: string }> {
+  const base = normalizeBaseUrl(baseUrl);
+  let res: Response;
+  try {
+    res = await fetch(`${base}/api/v1/pair/claim`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
+      },
+      body: JSON.stringify({ code: code.trim() }),
+    });
+  } catch {
+    throw new ApiError(0, "Could not reach that server — are you on the same Wi-Fi?");
+  }
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(res.status, body.error ?? "That code did not work");
+  }
+
+  const body = (await res.json()) as { baseUrl?: string; token?: string };
+  if (!body.token) throw new ApiError(0, "The server sent no token back");
+  return { baseUrl: body.baseUrl ?? base, token: body.token };
+}
+
 export const api = {
   health: async () => {
     const base = await resolveBase();

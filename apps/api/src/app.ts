@@ -55,7 +55,9 @@ import * as setup from "./services/setup.js";
 import * as webhook from "./services/webhook.js";
 import * as tasks from "./services/tasks.js";
 import { getAnalytics } from "./services/analytics.js";
-import { isAllowedOrigin, isExposed } from "./net.js";
+import { claimPairingCode, mintPairingCode } from "./services/pairing.js";
+import { getPublicUrl, getReachabilityHint, getTunnelMode } from "./reachability.js";
+import { isAllowedOrigin, isExposed, lanAddresses } from "./net.js";
 import { env } from "./env.js";
 /** Typed context so `c.get("username")` is checked rather than inferred as never. */
 type AppEnv = { Variables: AuthVars };
@@ -73,10 +75,28 @@ export function createApp() {
        * Public origins must be named in CORS_ORIGINS — an open policy would let
        * any page the user happens to be browsing talk to their instance.
        */
-      origin: (origin) =>
-        isAllowedOrigin(origin, env.corsOrigins) ? origin : null,
+      /*
+       * The public URL is allowed too. It is deliberately not a private
+       * address, so the private-network rule alone would reject the dashboard
+       * when it is reached through the very tunnel we told the phone to use.
+       */
+      origin: (origin) => {
+        const publicUrl = getPublicUrl();
+        const extra = publicUrl
+          ? [...env.corsOrigins, publicUrl]
+          : env.corsOrigins;
+        return isAllowedOrigin(origin, extra) ? origin : null;
+      },
       credentials: true,
-      allowHeaders: ["Content-Type", "Authorization"],
+      /*
+       * `X-LifeOS-Protocol` has to be here or the browser's preflight rejects
+       * every cross-origin request before it is sent — which is the dev setup
+       * (Vite on 5173, API on 8787) and any deployment where the dashboard is
+       * not served by the API itself. The failure is a CORS error in the
+       * console and a dashboard that never loads, with nothing to connect it
+       * back to the header the client started sending.
+       */
+      allowHeaders: ["Content-Type", "Authorization", PROTOCOL_HEADER],
     }),
   );
 
@@ -90,6 +110,29 @@ export function createApp() {
       lan: isExposed(env.apiHost),
     }),
   );
+
+  /**
+   * Trade a pairing code for the real token.
+   *
+   * **Deliberately unauthenticated** — a phone that had the token would not
+   * need to pair. What makes it safe is the code: high entropy, five minutes,
+   * single use, and minted only by someone already signed into the dashboard.
+   *
+   * The token is never in the QR. A short-lived code that burns on first use is
+   * strictly better than an encrypted token whose key has to travel with it.
+   */
+  app.post("/api/v1/pair/claim", async (c) => {
+    let code = "";
+    try {
+      const body = (await c.req.json()) as { code?: string };
+      code = String(body.code ?? "");
+    } catch {
+      return c.json({ error: "Expected { code }" }, 400);
+    }
+    const result = claimPairingCode(code, env.apiToken);
+    if (!result.ok) return c.json({ error: result.error }, 401);
+    return c.json({ baseUrl: result.baseUrl, token: result.token });
+  });
 
   /**
    * Auth is the API token and nothing else.
@@ -501,6 +544,62 @@ export function createApp() {
     const body = createAchievementSchema.parse(await c.req.json());
     return c.json(achievements.createAchievement(getDb(), body), 201);
   });
+
+  /**
+   * Mint a pairing code, for the dashboard to draw as a QR.
+   *
+   * Which URL to hand the phone, in order of usefulness: the public one if a
+   * tunnel is up, then whatever `PUBLIC_URL` names, then the address this very
+   * request arrived on. That last fallback is what makes pairing work with no
+   * configuration at all — if the browser reached the server at that address, a
+   * phone on the same Wi-Fi can too.
+   */
+  api.post("/pair", (c) => {
+    const requestOrigin = (() => {
+      try {
+        return new URL(c.req.url).origin;
+      } catch {
+        return null;
+      }
+    })();
+
+    /*
+     * A loopback origin is useless to a phone — "127.0.0.1" on a phone is the
+     * phone. Someone with the dashboard open on localhost and the QR on screen
+     * would scan it and get a connection refused with nothing to explain why,
+     * so the LAN address is used instead.
+     */
+    const loopback =
+      requestOrigin !== null &&
+      /^https?:\/\/(127\.|\[?::1\]?|localhost)/i.test(requestOrigin);
+    const lan = lanAddresses()[0];
+    const base =
+      getPublicUrl() ??
+      (loopback && lan ? `http://${lan}:${env.apiPort}` : requestOrigin);
+
+    if (!base) {
+      return c.json(
+        {
+          error: "Could not work out a URL to pair with",
+          hint:
+            "This machine has no network address other than loopback, so a phone " +
+            "has nothing to connect to. Join a network, or set PUBLIC_URL.",
+        },
+        500,
+      );
+    }
+    return c.json(mintPairingCode(base));
+  });
+
+  /** Every address this instance answers on, and why there may not be a public one. */
+  api.get("/pair/reachability", (c) =>
+    c.json({
+      publicUrl: getPublicUrl(),
+      lan: lanAddresses().map((ip) => `http://${ip}:${env.apiPort}`),
+      tunnel: getTunnelMode(),
+      hint: getReachabilityHint(),
+    }),
+  );
 
   api.get("/settings", (c) => c.json(settings.getSettings(getDb())));
   api.patch("/settings", async (c) => {

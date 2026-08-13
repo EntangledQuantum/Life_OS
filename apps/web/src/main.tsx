@@ -7,6 +7,7 @@ import "./index.css";
 import { AppShell } from "./components/AppShell";
 import { LandingPage } from "./pages/LandingPage";
 import { ConnectPage } from "./pages/ConnectPage";
+import { PairPage } from "./pages/PairPage";
 import { RequireAuth } from "./pages/RequireAuth";
 import { OverviewPage } from "./pages/OverviewPage";
 import { TimelinePage } from "./pages/TimelinePage";
@@ -35,6 +36,12 @@ const routes = IS_PAGES ? (
   <Routes>
     <Route path="/" element={<LandingPage />} />
     <Route path="/connect" element={<ConnectPage />} />
+    {/*
+      Opened by a phone camera after scanning the pairing QR. Deliberately
+      outside RequireAuth — the phone arriving here has no token yet; getting
+      one is the entire purpose of the page.
+    */}
+    <Route path="/pair" element={<PairPage />} />
     <Route element={<RequireAuth />}>
       <Route path="/app" element={<AppShell />}>
         <Route index element={<OverviewPage />} />

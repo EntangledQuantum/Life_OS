@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import { announceGeneratedToken, ensureApiToken } from "./token.js";
+import { readTunnelMode } from "./tunnel.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -31,11 +32,29 @@ export const env = {
   root,
   apiPort: Number(process.env.API_PORT ?? 8787),
   /**
-   * Bind address. Defaults to loopback so a fresh clone is not reachable from
-   * the network by accident. Set `API_HOST=0.0.0.0` to expose it to your LAN
-   * (phone, tablet, another machine) — see `docs/NETWORK.md`.
+   * Bind address.
+   *
+   * Defaults to **all interfaces**, because the phone is the point. Life OS on
+   * loopback is a dashboard you can only see from the chair you installed it
+   * from, and every single user hit the same wall — the connect screen saying
+   * "Life OS isn't running" while the same URL loaded fine in the desktop
+   * browser two feet away.
+   *
+   * The exposure is not open: CORS allows loopback and private-LAN origins
+   * only, and every request needs the token. Set `API_HOST=127.0.0.1` to go
+   * back to loopback-only — see `docs/NETWORK.md`.
    */
-  apiHost: process.env.API_HOST ?? "127.0.0.1",
+  apiHost: process.env.API_HOST ?? "0.0.0.0",
+  /**
+   * How the outside world reaches this instance. `tailscale` (default) looks
+   * for a Funnel hostname; `off` does not look. See `src/tunnel.ts`.
+   */
+  tunnel: readTunnelMode(process.env.TUNNEL),
+  /**
+   * Overrides tunnel detection entirely. The escape hatch for a reverse proxy,
+   * a named Cloudflare tunnel, or a quick tunnel whose hostname changed.
+   */
+  publicUrl: (process.env.PUBLIC_URL ?? "").trim() || null,
   /**
    * Extra CORS origins beyond localhost and private-LAN addresses, comma
    * separated. Only needed for a tunnel or a real hostname.

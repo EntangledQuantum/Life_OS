@@ -1,4 +1,4 @@
-import { useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -8,8 +8,9 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as Linking from "expo-linking";
 import { useConnection } from "@/lib/connection";
-import { checkHealth, ApiError, ProtocolError } from "@/lib/api";
+import { checkHealth, claimPairingCode, ApiError, ProtocolError } from "@/lib/api";
 import { looksLikeWebUiPort } from "@/lib/storage";
 import { font, radius } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
@@ -32,6 +33,61 @@ export default function ConnectScreen() {
   const [healthNote, setHealthNote] = useState<string | null>(null);
   /** Set when the server turns out to speak a protocol this build cannot read. */
   const [outdated, setOutdated] = useState<ProtocolError | null>(null);
+  /** A code typed in by hand, when the deep link did not fire. */
+  const [pairCode, setPairCode] = useState("");
+
+  /**
+   * Finish a pairing: trade the code for the real token and connect.
+   *
+   * The token never travelled in the QR or the deep link — only this
+   * short-lived code did, and the server burns it as it hands the token over.
+   */
+  const pair = useCallback(
+    async (serverUrl: string, code: string) => {
+      setError(null);
+      setBusy(true);
+      try {
+        const claimed = await claimPairingCode(serverUrl, code);
+        await connectWithToken(claimed.baseUrl, claimed.token);
+        router.replace("/(tabs)");
+      } catch (e) {
+        if (e instanceof ProtocolError) setOutdated(e);
+        else setError(e instanceof Error ? e.message : "Pairing failed");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [connectWithToken, router],
+  );
+
+  /**
+   * `lifeos://connect?code=…&url=…`, from the page the QR opened.
+   *
+   * Handled both ways round on purpose: `getInitialURL` covers a cold start
+   * (the tap launched the app) and the listener covers a warm one (the app was
+   * already backgrounded). Handling only one of the two is the classic way a
+   * deep link works for the developer and nobody else.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const handle = (incoming: string | null) => {
+      if (!incoming || cancelled) return;
+      const parsed = Linking.parse(incoming);
+      const code = String(parsed.queryParams?.code ?? "");
+      const serverUrl = String(parsed.queryParams?.url ?? "");
+      if (!code || !serverUrl) return;
+      setUrl(serverUrl);
+      void pair(serverUrl, code);
+    };
+
+    void Linking.getInitialURL().then(handle);
+    const sub = Linking.addEventListener("url", (e) => handle(e.url));
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [pair]);
 
   async function onTest() {
     setError(null);
@@ -169,6 +225,34 @@ export default function ConnectScreen() {
               {healthNote}
             </Text>
           ) : null}
+        </Card>
+
+        {/*
+          The pairing card comes first because it is the path that works. The
+          token is 43 characters of base64url; typing it on a phone keyboard is
+          miserable, and what people actually do instead is email the only
+          credential this app has to themselves.
+        */}
+        <Card style={{ gap: 12 }}>
+          <Label>Pairing code</Label>
+          <Body>
+            Open Life OS on your computer, go to Settings, and scan the QR with
+            this phone&apos;s camera. If the app did not open by itself, type
+            the code here.
+          </Body>
+          <Field
+            value={pairCode}
+            onChangeText={setPairCode}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            placeholder="ABCD2345WXYZ"
+            style={{ fontFamily: font.mono, letterSpacing: 2, textAlign: "center" }}
+          />
+          <Button
+            title="Pair"
+            onPress={() => void pair(url, pairCode)}
+            disabled={busy || pairCode.trim().length < 6}
+          />
         </Card>
 
         <Card style={{ gap: 12 }}>

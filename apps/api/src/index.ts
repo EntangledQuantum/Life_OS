@@ -3,6 +3,12 @@ import { bootstrapDatabase, getDb } from "@life-os/db";
 import { createApp } from "./app.js";
 import { startBackupScheduler } from "./services/backups.js";
 import { isExposed, lanAddresses } from "./net.js";
+import {
+  discoverReachability,
+  getPublicUrl,
+  getReachabilityHint,
+  getTunnelMode,
+} from "./reachability.js";
 import { env } from "./env.js";
 
 // Provision + migrate before anything touches the DB, so `pnpm dev` works on a
@@ -51,13 +57,34 @@ function announce(): void {
     // Print the addresses a phone would actually type, and be honest about what
     // exposing it means — the auth here is a single shared token.
     for (const address of lanAddresses()) {
-      console.log(`  reachable on your network at http://${address}:${env.apiPort}`);
+      console.log(`  on this network at http://${address}:${env.apiPort}`);
     }
+  } else {
     console.log(
-      "  ⚠ anyone on this network can reach the API — keep API_TOKEN secret and " +
-        "do not port-forward this to the internet",
+      "  loopback only — your phone cannot reach this. Remove API_HOST from .env " +
+        "to listen on the network.",
     );
   }
+
+  /*
+   * The public URL, when there is one.
+   *
+   * This matters more than the LAN addresses: a LAN address stops working the
+   * moment you leave the house, and "my phone works at home and not on the
+   * train" is the single most common way this setup disappoints someone.
+   */
+  const publicUrl = getPublicUrl();
+  if (publicUrl) {
+    console.log(`  from anywhere at ${publicUrl}`);
+  } else if (getTunnelMode() !== "off") {
+    const hint = getReachabilityHint();
+    if (hint) console.log(`  no public URL — ${hint}`);
+  }
+
+  console.log(
+    "  pair a phone: open Settings in the dashboard and scan the QR. " +
+      "Keep API_TOKEN secret.",
+  );
 }
 
 function portInUse(attempt: number): void {
@@ -134,4 +161,6 @@ process.on("uncaughtException", (error) => {
   console.error("  The API is still running. Please report this trace.");
 });
 
-bind();
+// Ask the tunnel where we are before announcing. A failure here is not
+// fatal: the LAN works whether or not a tunnel does.
+void discoverReachability().finally(() => bind());
