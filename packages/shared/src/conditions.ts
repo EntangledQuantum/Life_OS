@@ -23,6 +23,12 @@ export const GOAL_METRICS = [
   "habit_completions",
   "habit_streak",
   "study_minutes",
+  "tasks_completed",
+  /**
+   * The old name for `tasks_completed`, kept because it is stored inside goals
+   * people already have. Renaming it in the enum would leave those goals
+   * failing validation on the next re-check — which is every write.
+   */
   "cards_completed",
   "days_active",
 ] as const;

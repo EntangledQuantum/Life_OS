@@ -9,11 +9,12 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useConnection } from "@/lib/connection";
-import { checkHealth, ApiError } from "@/lib/api";
+import { checkHealth, ApiError, ProtocolError } from "@/lib/api";
 import { looksLikeWebUiPort } from "@/lib/storage";
 import { font, radius } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
 import { Button, Body, Title, Label, Card } from "@/components/ui";
+import { UpdateRequired } from "@/components/update-required";
 
 /**
  * First-run (and re-auth) screen. Only two fields: server URL + API token.
@@ -29,6 +30,8 @@ export default function ConnectScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [healthNote, setHealthNote] = useState<string | null>(null);
+  /** Set when the server turns out to speak a protocol this build cannot read. */
+  const [outdated, setOutdated] = useState<ProtocolError | null>(null);
 
   async function onTest() {
     setError(null);
@@ -59,7 +62,14 @@ export default function ConnectScreen() {
       await connectWithToken(url, token.trim());
       router.replace("/(tabs)");
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
+      /*
+       * A version gap is caught here, on the first authenticated call, rather
+       * than after setup completes and every screen quietly fails. Nothing in
+       * this screen can fix it, so it takes over the screen entirely.
+       */
+      if (e instanceof ProtocolError) {
+        setOutdated(e);
+      } else if (e instanceof ApiError && e.status === 401) {
         setError("Wrong API token — check API_TOKEN in your Life OS .env");
       } else {
         setError(e instanceof Error ? e.message : "Connection failed");
@@ -68,6 +78,9 @@ export default function ConnectScreen() {
       setBusy(false);
     }
   }
+
+  /* Nothing on this screen can fix a version gap, so it takes the screen over. */
+  if (outdated) return <UpdateRequired error={outdated} />;
 
   return (
     <KeyboardAvoidingView

@@ -6,30 +6,32 @@ import {
   completeCardSchema,
   createAchievementSchema,
   createAgentPropertySchema,
-  createDashboardCardSchema,
   createGoalSchema,
   createHabitSchema,
   incrementAgentPropertySchema,
   updateAgentPropertySchema,
   agentSetupSchema,
   ACTIVITIES,
-  CARD_KINDS,
   GOAL_CONDITION_SYNTAX,
   REPEAT_RULES,
-  createScheduleBlockSchema,
   createStudySessionSchema,
-  injectAgentEventSchema,
-  injectLightReviewSchema,
   injectQuestSchema,
   setHabitThemeSchema,
-  updateDashboardCardSchema,
   updateGamificationConfigSchema,
   updateGoalSchema,
   updateHabitSchema,
-  updateScheduleBlockSchema,
   updateSettingsSchema,
   activeSessionSchema,
   cardInteractSchema,
+  createTaskSchema,
+  updateTaskSchema,
+  MIN_PROTOCOL_VERSION,
+  TASK_KINDS,
+  PROTOCOL_HEADER,
+  PROTOCOL_VERSION,
+  isSupportedProtocol,
+  protocolMismatch,
+  readProtocol,
   createWebhookTargetSchema,
   updateWebhookTargetSchema,
   WEBHOOK_EVENTS,
@@ -46,13 +48,11 @@ import * as settings from "./services/settings.js";
 import * as achievements from "./services/achievements.js";
 import * as quests from "./services/quests.js";
 import * as snapshots from "./services/snapshots.js";
-import * as blocks from "./services/blocks.js";
-import * as events from "./services/events.js";
-import * as cards from "./services/cards.js";
 import * as properties from "./services/properties.js";
 import * as backups from "./services/backups.js";
 import * as setup from "./services/setup.js";
 import * as webhook from "./services/webhook.js";
+import * as tasks from "./services/tasks.js";
 import { isAllowedOrigin, isExposed } from "./net.js";
 import { env } from "./env.js";
 /** Typed context so `c.get("username")` is checked rather than inferred as never. */
@@ -113,9 +113,34 @@ export function createApp() {
     return c.json(auth.me(c.get("username")));
   });
 
+  /** What this server speaks, so a client can check before it does anything. */
+  app.get("/api/v1/protocol", (c) =>
+    c.json({
+      protocol: PROTOCOL_VERSION,
+      minProtocol: MIN_PROTOCOL_VERSION,
+    }),
+  );
+
   // Protected API
   const api = new Hono<AppEnv>();
   api.use("*", requireAuth);
+
+  /**
+   * Refuse a client that cannot read what we send.
+   *
+   * v2 collapsed cards, agent events, reviews and study blocks into tasks and
+   * removed the old payload. A v1 client asking for the dashboard would get
+   * fields it does not understand and none of the ones it wants, and would
+   * render an empty day rather than an error — so it is told, with a 426 and a
+   * link to a build that works.
+   */
+  api.use("*", async (c, next) => {
+    const claimed = readProtocol(c.req.header(PROTOCOL_HEADER));
+    if (!isSupportedProtocol(claimed)) {
+      return c.json(protocolMismatch(claimed), 426);
+    }
+    await next();
+  });
 
   /**
    * Re-check every goal after any successful write.
@@ -189,82 +214,93 @@ export function createApp() {
     return c.json(study.createStudySession(getDb(), body), 201);
   });
 
-  // Agent-defined day blocks (study / life / deep work on timeline)
-  api.get("/blocks", (c) => c.json(blocks.listBlocks(getDb())));
-  api.get("/blocks/study", (c) => c.json(blocks.listStudyBlocks(getDb())));
-  api.post("/blocks", async (c) => {
-    const body = createScheduleBlockSchema.parse(await c.req.json());
-    return c.json(blocks.createBlock(getDb(), body), 201);
+  /*
+   * Tasks. One of the two nouns, the other being habits.
+   *
+   * `/cards`, `/events`, `/reviews` and `/blocks` are gone. They were four
+   * views of the same object with different fields supported, so an agent had
+   * to pick a table and live with what it happened not to offer. A client older
+   * than protocol v2 gets a 426 from the middleware above rather than a payload
+   * it cannot read.
+   *
+   * There is no `/tasks/:id/start`. A task has a target time and a completion;
+   * it does not run, and completing it does not change what activity you are in
+   * — that is `/session/active`.
+   */
+  api.get("/tasks", (c) => {
+    const status = c.req.query("status") as
+      | "active"
+      | "done"
+      | "dismissed"
+      | undefined;
+    const kind = c.req.query("kind") as
+      | "task"
+      | "study"
+      | "review"
+      | "reminder"
+      | undefined;
+    return c.json(tasks.listTasks(getDb(), { status, kind, visibleOnly: true }));
   });
-  api.patch("/blocks/:id", async (c) => {
-    const body = updateScheduleBlockSchema.parse(await c.req.json());
-    const b = blocks.updateBlock(getDb(), c.req.param("id"), body);
-    if (!b) return c.json({ error: "Not found" }, 404);
-    return c.json(b);
+  /** What is current: inside the lead window and not past its own end. */
+  api.get("/tasks/current", (c) => c.json(tasks.listCurrentTasks(getDb())));
+  /** Notifications that should fire now and have not yet. */
+  api.get("/tasks/due", (c) => c.json(tasks.listDueTasks(getDb())));
+  api.get("/tasks/:id", (c) => {
+    const task = tasks.getTask(getDb(), c.req.param("id"));
+    if (!task) return c.json({ error: "Not found" }, 404);
+    return c.json(task);
   });
-  api.delete("/blocks/:id", (c) =>
-    c.json(blocks.deleteBlock(getDb(), c.req.param("id"))),
+  api.post("/tasks", async (c) => {
+    const body = createTaskSchema.parse(await c.req.json());
+    const result = tasks.createTask(getDb(), body);
+    if ("error" in result) return c.json(result, 400);
+    return c.json(result.task, 201);
+  });
+  api.patch("/tasks/:id", async (c) => {
+    const body = updateTaskSchema.parse(await c.req.json());
+    const result = tasks.updateTask(getDb(), c.req.param("id"), body);
+    if ("error" in result) {
+      return c.json(result, result.error === "Task not found" ? 404 : 400);
+    }
+    return c.json(result.task);
+  });
+  api.delete("/tasks/:id", (c) =>
+    c.json(tasks.deleteTask(getDb(), c.req.param("id"))),
   );
-  api.post("/blocks/:id/complete", (c) => {
-    const r = blocks.completeBlock(getDb(), c.req.param("id"));
-    if ("error" in r) return c.json(r, 404);
-    return c.json(r);
-  });
-
-  api.get("/events", (c) => c.json(events.listAgentEvents(getDb())));
-  api.post("/events", async (c) => {
-    const body = injectAgentEventSchema.parse(await c.req.json());
-    return c.json(events.injectAgentEvent(getDb(), body), 201);
-  });
-  api.post("/events/:id/complete", (c) => {
-    const result = events.completeAgentEvent(getDb(), c.req.param("id"));
+  api.post("/tasks/:id/complete", async (c) => {
+    let body: { note?: string | null; source?: "user" | "agent"; progress?: number } =
+      { source: "user" };
+    try {
+      body = completeCardSchema.parse(await c.req.json());
+    } catch {
+      /* an empty body is a plain completion */
+    }
+    const result = await tasks.completeTask(getDb(), c.req.param("id"), body);
     if ("error" in result) return c.json(result, 404);
     return c.json(result);
   });
-  api.post("/events/:id/dismiss", (c) =>
-    c.json(events.dismissAgentEvent(getDb(), c.req.param("id"))),
-  );
-
-  // Agent cards: 2 pinned content slots + the setup card + scheduled event/reminder cards
-  api.get("/cards", (c) => c.json(cards.listCards(getDb())));
-  api.get("/cards/upcoming", (c) => c.json(cards.listUpcomingCards(getDb())));
-  /** Only what is about to happen — within 15 minutes, overdue, or pinged. */
-  api.get("/cards/imminent", (c) => c.json(cards.listImminentCards(getDb())));
-  api.get("/cards/due", (c) => c.json(cards.listDueReminders(getDb())));
-  api.get("/cards/:id", (c) => {
-    const card = cards.getCard(getDb(), c.req.param("id"));
-    if (!card) return c.json({ error: "Not found" }, 404);
-    return c.json(card);
-  });
-  api.post("/cards", async (c) => {
-    const body = createDashboardCardSchema.parse(await c.req.json());
-    const result = cards.createCard(getDb(), {
-      ...body,
-      imageUrl: body.imageUrl || null,
-      meta: body.meta ?? null,
-    });
-    if ("error" in result) return c.json(result, 400);
-    // svgNotes lists anything the sanitizer stripped, so agents can self-correct.
-    return c.json({ ...result.card, svgNotes: result.svgNotes }, 201);
-  });
-  api.patch("/cards/:id", async (c) => {
-    const body = updateDashboardCardSchema.parse(await c.req.json());
-    const result = cards.updateCard(getDb(), c.req.param("id"), {
-      ...body,
-      imageUrl: body.imageUrl === "" ? null : body.imageUrl,
-      meta: body.meta ?? undefined,
-    });
-    if (!result) return c.json({ error: "Not found" }, 404);
-    if ("error" in result) return c.json(result, 400);
+  api.post("/tasks/:id/dismiss", (c) => {
+    const result = tasks.dismissTask(getDb(), c.req.param("id"));
+    if ("error" in result) return c.json(result, 404);
     return c.json(result);
   });
-  api.delete("/cards/:id", (c) =>
-    c.json(cards.deleteCard(getDb(), c.req.param("id"))),
-  );
-  /** Client confirms it actually chimed, so the reminder fires exactly once. */
-  api.post("/cards/:id/notified", (c) => {
-    const result = cards.markCardNotified(getDb(), c.req.param("id"));
+  api.post("/tasks/:id/notified", (c) => {
+    const result = tasks.markTaskNotified(getDb(), c.req.param("id"));
     if ("error" in result) return c.json(result, 404);
+    return c.json(result);
+  });
+  /** Move a task's slider or press its button. Not a completion. */
+  api.post("/tasks/:id/interact", async (c) => {
+    let body: { value?: number; pressed?: boolean } = {};
+    try {
+      body = cardInteractSchema.parse(await c.req.json());
+    } catch {
+      /* a bare button press has no body */
+    }
+    const result = await tasks.interactWithTask(getDb(), c.req.param("id"), body);
+    if ("error" in result) {
+      return c.json(result, result.error === "Task not found" ? 404 : 400);
+    }
     return c.json(result);
   });
 
@@ -274,34 +310,6 @@ export function createApp() {
    * does not change what activity you are in. That is set by hand, from
    * `/sessions/active`.
    */
-
-  /** Move a card's slider or press its button. Not a completion. */
-  api.post("/cards/:id/interact", async (c) => {
-    let body: { value?: number; pressed?: boolean } = {};
-    try {
-      body = cardInteractSchema.parse(await c.req.json());
-    } catch {
-      /* a bare button press has no body */
-    }
-    const result = await cards.interactWithCard(getDb(), c.req.param("id"), body);
-    if ("error" in result) {
-      return c.json(result, result.error === "Card not found" ? 404 : 400);
-    }
-    return c.json(result);
-  });
-
-  api.post("/cards/:id/complete", async (c) => {
-    let body: { note?: string | null; source?: "user" | "agent"; progress?: number } =
-      { source: "user" };
-    try {
-      body = completeCardSchema.parse(await c.req.json());
-    } catch {
-      /* empty ok */
-    }
-    const result = await cards.completeCard(getDb(), c.req.param("id"), body);
-    if ("error" in result) return c.json(result, 404);
-    return c.json(result);
-  });
 
   api.post("/habits/rebalance-xp", (c) =>
     c.json({ shares: habits.rebalanceHabitXp(getDb()) }),
@@ -474,14 +482,7 @@ export function createApp() {
     const body = injectQuestSchema.parse(await c.req.json());
     return c.json(quests.injectQuest(getDb(), body), 201);
   });
-  api.get("/reviews", (c) => c.json(quests.listLightReviews(getDb())));
-  api.post("/reviews", async (c) => {
-    const body = injectLightReviewSchema.parse(await c.req.json());
-    return c.json(quests.injectLightReview(getDb(), body), 201);
-  });
-  api.post("/reviews/:id/complete", (c) =>
-    c.json(quests.completeLightReview(getDb(), c.req.param("id"))),
-  );
+  /* Light reviews are tasks of kind "review" — see /tasks?kind=review. */
 
   api.get("/achievements", (c) =>
     c.json(achievements.listAchievements(getDb())),
@@ -513,7 +514,7 @@ export function createApp() {
       version: "0.4.0",
       maxPinnedCards: 2,
       agentSetupCard: { slot: 2, kind: "agent-setup", singleton: true },
-      cardKinds: CARD_KINDS,
+      taskKinds: TASK_KINDS,
       cardGraphics: ["emoji", "imageUrl", "imageData", "svg"],
       /** The closed set of day buckets. Invent any content; map it onto one of these. */
       activityTags: ACTIVITIES,
@@ -530,20 +531,13 @@ export function createApp() {
         "Goals are yours to set, not the user's. Write a condition, push data into properties, " +
         "and the system re-checks after every write. See GET /api/v1/agent/goal-syntax.",
       tools: [
-        "cards.crud",
-        "cards.complete",
-        "cards.svg",
-        "cards.agent-setup",
-        "cards.schedule",
-        "cards.reminders",
-        "cards.start",
-        "cards.repeat.spaced",
-        "habits.crud",
-        "habits.complete",
-        "habits.rebalance-xp",
-        "blocks.crud",
-        "blocks.start_complete",
-        "events.inject",
+        "tasks.crud",
+        "tasks.complete",
+        "tasks.dismiss",
+        "tasks.repeat.spaced",
+        "tasks.resources",
+        "tasks.control",
+        "tasks.svg",
         "events.xpOnComplete",
         "study.log",
         "goals.crud",

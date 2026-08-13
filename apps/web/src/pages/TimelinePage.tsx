@@ -4,26 +4,36 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Bell, Calendar, Check, ExternalLink, Repeat } from "lucide-react";
-import type { DashboardCard, ScheduleBlock, TimelineBlock } from "@life-os/shared";
+import {
+  isAgentStatus,
+  isPinned,
+  type Task,
+  type TimelineBlock,
+} from "@life-os/shared";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /**
  * The full agent schedule.
  *
- * The dashboard only shows the next fifteen minutes, so this is where
- * everything else lives: every scheduled card your agent has queued, grouped by
- * day, plus today's planned blocks laid out against the clock.
+ * The dashboard only shows what is landing in the next few minutes, so this is
+ * where everything else lives: every open task, grouped by the day it is due,
+ * plus today's shape drawn against the clock.
+ *
+ * There used to be three lists here — scheduled cards, agent events, light
+ * reviews — because there used to be three tables. There is one now, and the
+ * only thing that separates a row on this page from another is whether it has a
+ * time.
  */
 export function TimelinePage() {
   const qc = useQueryClient();
   /**
-   * `?card=<id>` arrives from a clicked OS notification. The row is highlighted
+   * `?task=<id>` arrives from a clicked OS notification. The row is highlighted
    * and scrolled to, so the notification lands you on the thing itself with one
    * button left to press.
    */
   const [searchParams] = useSearchParams();
-  const focusId = searchParams.get("card");
+  const focusId = searchParams.get("task");
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -35,68 +45,62 @@ export function TimelinePage() {
     queryFn: api.dashboard,
     refetchInterval: 15_000,
   });
-  const { data: cards = [], isLoading } = useQuery({
-    queryKey: ["cards"],
-    queryFn: api.cards,
+  const { data: open = [], isLoading } = useQuery({
+    queryKey: ["tasks", "active"],
+    queryFn: () => api.tasks("?status=active"),
     refetchInterval: 15_000,
   });
-  // Every block, not just the study ones the dashboard highlights — this page
-  // is the whole day.
-  const { data: blocks = [] } = useQuery({
-    queryKey: ["blocks"],
-    queryFn: api.blocks,
-    refetchInterval: 15_000,
+  const { data: done = [] } = useQuery({
+    queryKey: ["tasks", "done"],
+    queryFn: () => api.tasks("?status=done"),
+    refetchInterval: 60_000,
   });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["dashboard"] });
-    qc.invalidateQueries({ queryKey: ["cards"] });
+    qc.invalidateQueries({ queryKey: ["tasks"] });
   };
 
-  const completeEvent = useMutation({
-    mutationFn: (id: string) => api.completeEvent(id),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Done");
-    },
-  });
-
-  const dismissEvent = useMutation({
-    mutationFn: (id: string) => api.dismissEvent(id),
-    onSuccess: invalidate,
-  });
-
-  const completeReview = useMutation({
-    mutationFn: (id: string) => api.completeReview(id),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Review complete");
-    },
-  });
-
   const complete = useMutation({
-    mutationFn: (id: string) => api.completeCard(id),
+    mutationFn: (id: string) => api.completeTask(id),
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      qc.invalidateQueries({ queryKey: ["cards"] });
+      invalidate();
       toast.success(res.xpAwarded ? `Done · +${res.xpAwarded} XP` : "Done");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  /** Open scheduled cards, grouped by the local day their event falls on. */
+  const dismiss = useMutation({
+    mutationFn: (id: string) => api.dismissTask(id),
+    onSuccess: invalidate,
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  /**
+   * Work with no time on it. This is what the agent queued for "whenever" — a
+   * review, a nudge, something to read. It needs you, but not at 14:30.
+   */
+  const needsYou = useMemo(
+    () =>
+      open.filter(
+        (t) =>
+          !t.eventAt &&
+          !t.remindAt &&
+          !isPinned(t) &&
+          !isAgentStatus(t),
+      ),
+    [open],
+  );
+
+  /** Everything with a time, grouped by the local day it falls on. */
   const groups = useMemo(() => {
-    const scheduled = cards.filter(
-      (c) => (c.kind === "event" || c.kind === "reminder") && c.status === "active",
-    );
-    const byDay = new Map<string, DashboardCard[]>();
-    for (const card of scheduled) {
-      const when = card.eventAt ?? card.remindAt ?? card.showAt;
-      // Cards with no time at all are still real work — bucket them separately
-      // rather than dropping them off the only page that lists everything.
-      const key = when ? dayKey(new Date(when)) : "unscheduled";
+    const byDay = new Map<string, Task[]>();
+    for (const task of open) {
+      const when = task.eventAt ?? task.remindAt;
+      if (!when) continue;
+      const key = dayKey(new Date(when));
       const list = byDay.get(key) ?? [];
-      list.push(card);
+      list.push(task);
       byDay.set(key, list);
     }
     for (const list of byDay.values()) {
@@ -104,48 +108,20 @@ export function TimelinePage() {
         (a.eventAt ?? a.remindAt ?? "").localeCompare(b.eventAt ?? b.remindAt ?? ""),
       );
     }
-    return [...byDay.entries()].sort(([a], [b]) =>
-      a === "unscheduled" ? 1 : b === "unscheduled" ? -1 : a.localeCompare(b),
-    );
-  }, [cards]);
+    return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [open]);
 
-  /** Agent events and light reviews, flattened into one actionable list. */
-  const needsYou = useMemo(() => {
-    const events = (dashboard?.agentEvents ?? [])
-      .filter((e) => e.status === "pending")
-      .map((e) => ({
-        key: `ev-${e.id}`,
-        kind: e.kind,
-        title: e.title,
-        body: e.body,
-        link: e.link,
-        xp: e.xpOnComplete,
-        onComplete: () => completeEvent.mutate(e.id),
-        onDismiss: () => dismissEvent.mutate(e.id),
-      }));
-    const reviews = (dashboard?.lightReviews ?? [])
-      .filter((r) => !r.completedAt)
-      .map((r) => ({
-        key: `rev-${r.id}`,
-        kind: "review",
-        title: r.prompt,
-        body: null as string | null,
-        link: r.link ?? null,
-        xp: 0,
-        onComplete: () => completeReview.mutate(r.id),
-        onDismiss: undefined,
-      }));
-    return [...reviews, ...events];
-    // The mutation objects are stable; depending on them would rebuild forever.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboard?.agentEvents, dashboard?.lightReviews]);
-
-  const doneToday = cards.filter(
-    (c) =>
-      (c.kind === "event" || c.kind === "reminder") &&
-      c.status === "done" &&
-      c.completedAt &&
-      dayKey(new Date(c.completedAt)) === dayKey(new Date()),
+  const today = dayKey(new Date());
+  const doneToday = done.filter(
+    (t) => t.completedAt && dayKey(new Date(t.completedAt)) === today,
+  );
+  /** Today's timed work, listed under the ribbon it drew. */
+  const todaysPlan = useMemo(
+    () =>
+      open
+        .filter((t) => t.eventAt && dayKey(new Date(t.eventAt)) === today)
+        .sort((a, b) => (a.eventAt ?? "").localeCompare(b.eventAt ?? "")),
+    [open, today],
   );
 
   return (
@@ -158,16 +134,16 @@ export function TimelinePage() {
         <h1 className="text-2xl font-bold">Timeline</h1>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
           <Calendar className="h-4 w-4 shrink-0" />
-          Everything your agent has scheduled. The dashboard only shows the next
-          fifteen minutes.
+          Everything your agent has scheduled. The dashboard only shows what is
+          landing in the next few minutes.
         </p>
       </header>
 
       {/*
-        Agent-queued work lives here, next to the rest of what the agent has
-        planned. It used to sit in the dashboard's Quick log and push the habits
-        out of it entirely whenever the queue was non-empty — which, against an
-        agent that always has something queued, was always.
+        Untimed work lives here, next to the rest of what the agent has planned.
+        It used to sit in the dashboard's Quick log and push the habits out of it
+        entirely whenever the queue was non-empty — which, against an agent that
+        always has something queued, was always.
       */}
       {needsYou.length > 0 && (
         <section>
@@ -175,50 +151,51 @@ export function TimelinePage() {
             Needs you
           </h2>
           <ul className="space-y-2">
-            {needsYou.map((item) => (
+            {needsYou.map((task) => (
               <li
-                key={item.key}
+                key={task.id}
                 className="flex flex-wrap items-start gap-3 rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent)]/[0.07] p-4"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
-                      {item.kind}
+                      {task.kind}
                     </span>
-                    <span className="font-medium">{item.title}</span>
+                    <span className="font-medium">
+                      {task.emoji ? `${task.emoji} ` : ""}
+                      {task.title}
+                    </span>
                   </div>
-                  {item.body && (
-                    <p className="mt-1 text-sm text-[var(--muted)]">{item.body}</p>
+                  {task.subtitle && (
+                    <p className="mt-1 text-sm text-[var(--muted)]">
+                      {task.subtitle}
+                    </p>
                   )}
+                  {task.body && (
+                    <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap text-[var(--muted)]">
+                      {task.body}
+                    </p>
+                  )}
+                  <ResourceLinks task={task} />
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {item.link && (
-                    <a
-                      href={item.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn py-1.5 text-sm"
-                    >
-                      Open <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
                   <button
                     type="button"
                     className="btn btn-primary py-1.5 text-sm"
-                    onClick={item.onComplete}
+                    disabled={complete.isPending}
+                    onClick={() => complete.mutate(task.id)}
                   >
                     <Check className="h-3.5 w-3.5" /> Done
-                    {item.xp ? ` · +${item.xp}` : ""}
+                    {task.xpOnComplete ? ` · +${task.xpOnComplete}` : ""}
                   </button>
-                  {item.onDismiss && (
-                    <button
-                      type="button"
-                      className="btn py-1.5 text-sm"
-                      onClick={item.onDismiss}
-                    >
-                      Dismiss
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="btn py-1.5 text-sm"
+                    disabled={dismiss.isPending}
+                    onClick={() => dismiss.mutate(task.id)}
+                  >
+                    Dismiss
+                  </button>
                 </div>
               </li>
             ))}
@@ -227,12 +204,12 @@ export function TimelinePage() {
       )}
 
       {dashboard && (
-        <DayRibbon timeline={dashboard.timeline} blocks={blocks} now={now} />
+        <DayRibbon timeline={dashboard.timeline} plan={todaysPlan} now={now} />
       )}
 
       {isLoading && <div className="text-[var(--muted)]">Loading…</div>}
 
-      {!isLoading && groups.length === 0 && (
+      {!isLoading && groups.length === 0 && needsYou.length === 0 && (
         <div className="rounded-2xl border border-dashed border-white/[0.12] p-8 text-center">
           <p className="text-[var(--muted)]">
             Nothing scheduled. Ask your agent to put something in the calendar —
@@ -245,7 +222,7 @@ export function TimelinePage() {
         <DayGroup
           key={key}
           dayKeyValue={key}
-          cards={items}
+          tasks={items}
           now={now}
           busy={complete.isPending}
           focusId={focusId}
@@ -259,18 +236,18 @@ export function TimelinePage() {
             Done today
           </h2>
           <ul className="divide-y divide-white/[0.05]">
-            {doneToday.map((card) => (
+            {doneToday.map((task) => (
               <li
-                key={card.id}
+                key={task.id}
                 className="flex items-center gap-3 px-2 py-2 text-sm text-[var(--faint)]"
               >
                 <Check className="h-3.5 w-3.5 shrink-0 text-[#34D399]" />
                 <span className="min-w-0 flex-1 truncate line-through">
-                  {card.title}
+                  {task.title}
                 </span>
-                {card.completedAt && (
+                {task.completedAt && (
                   <span className="font-mono text-[11px]">
-                    {clockTime(card.completedAt)}
+                    {clockTime(task.completedAt)}
                   </span>
                 )}
               </li>
@@ -279,6 +256,27 @@ export function TimelinePage() {
         </section>
       )}
     </motion.div>
+  );
+}
+
+/** Whatever the agent attached — a chapter, a paper, a video. */
+function ResourceLinks({ task }: { task: Task }) {
+  if (task.resources.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+      {task.resources.map((r, i) => (
+        <a
+          key={`${r.url}-${i}`}
+          href={r.url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
+        >
+          {r.label}
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      ))}
+    </div>
   );
 }
 
@@ -293,7 +291,6 @@ function clockTime(iso: string): string {
 }
 
 function dayLabel(key: string): string {
-  if (key === "unscheduled") return "No time set";
   const today = dayKey(new Date());
   const tomorrow = dayKey(new Date(Date.now() + 86_400_000));
   if (key === today) return "Today";
@@ -308,11 +305,11 @@ function dayLabel(key: string): string {
 /** Today's planned day as a continuous colour ribbon with a live now marker. */
 function DayRibbon({
   timeline,
-  blocks,
+  plan,
   now,
 }: {
   timeline: TimelineBlock[];
-  blocks: ScheduleBlock[];
+  plan: Task[];
   now: number;
 }) {
   const clock = new Date(now);
@@ -383,24 +380,28 @@ function DayRibbon({
         Solid is what you did · hatched is what is planned
       </p>
 
-      {blocks.length > 0 && (
+      {plan.length > 0 && (
         <ul className="mt-4 space-y-1">
-          {blocks.map((b) => (
-            <li
-              key={b.id}
-              className="flex items-center gap-3 px-2 py-1.5 font-mono text-[11px] text-[var(--muted)]"
-            >
-              <span className="w-24 shrink-0 text-[var(--faint)]">
-                {b.plannedStart ?? "—"}
-                {b.plannedEnd ? `–${b.plannedEnd}` : ""}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-sans text-sm">
-                {b.label}
-              </span>
-              <span className="text-[var(--faint)]">{b.category}</span>
-              {b.status === "done" && <Check className="h-3 w-3 text-[#34D399]" />}
-            </li>
-          ))}
+          {plan.map((t) => {
+            const start = new Date(t.eventAt!);
+            const end = new Date(
+              start.getTime() + (t.durationMinutes ?? 30) * 60_000,
+            );
+            return (
+              <li
+                key={t.id}
+                className="flex items-center gap-3 px-2 py-1.5 font-mono text-[11px] text-[var(--muted)]"
+              >
+                <span className="w-24 shrink-0 text-[var(--faint)]">
+                  {clockTime(start.toISOString())}–{clockTime(end.toISOString())}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-sans text-sm">
+                  {t.title}
+                </span>
+                <span className="text-[var(--faint)]">{t.activityTag ?? t.kind}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -409,14 +410,14 @@ function DayRibbon({
 
 function DayGroup({
   dayKeyValue,
-  cards,
+  tasks,
   now,
   onComplete,
   busy,
   focusId,
 }: {
   dayKeyValue: string;
-  cards: DashboardCard[];
+  tasks: Task[];
   now: number;
   onComplete: (id: string) => void;
   busy?: boolean;
@@ -427,19 +428,19 @@ function DayGroup({
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 border-b border-white/[0.06] pb-2">
         <h2 className="text-sm font-semibold">{dayLabel(dayKeyValue)}</h2>
         <span className="font-mono text-[10px] text-[var(--faint)]">
-          {cards.length} item{cards.length === 1 ? "" : "s"}
+          {tasks.length} item{tasks.length === 1 ? "" : "s"}
         </span>
       </div>
 
       <ul>
-        {cards.map((card) => (
+        {tasks.map((task) => (
           <AgendaRow
-            key={card.id}
-            card={card}
+            key={task.id}
+            task={task}
             now={now}
             busy={busy}
-            focused={focusId === card.id}
-            onComplete={() => onComplete(card.id)}
+            focused={focusId === task.id}
+            onComplete={() => onComplete(task.id)}
           />
         ))}
       </ul>
@@ -449,20 +450,20 @@ function DayGroup({
 
 /** One calendar row: time gutter on the left, the thing on the right. */
 function AgendaRow({
-  card,
+  task,
   now,
   onComplete,
   busy,
   focused,
 }: {
-  card: DashboardCard;
+  task: Task;
   now: number;
   onComplete: () => void;
   busy?: boolean;
   focused?: boolean;
 }) {
-  const color = card.themeColor ?? "#5B8CFF";
-  const when = card.eventAt ?? card.remindAt;
+  const color = task.themeColor ?? "#5B8CFF";
+  const when = task.eventAt ?? task.remindAt;
   const past = Boolean(when && new Date(when).getTime() < now);
   const ref = useRef<HTMLLIElement>(null);
 
@@ -483,9 +484,9 @@ function AgendaRow({
         <div className={past ? "text-[var(--accent)]" : "text-[var(--muted)]"}>
           {when ? clockTime(when) : "—"}
         </div>
-        {card.durationMinutes && (
+        {task.durationMinutes && (
           <div className="text-[10px] text-[var(--faint)]">
-            {card.durationMinutes}m
+            {task.durationMinutes}m
           </div>
         )}
       </div>
@@ -501,64 +502,65 @@ function AgendaRow({
         <div className="min-w-0 flex-1 basis-48">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="truncate text-sm font-medium">
-              {card.emoji} {card.title}
+              {task.emoji} {task.title}
             </span>
-            {card.activityTag && (
+            {task.activityTag && (
               <span
                 className="font-mono text-[10px] uppercase tracking-wider"
                 style={{ color }}
               >
-                {card.activityTag}
+                {task.activityTag}
               </span>
             )}
-            {card.repeatRule !== "none" && (
+            {task.repeatRule !== "none" && (
               <span
                 className="flex items-center gap-1 font-mono text-[10px] text-[var(--faint)]"
                 title={
-                  card.repeatRule === "spaced"
+                  task.repeatRule === "spaced"
                     ? "Spaced repetition — the gap widens each time you complete it"
-                    : `Repeats ${card.repeatRule}`
+                    : `Repeats ${task.repeatRule}`
                 }
               >
                 <Repeat className="h-3 w-3" />
-                {card.repeatRule}
+                {task.repeatRule}
               </span>
             )}
-            {card.remindAt && (
+            {task.remindAt && (
               <span
                 className="flex items-center gap-1 font-mono text-[10px] text-[var(--faint)]"
                 title="Reminder fires here"
               >
                 <Bell className="h-3 w-3" />
-                {clockTime(card.remindAt)}
+                {clockTime(task.remindAt)}
               </span>
             )}
           </div>
-          {(card.subtitle || card.purpose) && (
+          {(task.subtitle || task.purpose) && (
             <p className="truncate text-xs text-[var(--muted)]">
-              {card.subtitle ?? card.purpose}
+              {task.subtitle ?? task.purpose}
             </p>
           )}
-          {card.body && (
+          {task.body && (
             <p className="mt-1 text-xs leading-relaxed whitespace-pre-wrap text-[var(--muted)]">
-              {card.body}
+              {task.body}
             </p>
           )}
+          <ResourceLinks task={task} />
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          {card.xpOnComplete > 0 && (
+          {task.xpOnComplete > 0 && (
             <span className="font-mono text-[11px] text-[#34D399]">
-              +{card.xpOnComplete} XP
+              +{task.xpOnComplete} XP
             </span>
           )}
-          {card.ctaLink && (
+          {task.ctaLink && (
             <a
-              href={card.ctaLink}
+              href={task.ctaLink}
               target="_blank"
               rel="noreferrer"
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.05] text-[var(--muted)] transition-colors hover:bg-white/[0.1] hover:text-[var(--text)]"
-              title={card.ctaLabel ?? "Open"}
+              title={task.ctaLabel ?? "Open"}
             >
               <ExternalLink className="h-3.5 w-3.5" />
             </a>

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { ChevronDown, ExternalLink } from "lucide-react";
-import { svgToDataUri, type DashboardCard } from "@life-os/shared";
+import { svgToDataUri, type Task } from "@life-os/shared";
 import { cn } from "@/lib/utils";
 
 /**
- * Agent status strip (reserved card slot 2).
+ * Agent status strip — the task the agent wrote about itself at setup, marked
+ * by `meta.connected`. It holds no slot: the two content slots are for cards
+ * you act on, and this is not one of them.
  *
  * Deliberately not a full card: once you are connected this is ambient status,
  * not something you act on, so it collapses to a single line. The detail only
@@ -13,7 +15,7 @@ import { cn } from "@/lib/utils";
  * Agent-supplied SVG is sanitized server-side and rendered through an `<img>`
  * data URI, which cannot execute script regardless of content.
  */
-export function AgentSetupCard({ card }: { card: DashboardCard }) {
+export function AgentSetupCard({ card }: { card: Task }) {
   const connected = Boolean(
     card.meta && (card.meta as { connected?: boolean }).connected,
   );

@@ -3,36 +3,33 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { font, radius, rgba, type Tokens } from "@/lib/theme";
+import { font, radius } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
 import { useLayout } from "@/lib/responsive";
 import { dayKey, labelDay } from "@/lib/format";
-import type { DashboardCard } from "@/lib/types";
-import {
-  Body,
-  Button,
-  Loading,
-  PageBody,
-  SectionHeader,
-  TwoPane,
-} from "@/components/ui";
+import { isAgentStatus, isPinned, type Task } from "@/lib/types";
+import { Body, Loading, PageBody, SectionHeader, TwoPane } from "@/components/ui";
 import { DayTimeline } from "@/components/day-timeline";
 import { VsYesterdayRow } from "@/components/vs-yesterday";
 import { XpChart } from "@/components/xp-chart";
-import { CardRow } from "@/components/card-row";
+import { TaskRow } from "@/components/task-row";
 import { SwipeTabs } from "@/components/swipe-tabs";
 
 /**
  * Everything time-shaped lives here: the day ribbon, how today compares, the
- * agent's full schedule, and the week. Today's screen only carries the next
- * fifteen minutes, so this is where the rest goes.
+ * agent's full schedule, and the week. Today's screen only carries what is
+ * landing in the next few minutes, so this is where the rest goes.
+ *
+ * There used to be three lists — scheduled cards, agent events, light reviews —
+ * because there used to be three tables. There is one now, and the only thing
+ * separating a row here from another is whether it has a time.
  */
 export default function TimelineScreen() {
   const qc = useQueryClient();
   const t = useTokens();
   const { gutter } = useLayout();
-  /** `?card=` arrives from a tapped notification — that row gets highlighted. */
-  const { card: focusId } = useLocalSearchParams<{ card?: string }>();
+  /** `?task=` arrives from a tapped notification — that row gets highlighted. */
+  const { task: focusId } = useLocalSearchParams<{ task?: string }>();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -46,47 +43,57 @@ export default function TimelineScreen() {
     refetchInterval: 15_000,
   });
 
+  /** The whole day's completions, which the dashboard payload does not carry. */
+  const doneQ = useQuery({
+    queryKey: ["tasks", "done"],
+    queryFn: () => api.tasks({ status: "done" }),
+    refetchInterval: 60_000,
+  });
+
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: ["dashboard"] });
+    void qc.invalidateQueries({ queryKey: ["tasks"] });
+  };
+
   const complete = useMutation({
-    mutationFn: (id: string) => api.completeCard(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
-  });
-
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["dashboard"] });
-
-  const completeEvent = useMutation({
-    mutationFn: (id: string) => api.completeEvent(id),
+    mutationFn: (id: string) => api.completeTask(id),
     onSuccess: invalidate,
   });
 
-  const dismissEvent = useMutation({
-    mutationFn: (id: string) => api.dismissEvent(id),
+  const dismiss = useMutation({
+    mutationFn: (id: string) => api.dismissTask(id),
     onSuccess: invalidate,
   });
 
-  const completeReview = useMutation({
-    mutationFn: (id: string) => api.completeReview(id),
-    onSuccess: invalidate,
-  });
+  const open = useMemo(
+    () => (dashQ.data?.tasks ?? []).filter((task) => task.status === "active"),
+    [dashQ.data?.tasks],
+  );
 
   /**
-   * Agent-queued work. It used to sit on Today and hide the habits behind it;
-   * it belongs here, next to the rest of what the agent has planned.
+   * Work with no time on it — what the agent queued for "whenever". It used to
+   * sit on Today and hide the habits behind it; it belongs here, next to the
+   * rest of what the agent has planned.
    */
-  const agentEvents = (dashQ.data?.agentEvents ?? []).filter(
-    (e) => e.status === "pending",
+  const needsYou = useMemo(
+    () =>
+      open.filter(
+        (task) =>
+          !task.eventAt && !task.remindAt && !isPinned(task) && !isAgentStatus(task),
+      ),
+    [open],
   );
-  const reviews = (dashQ.data?.lightReviews ?? []).filter((r) => !r.completedAt);
 
+  /** Everything with a time, grouped by the local day it falls on. */
   const groups = useMemo(() => {
     void now; // re-group as the clock moves
-    const scheduled = dashQ.data?.scheduled ?? [];
-    const byDay = new Map<string, DashboardCard[]>();
-    for (const card of scheduled) {
-      if (card.status !== "active") continue;
-      const when = card.eventAt ?? card.remindAt ?? card.showAt;
-      const key = when ? dayKey(new Date(when)) : "unscheduled";
+    const byDay = new Map<string, Task[]>();
+    for (const task of open) {
+      const when = task.eventAt ?? task.remindAt;
+      if (!when) continue;
+      const key = dayKey(new Date(when));
       const list = byDay.get(key) ?? [];
-      list.push(card);
+      list.push(task);
       byDay.set(key, list);
     }
     for (const list of byDay.values()) {
@@ -94,18 +101,17 @@ export default function TimelineScreen() {
         (a.eventAt ?? a.remindAt ?? "").localeCompare(b.eventAt ?? b.remindAt ?? ""),
       );
     }
-    const keys = [...byDay.keys()].sort((a, b) => {
-      if (a === "unscheduled") return 1;
-      if (b === "unscheduled") return -1;
-      return a.localeCompare(b);
-    });
-    return keys.map((k) => ({ key: k, cards: byDay.get(k)! }));
-  }, [dashQ.data?.scheduled, now]);
+    return [...byDay.keys()]
+      .sort((a, b) => a.localeCompare(b))
+      .map((k) => ({ key: k, tasks: byDay.get(k)! }));
+  }, [open, now]);
 
-  const doneToday = useMemo(
-    () => (dashQ.data?.scheduled ?? []).filter((c) => c.status === "done"),
-    [dashQ.data?.scheduled],
-  );
+  const doneToday = useMemo(() => {
+    const today = dayKey(new Date());
+    return (doneQ.data ?? []).filter(
+      (task) => task.completedAt && dayKey(new Date(task.completedAt)) === today,
+    );
+  }, [doneQ.data]);
 
   if (dashQ.isLoading && !dashQ.data) return <Loading />;
 
@@ -132,39 +138,18 @@ export default function TimelineScreen() {
                list of things that are going to happen in it. */
             left={
               <>
-                {agentEvents.length + reviews.length > 0 ? (
+                {needsYou.length > 0 ? (
                   <View style={{ gap: 10 }}>
                     <SectionHeader title="Needs you" />
-                    {agentEvents.map((ev) => (
-                      <View key={ev.id} style={agentPanel(t)}>
-                        <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
-                          {ev.title}
-                        </Text>
-                        {ev.body ? <Body>{ev.body}</Body> : null}
-                        <View style={{ flexDirection: "row", gap: 8 }}>
-                          <Button
-                            title={`Done${ev.xpOnComplete ? ` · +${ev.xpOnComplete}` : ""}`}
-                            onPress={() => completeEvent.mutate(ev.id)}
-                          />
-                          <Button
-                            title="Dismiss"
-                            variant="ghost"
-                            onPress={() => dismissEvent.mutate(ev.id)}
-                          />
-                        </View>
-                      </View>
-                    ))}
-                    {reviews.map((r) => (
-                      <View key={r.id} style={agentPanel(t)}>
-                        <Text style={{ color: t.text, fontFamily: font.title, fontSize: 16 }}>
-                          {r.prompt}
-                        </Text>
-                        <Button
-                          title="Complete review"
-                          onPress={() => completeReview.mutate(r.id)}
-                          style={{ alignSelf: "flex-start" }}
-                        />
-                      </View>
+                    {needsYou.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        expanded
+                        urgent={focusId === task.id}
+                        onComplete={() => complete.mutate(task.id)}
+                        onDismiss={() => dismiss.mutate(task.id)}
+                      />
                     ))}
                   </View>
                 ) : null}
@@ -186,7 +171,7 @@ export default function TimelineScreen() {
             }
             right={
               <>
-                {groups.length === 0 ? (
+                {groups.length === 0 && needsYou.length === 0 ? (
                   <Body>Nothing scheduled. Your agent will fill this in.</Body>
                 ) : (
                   groups.map((g) => (
@@ -195,16 +180,21 @@ export default function TimelineScreen() {
                         title={labelDay(g.key)}
                         right={
                           <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 11 }}>
-                            {g.cards.length}
+                            {g.tasks.length}
                           </Text>
                         }
                       />
-                      {g.cards.map((c) => (
-                        <CardRow
-                          key={c.id}
-                          card={c}
-                          urgent={Boolean(c.notifiedAt && c.flash) || focusId === c.id}
-                          onComplete={() => complete.mutate(c.id)}
+                      {g.tasks.map((task) => (
+                        <TaskRow
+                          key={task.id}
+                          task={task}
+                          /* The tapped notification's task opens expanded — you
+                             are here to deal with it, not to look at a title. */
+                          expanded={focusId === task.id}
+                          urgent={
+                            Boolean(task.notifiedAt && task.flash) || focusId === task.id
+                          }
+                          onComplete={() => complete.mutate(task.id)}
                         />
                       ))}
                     </View>
@@ -214,9 +204,9 @@ export default function TimelineScreen() {
                 {doneToday.length > 0 ? (
                   <View style={{ gap: 8 }}>
                     <SectionHeader title="Done today" />
-                    {doneToday.map((c) => (
+                    {doneToday.map((task) => (
                       <View
-                        key={c.id}
+                        key={task.id}
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
@@ -229,7 +219,7 @@ export default function TimelineScreen() {
                           borderCurve: "continuous",
                         }}
                       >
-                        <Text style={{ fontSize: 16 }}>{c.emoji || "✓"}</Text>
+                        <Text style={{ fontSize: 16 }}>{task.emoji || "✓"}</Text>
                         <Text
                           style={{
                             color: t.muted,
@@ -240,11 +230,13 @@ export default function TimelineScreen() {
                           }}
                           numberOfLines={1}
                         >
-                          {c.title}
+                          {task.title}
                         </Text>
-                        {c.xpOnComplete > 0 ? (
-                          <Text style={{ color: t.positive, fontFamily: font.mono, fontSize: 12 }}>
-                            +{c.xpOnComplete} XP
+                        {task.xpOnComplete > 0 ? (
+                          <Text
+                            style={{ color: t.positive, fontFamily: font.mono, fontSize: 12 }}
+                          >
+                            +{task.xpOnComplete} XP
                           </Text>
                         ) : null}
                       </View>
@@ -258,17 +250,4 @@ export default function TimelineScreen() {
       </ScrollView>
     </SwipeTabs>
   );
-}
-
-/** Shared panel styling for the agent's queued items. */
-function agentPanel(t: Tokens) {
-  return {
-    gap: 10,
-    backgroundColor: rgba(t.accent, 0.08),
-    borderWidth: 1,
-    borderColor: rgba(t.accent, 0.24),
-    borderRadius: radius.lg,
-    padding: 16,
-    borderCurve: "continuous" as const,
-  };
 }

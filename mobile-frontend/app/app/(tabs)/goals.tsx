@@ -25,7 +25,7 @@ export default function GoalsScreen() {
   const props = dashQ.data?.properties ?? [];
 
   return (
-    <SwipeTabs index={2}>
+    <SwipeTabs index={3}>
       <ScrollView
         style={{ flex: 1, backgroundColor: t.bg }}
         contentContainerStyle={{ padding: gutter, paddingBottom: 36 }}

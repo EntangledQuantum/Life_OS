@@ -79,7 +79,7 @@ export default function SettingsScreen() {
   const s = settingsQ.data;
 
   return (
-    <SwipeTabs index={3}>
+    <SwipeTabs index={4}>
       <ScrollView
         style={{ flex: 1, backgroundColor: t.bg }}
         contentContainerStyle={{ padding: gutter, paddingBottom: 44 }}

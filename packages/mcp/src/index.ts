@@ -26,24 +26,6 @@ config({
 
 import { listHabits, createHabit, updateHabit, deleteHabit, completeHabit, setHabitTheme, rebalanceHabitXp } from "../../../apps/api/src/services/habits.js";
 import {
-  listCards,
-  listUpcomingCards,
-  listDueReminders,
-  getCard,
-  createCard,
-  updateCard,
-  deleteCard,
-  completeCard,
-  markCardNotified,
-} from "../../../apps/api/src/services/cards.js";
-import {
-  listBlocks,
-  createBlock,
-  updateBlock,
-  deleteBlock,
-  completeBlock,
-} from "../../../apps/api/src/services/blocks.js";
-import {
   listGoals,
   createGoal,
   updateGoal,
@@ -64,11 +46,19 @@ import {
   listDatabaseBackups,
   runBackup,
 } from "../../../apps/api/src/services/backups.js";
-import {
-  listAgentEvents,
-  injectAgentEvent,
-} from "../../../apps/api/src/services/events.js";
 import { createStudySession } from "../../../apps/api/src/services/study.js";
+import {
+  completeTask,
+  createTask,
+  deleteTask,
+  dismissTask,
+  getTask,
+  listCurrentTasks,
+  listDueTasks,
+  listTasks,
+  markTaskNotified,
+  updateTask,
+} from "../../../apps/api/src/services/tasks.js";
 import {
   createWebhookTarget,
   deleteWebhookTarget,
@@ -79,7 +69,7 @@ import {
 } from "../../../apps/api/src/services/webhook.js";
 import { getDashboard } from "../../../apps/api/src/services/dashboard.js";
 import { getVsYesterday, getPulse } from "../../../apps/api/src/services/snapshots.js";
-import { injectQuest, injectLightReview, listQuests, listLightReviews } from "../../../apps/api/src/services/quests.js";
+import { injectQuest, listQuests } from "../../../apps/api/src/services/quests.js";
 import {
   getSettings,
   updateSettings,
@@ -90,12 +80,12 @@ import {
 import { listAchievements, createAchievement } from "../../../apps/api/src/services/achievements.js";
 import {
   ACTIVITIES,
-  CARD_KINDS,
   GOAL_CONDITION_SYNTAX,
   GOAL_METRICS,
   NOTIFICATION_SOUND_IDS,
   REPEAT_RULES,
   WEBHOOK_EVENTS,
+  TASK_KINDS,
   localDateString,
   XP_MODEL_DOC,
 } from "@life-os/shared";
@@ -228,18 +218,6 @@ const tools = [
     },
   },
   {
-    name: "lifeos_inject_light_review",
-    description: "Inject a light review prompt for a date (default today)",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        prompt: { type: "string" },
-        forDate: { type: "string" },
-      },
-      required: ["prompt"],
-    },
-  },
-  {
     name: "lifeos_update_xp_rules",
     description:
       "Patch gamification config: dailyXpTarget (the fixed daily XP pool), " +
@@ -266,155 +244,6 @@ const tools = [
     description:
       "Re-slice dailyXpTarget across active habits by xpWeight. Call after bulk habit edits.",
     inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "lifeos_list_cards",
-    description: "List front-page cards (2 content slots + the agent-setup card in slot 2)",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "lifeos_upsert_card",
-    description:
-      "Create or replace a pinned front-page card. slot 0/1 are the two content cards; " +
-      "kind:'agent-setup' targets the reserved slot 2. `svg` accepts inline SVG " +
-      "markup (sanitized, rendered sandboxed) for custom graphics. " +
-      "For anything with a time on it use lifeos_schedule_card instead — scheduled cards " +
-      "are unpinned and never eat one of the two precious front-page slots.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        slot: { type: "number", enum: [0, 1, 2] },
-        kind: { type: "string", enum: [...CARD_KINDS] },
-        purpose: { type: "string" },
-        activityTag: { type: "string", enum: [...ACTIVITIES] },
-        title: { type: "string" },
-        subtitle: { type: "string" },
-        body: { type: "string" },
-        emoji: { type: "string" },
-        themeColor: { type: "string" },
-        imageUrl: { type: "string" },
-        svg: { type: "string" },
-        progress: { type: "number" },
-        ctaLabel: { type: "string" },
-        ctaLink: { type: "string" },
-        meta: { type: "object" },
-        xpOnComplete: { type: "number" },
-        webhookOnComplete: { type: "boolean" },
-      },
-      required: ["title"],
-    },
-  },
-  {
-    name: "lifeos_update_card",
-    description: "Patch an existing card by id (progress, body, svg, status…)",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        id: { type: "string" },
-        title: { type: "string" },
-        subtitle: { type: "string" },
-        body: { type: "string" },
-        svg: { type: "string" },
-        progress: { type: "number" },
-        status: { type: "string", enum: ["active", "done", "hidden"] },
-        meta: { type: "object" },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "lifeos_delete_card",
-    description: "Delete a front-page card by id",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "lifeos_complete_card",
-    description: "Mark a card complete (awards xpOnComplete and fires the webhook)",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string" }, note: { type: "string" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "lifeos_list_blocks",
-    description: "List today's schedule blocks on the day timeline",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "lifeos_create_block",
-    description:
-      "Add a timeline block (agent owns the schedule; the user starts/completes it)",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        category: { type: "string" },
-        label: { type: "string" },
-        plannedStart: { type: "string" },
-        plannedEnd: { type: "string" },
-        notes: { type: "string" },
-        date: { type: "string" },
-      },
-      required: ["label"],
-    },
-  },
-  {
-    name: "lifeos_update_block",
-    description: "Patch a schedule block by id",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        id: { type: "string" },
-        label: { type: "string" },
-        category: { type: "string" },
-        plannedStart: { type: "string" },
-        plannedEnd: { type: "string" },
-        status: {
-          type: "string",
-          enum: ["planned", "active", "done", "skipped"],
-        },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "lifeos_delete_block",
-    description: "Delete a schedule block by id",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "lifeos_list_events",
-    description: "List today's agent events in the Quick log queue",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "lifeos_inject_event",
-    description:
-      "Push a task/review/reminder into Quick log. It flashes until the user " +
-      "completes it, and awards xpOnComplete as bonus XP outside the habit pool.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        kind: {
-          type: "string",
-          enum: ["review", "task", "life", "study", "reminder", "other"],
-        },
-        title: { type: "string" },
-        body: { type: "string" },
-        link: { type: "string" },
-        priority: { type: "number" },
-        xpOnComplete: { type: "number" },
-      },
-      required: ["title"],
-    },
   },
   {
     name: "lifeos_create_achievement",
@@ -551,71 +380,6 @@ const tools = [
           },
         },
       },
-    },
-  },
-  {
-    name: "lifeos_schedule_card",
-    description:
-      "Schedule an event or reminder card. RULE: showAt <= remindAt < eventAt — the user must be " +
-      "told about a thing before the thing, so a reminder at or after its own event is rejected. " +
-      `Tag it with one of ${ACTIVITIES.join(" | ")}; starting the card takes over the day ` +
-      "timeline under that tag. repeatRule 'spaced' walks an expanding ladder (1/3/7/14/30/60 " +
-      "days by default) on each completion — that is how you build spaced repetition.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        kind: { type: "string", enum: ["event", "reminder"] },
-        title: { type: "string" },
-        purpose: {
-          type: "string",
-          description: "What this card is for, in your own words",
-        },
-        activityTag: { type: "string", enum: [...ACTIVITIES] },
-        showAt: { type: "string", description: "ISO 8601 — card appears" },
-        remindAt: { type: "string", description: "ISO 8601 — chime fires" },
-        eventAt: { type: "string", description: "ISO 8601 — the thing happens" },
-        durationMinutes: { type: "number" },
-        repeatRule: { type: "string", enum: [...REPEAT_RULES] },
-        repeatOffsetsDays: { type: "array", items: { type: "number" } },
-        sound: { type: "boolean" },
-        flash: { type: "boolean" },
-        subtitle: { type: "string" },
-        body: { type: "string" },
-        emoji: { type: "string" },
-        themeColor: { type: "string" },
-        svg: { type: "string" },
-        meta: { type: "object" },
-        xpOnComplete: { type: "number" },
-      },
-      required: ["title"],
-    },
-  },
-  {
-    name: "lifeos_list_upcoming_cards",
-    description: "Scheduled event/reminder cards currently on screen, soonest first",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "lifeos_list_due_reminders",
-    description: "Reminders whose time has passed and which have not chimed yet",
-    inputSchema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "lifeos_mark_card_notified",
-    description: "Record that a reminder has chimed, so it fires only once",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string" } },
-      required: ["id"],
-    },
-  },
-  {
-    name: "lifeos_complete_block",
-    description: "Complete a timeline block (study blocks also log a study session)",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string" } },
-      required: ["id"],
     },
   },
   {
@@ -756,6 +520,144 @@ const tools = [
     inputSchema: { type: "object" as const, properties: {} },
   },
   {
+    name: "lifeos_list_tasks",
+    description:
+      "Tasks — one of the two nouns, the other being habits. Everything the user has to do is " +
+      "one of these: a thing with an optional time, an optional repeat, optional XP, optional " +
+      "links, and an optional card presentation. Filter by status (active|done|dismissed) and " +
+      "kind (task|study|review|reminder).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string", enum: ["active", "done", "dismissed"] },
+        kind: { type: "string", enum: ["task", "study", "review", "reminder"] },
+      },
+    },
+  },
+  {
+    name: "lifeos_current_tasks",
+    description:
+      "What is on the user's plate right now: inside the notification lead window and not past " +
+      "its own end time. This is what the dashboard shows above the habits.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_due_tasks",
+    description: "Tasks whose notification should fire now and has not yet",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
+    name: "lifeos_create_task",
+    description:
+      "Create a task. There is no start — a task has a target time and a completion. " +
+      "Set eventAt for when it should happen and durationMinutes for how long it takes " +
+      "(without a duration it leaves the front page the moment its time passes). " +
+      "repeatRule daily|weekly|spaced makes Life OS schedule it again on completion, so you " +
+      "do not have to recreate recurring work every night. resources[] carries links — that is " +
+      "all a study block ever was. control adds a slider or button that asks the user something " +
+      "without completing the task.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        kind: { type: "string", enum: ["task", "study", "review", "reminder"] },
+        title: { type: "string" },
+        subtitle: { type: "string" },
+        body: { type: "string" },
+        purpose: { type: "string" },
+        activityTag: { type: "string", enum: [...ACTIVITIES] },
+        showAt: { type: "string" },
+        eventAt: { type: "string" },
+        remindAt: { type: "string" },
+        durationMinutes: { type: "number" },
+        repeatRule: { type: "string", enum: [...REPEAT_RULES] },
+        repeatOffsetsDays: { type: "array", items: { type: "number" } },
+        xpOnComplete: { type: "number" },
+        webhookOnComplete: { type: "boolean" },
+        webhookOnInteract: { type: "boolean" },
+        resources: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string" },
+              url: { type: "string" },
+              kind: { type: "string" },
+            },
+            required: ["label", "url"],
+          },
+        },
+        slot: { type: "number", enum: [0, 1] },
+        emoji: { type: "string" },
+        themeColor: { type: "string" },
+        imageUrl: { type: "string" },
+        svg: { type: "string" },
+        ctaLabel: { type: "string" },
+        ctaLink: { type: "string" },
+        control: { type: "object" },
+        meta: { type: "object" },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "lifeos_update_task",
+    description: "Patch a task. Moving its time re-arms the notification.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        body: { type: "string" },
+        status: { type: "string", enum: ["active", "done", "dismissed"] },
+        eventAt: { type: "string" },
+        durationMinutes: { type: "number" },
+        activityTag: { type: "string", enum: [...ACTIVITIES] },
+        xpOnComplete: { type: "number" },
+        resources: { type: "array", items: { type: "object" } },
+        slot: { type: "number" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_complete_task",
+    description:
+      "Complete a task on the user's behalf. Awards XP, fires your webhook if you subscribed, " +
+      "and spawns the next occurrence if it repeats.",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" }, note: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_dismiss_task",
+    description: "Put a task away without doing it. Distinct from done; stays in history.",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_delete_task",
+    description: "Remove a task entirely. Prefer dismiss — deleting loses the record.",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "lifeos_mark_task_notified",
+    description: "Record that a notification fired, so it fires once. Clients normally do this.",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
+  {
     name: "lifeos_list_webhook_targets",
     description:
       "Where Life OS delivers completions. Secrets are never returned — only whether one is set.",
@@ -879,11 +781,6 @@ async function handleTool(name: string, args: Record<string, unknown>) {
       });
     case "lifeos_inject_quest":
       return injectQuest(db, args as any);
-    case "lifeos_inject_light_review":
-      return injectLightReview(db, {
-        prompt: String(args.prompt),
-        forDate: String(args.forDate || localDateString()),
-      });
     case "lifeos_update_xp_rules":
       return updateGamificationConfig(db, args as any);
     case "lifeos_get_xp_model": {
@@ -909,40 +806,6 @@ async function handleTool(name: string, args: Record<string, unknown>) {
     }
     case "lifeos_rebalance_xp":
       return { shares: rebalanceHabitXp(db) };
-    case "lifeos_list_cards":
-      return listCards(db);
-    case "lifeos_upsert_card":
-      return createCard(db, args as any);
-    case "lifeos_update_card": {
-      const { id, ...rest } = args as { id: string } & Record<string, unknown>;
-      const result = updateCard(db, id, rest as any);
-      if (!result) throw new Error(`Card not found: ${id}`);
-      if ("error" in result) throw new Error(result.error);
-      return result;
-    }
-    case "lifeos_delete_card":
-      return deleteCard(db, String(args.id));
-    case "lifeos_complete_card":
-      return completeCard(db, String(args.id), {
-        note: args.note as string | undefined,
-        source: "agent",
-      });
-    case "lifeos_list_blocks":
-      return listBlocks(db);
-    case "lifeos_create_block":
-      return createBlock(db, { source: "agent", ...(args as any) });
-    case "lifeos_update_block": {
-      const { id, ...rest } = args as { id: string } & Record<string, unknown>;
-      const block = updateBlock(db, id, rest as any);
-      if (!block) throw new Error(`Block not found: ${id}`);
-      return block;
-    }
-    case "lifeos_delete_block":
-      return deleteBlock(db, String(args.id));
-    case "lifeos_list_events":
-      return listAgentEvents(db);
-    case "lifeos_inject_event":
-      return injectAgentEvent(db, args as any);
     case "lifeos_create_achievement":
       return createAchievement(db, args as any);
     case "lifeos_list_achievements":
@@ -955,9 +818,9 @@ async function handleTool(name: string, args: Record<string, unknown>) {
     case "lifeos_get_capabilities":
       return {
         name: "Life OS",
-        version: "0.4.0",
-        maxPinnedCards: 2,
-        cardKinds: CARD_KINDS,
+        version: "0.5.0",
+        maxPinnedTasks: 2,
+        taskKinds: TASK_KINDS,
         activityTags: ACTIVITIES,
         repeatRules: REPEAT_RULES,
         scheduleRule: "showAt <= remindAt < eventAt",
@@ -971,32 +834,7 @@ async function handleTool(name: string, args: Record<string, unknown>) {
     case "lifeos_setup_instance":
       return runInitialSetup(db, args as any);
 
-    case "lifeos_schedule_card": {
-      const kind =
-        args.kind === "reminder" || args.kind === "event"
-          ? args.kind
-          : args.durationMinutes
-            ? "event"
-            : "reminder";
-      const result = createCard(db, { ...(args as any), kind });
-      if ("error" in result) throw new Error(result.error);
-      return result;
-    }
-    case "lifeos_list_upcoming_cards":
-      return listUpcomingCards(db);
-    case "lifeos_list_due_reminders":
-      return listDueReminders(db);
-    case "lifeos_mark_card_notified": {
-      const result = markCardNotified(db, String(args.id));
-      if ("error" in result) throw new Error(result.error);
-      return result;
-    }
 
-    case "lifeos_complete_block": {
-      const result = completeBlock(db, String(args.id));
-      if ("error" in result) throw new Error(result.error);
-      return result;
-    }
 
     case "lifeos_list_properties":
       return listProperties(db);
@@ -1048,6 +886,48 @@ async function handleTool(name: string, args: Record<string, unknown>) {
         // Met but unwitnessed: the user still has to see the animation.
         awaitingCelebration: pendingCelebrations(db),
       };
+
+    case "lifeos_list_tasks":
+      return listTasks(db, {
+        status: args.status as never,
+        kind: args.kind as never,
+        visibleOnly: true,
+      });
+    case "lifeos_current_tasks":
+      return listCurrentTasks(db);
+    case "lifeos_due_tasks":
+      return listDueTasks(db);
+    case "lifeos_create_task": {
+      const result = createTask(db, args as never);
+      if ("error" in result) throw new Error(result.error);
+      return result.task;
+    }
+    case "lifeos_update_task": {
+      const { id, ...patch } = args as { id: string };
+      const result = updateTask(db, id, patch as never);
+      if ("error" in result) throw new Error(result.error);
+      return result.task;
+    }
+    case "lifeos_complete_task": {
+      const result = await completeTask(db, String(args.id), {
+        note: (args.note as string) ?? null,
+        source: "agent",
+      });
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_dismiss_task": {
+      const result = dismissTask(db, String(args.id));
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
+    case "lifeos_delete_task":
+      return deleteTask(db, String(args.id));
+    case "lifeos_mark_task_notified": {
+      const result = markTaskNotified(db, String(args.id));
+      if ("error" in result) throw new Error(result.error);
+      return result;
+    }
 
     case "lifeos_list_webhook_targets":
       return listWebhookTargets(db);

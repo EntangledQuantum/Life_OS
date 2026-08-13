@@ -6,11 +6,17 @@ import {
   DEFAULT_SEED_HABITS,
   redistributeDailyXp,
 } from "@life-os/shared";
+import { bootstrapDatabase } from "./bootstrap.js";
 import { createDb, resolveDbPath } from "./client.js";
-import { ensureSchema } from "./ensure-schema.js";
 import * as schema from "./schema.js";
 
-ensureSchema();
+/*
+ * Full bootstrap, not just `ensureSchema`. The versioned migrations are
+ * additive — they alter and extend, they do not create the base tables — so on
+ * a brand-new file the Drizzle migration folder has to run first. Seeding an
+ * empty database used to fail on `no such table: settings`.
+ */
+bootstrapDatabase();
 const db = createDb();
 const now = new Date().toISOString();
 
@@ -202,92 +208,19 @@ if (propertyCount === 0) {
     .run();
 }
 
-// Sample schedule blocks for today (local)
+// Today, in local time. The seeded day is drawn against this.
 const today = new Date();
 const y = today.getFullYear();
 const m = String(today.getMonth() + 1).padStart(2, "0");
 const d = String(today.getDate()).padStart(2, "0");
 const dateStr = `${y}-${m}-${d}`;
 
-const blockCount = db.select().from(schema.scheduleBlocks).all().length;
-if (blockCount === 0) {
-  const blocks = [
-    { category: "Sleep", label: "Sleep", plannedStart: "02:00", plannedEnd: "11:00" },
-    { category: "Life", label: "Morning buffer", plannedStart: "11:00", plannedEnd: "13:00" },
-    { category: "Deep Work", label: "Deep work", plannedStart: "13:00", plannedEnd: "16:00" },
-    { category: "Study", label: "Study", plannedStart: "16:30", plannedEnd: "18:30" },
-    { category: "Health", label: "Movement", plannedStart: "19:00", plannedEnd: "19:45" },
-    { category: "Startup", label: "Build", plannedStart: "20:00", plannedEnd: "23:30" },
-    { category: "Break", label: "Wind-down", plannedStart: "00:00", plannedEnd: "02:00" },
-  ];
-  for (const b of blocks) {
-    db.insert(schema.scheduleBlocks)
-      .values({
-        id: nanoid(),
-        date: dateStr,
-        category: b.category,
-        label: b.label,
-        plannedStart: b.plannedStart,
-        plannedEnd: b.plannedEnd,
-        actualStart: null,
-        actualEnd: null,
-        status: "planned",
-        source: "agent",
-        notes: null,
-        completedAt: null,
-        createdAt: now,
-      })
-      .run();
-  }
-}
-
-// Sample agent events
-const eventCount = db.select().from(schema.agentEvents).all().length;
-if (eventCount === 0) {
-  db.insert(schema.agentEvents)
-    .values([
-      {
-        id: nanoid(),
-        kind: "review",
-        title: "Light SR: Feynman one concept",
-        body: "Pick yesterday’s hardest idea and explain it in 3 sentences.",
-        link: null,
-        forDate: dateStr,
-        status: "pending",
-        priority: 2,
-        xpOnComplete: 15,
-        completedAt: null,
-        createdAt: now,
-      },
-      {
-        id: nanoid(),
-        kind: "task",
-        title: "Protect deep work block",
-        body: "When Right Now is Deep Work, stay on the block Hermes scheduled.",
-        link: null,
-        forDate: dateStr,
-        status: "pending",
-        priority: 1,
-        xpOnComplete: 10,
-        completedAt: null,
-        createdAt: now,
-      },
-    ])
-    .run();
-}
-
-// Light review sample
-const reviewCount = db.select().from(schema.lightReviews).all().length;
-if (reviewCount === 0) {
-  db.insert(schema.lightReviews)
-    .values({
-      id: nanoid(),
-      prompt: "Explain one concept from yesterday in 3 sentences (Feynman).",
-      forDate: dateStr,
-      completedAt: null,
-      createdAt: now,
-    })
-    .run();
+/** Local HH:mm today, as an ISO instant. */
+function at(hhmm: string): string {
+  const [hh, mm] = hhmm.split(":").map(Number);
+  const dt = new Date(today);
+  dt.setHours(hh ?? 0, mm ?? 0, 0, 0);
+  return dt.toISOString();
 }
 
 // Quest sample
@@ -327,57 +260,189 @@ if (questCount === 0) {
   }
 }
 
-// Sample agent card (slot 0) if none
-const cardCount = db.select().from(schema.dashboardCards).all().length;
-if (cardCount === 0) {
-  db.insert(schema.dashboardCards)
-    .values({
-      id: nanoid(),
-      slot: 0,
+/**
+ * A seeded day.
+ *
+ * Every one of these is a row in `tasks` — there is no separate table for a
+ * schedule block, an agent event or a review any more, so a fresh install shows
+ * the same shape a real one does. One is pinned as a front-page card; the rest
+ * live on the Timeline until their time comes round.
+ */
+interface SeedTask {
+  kind: "task" | "study" | "review" | "reminder";
+  title: string;
+  subtitle?: string;
+  body?: string;
+  activityTag?: string;
+  eventAt?: string;
+  durationMinutes?: number;
+  repeatRule?: "none" | "daily" | "weekly" | "spaced";
+  themeColor?: string;
+  emoji?: string;
+  progress?: number;
+  slot?: 0 | 1;
+  xpOnComplete?: number;
+  webhookOnComplete?: boolean;
+  resources?: { label: string; url: string; kind?: string }[];
+  meta?: Record<string, unknown>;
+}
+
+const taskCount = db.select().from(schema.tasks).all().length;
+if (taskCount === 0) {
+  const seeded: SeedTask[] = [
+    {
+      kind: "task",
+      title: "Deep work",
+      activityTag: "Deep Work",
+      eventAt: at("13:00"),
+      durationMinutes: 180,
+      themeColor: "#A78BFA",
+      emoji: "🎯",
+      xpOnComplete: 30,
+    },
+    {
+      kind: "study",
+      title: "Read one chapter",
+      subtitle: "Whatever your agent has you on",
+      body:
+        "Read it once for shape, then again with a pen. Write three sentences " +
+        "you could say out loud to someone who has not read it.",
+      activityTag: "Study",
+      eventAt: at("16:30"),
+      durationMinutes: 120,
+      themeColor: "#C084FC",
+      emoji: "📖",
+      xpOnComplete: 25,
+      resources: [
+        {
+          label: "The Feynman technique",
+          url: "https://fs.blog/feynman-technique/",
+          kind: "link",
+        },
+      ],
+    },
+    {
+      kind: "task",
+      title: "Move for 45 minutes",
+      activityTag: "Exercise",
+      eventAt: at("19:00"),
+      durationMinutes: 45,
+      themeColor: "#34D399",
+      emoji: "🏃",
+      xpOnComplete: 20,
+    },
+    {
+      /* No time on it — this is the "whenever" pile on the Timeline. */
+      kind: "review",
+      title: "Explain one concept in three sentences",
+      body:
+        "Pick yesterday's hardest idea. If you cannot say it plainly, you have " +
+        "not got it yet.",
+      emoji: "🧠",
+      xpOnComplete: 15,
+      repeatRule: "daily",
+    },
+    {
       kind: "task",
       title: "Currently reading",
-      subtitle: "Agent can update this anytime",
-      body: "Set book title, chapter, and mark done when finished. Completing fires your agent webhook if configured.",
-      emoji: "📖",
+      subtitle: "Your agent can update this any time",
+      body:
+        "A pinned card is just a task the agent chose to draw large. Completing " +
+        "it fires a webhook, if the agent subscribed to one.",
+      slot: 0,
+      emoji: "📚",
       themeColor: "#A78BFA",
-      imageUrl: null,
-      imageData: null,
-      svg: null,
-      status: "active",
       progress: 20,
-      ctaLabel: "Mark chapter done",
-      ctaLink: null,
-      metaJson: JSON.stringify({ type: "reading", book: null, chapter: 1 }),
       xpOnComplete: 25,
       webhookOnComplete: true,
-      completedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+      meta: { type: "reading", book: null, chapter: 1 },
+    },
+  ];
+
+  for (const t of seeded) {
+    db.insert(schema.tasks)
+      .values({
+        id: nanoid(),
+        kind: t.kind,
+        title: t.title,
+        subtitle: t.subtitle ?? null,
+        body: t.body ?? null,
+        purpose: null,
+        status: "active",
+        activityTag: t.activityTag ?? null,
+        showAt: null,
+        eventAt: t.eventAt ?? null,
+        durationMinutes: t.durationMinutes ?? null,
+        remindAt: null,
+        notifiedAt: null,
+        repeatRule: t.repeatRule ?? "none",
+        repeatIndex: 0,
+        repeatOffsetsJson: null,
+        xpOnComplete: t.xpOnComplete ?? 0,
+        webhookOnComplete: t.webhookOnComplete ?? false,
+        webhookOnInteract: false,
+        resourcesJson: t.resources ? JSON.stringify(t.resources) : null,
+        slot: t.slot ?? null,
+        emoji: t.emoji ?? null,
+        themeColor: t.themeColor ?? null,
+        imageUrl: null,
+        imageData: null,
+        svg: null,
+        ctaLabel: null,
+        ctaLink: null,
+        controlJson: null,
+        progress: t.progress ?? 0,
+        sound: true,
+        flash: true,
+        source: "agent",
+        metaJson: t.meta ? JSON.stringify(t.meta) : null,
+        completedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+  }
 }
 
 /**
- * Agent setup card (reserved slot 2). Ships disconnected so a fresh install
- * explains how to attach Hermes / OpenClaw; the agent replaces it once connected.
+ * The agent status strip. Ships disconnected so a fresh install explains how to
+ * attach an agent; the agent overwrites it once connected. Marked by
+ * `meta.connected`, and deliberately holding no slot — the two content slots are
+ * for cards you act on, and this is not one of them.
  */
-const setupCard = db
+const statusStrip = db
   .select()
-  .from(schema.dashboardCards)
+  .from(schema.tasks)
   .all()
-  .find((c) => c.slot === 2);
-if (!setupCard) {
-  db.insert(schema.dashboardCards)
+  .find((t) => (t.metaJson ?? "").includes('"connected"'));
+if (!statusStrip) {
+  db.insert(schema.tasks)
     .values({
       id: nanoid(),
-      slot: 2,
-      kind: "agent-setup",
+      kind: "task",
       title: "No agent connected",
-      subtitle: "Hermes · OpenClaw · Claude Code · any HTTP agent",
+      subtitle: "Hermes · OpenClaw · Claude Code · any MCP client",
       body:
-        "Point your agent at docs/skills/life-os/SKILL.md and give it this API base " +
-        "plus the API_TOKEN from .env. It can then create habits, schedule blocks, " +
-        "inject reviews, redistribute the daily XP pool, and replace this card.",
+        "Point your agent at docs/skills/life-os/SKILL.md and give it this " +
+        "instance's MCP endpoint plus the API_TOKEN from .env. It can then " +
+        "create habits and tasks, redistribute the daily XP pool, subscribe to " +
+        "completions, and replace this strip.",
+      purpose: null,
+      status: "active",
+      activityTag: null,
+      showAt: null,
+      eventAt: null,
+      durationMinutes: null,
+      remindAt: null,
+      notifiedAt: null,
+      repeatRule: "none",
+      repeatIndex: 0,
+      repeatOffsetsJson: null,
+      xpOnComplete: 0,
+      webhookOnComplete: false,
+      webhookOnInteract: false,
+      resourcesJson: null,
+      slot: null,
       emoji: "🤖",
       themeColor: "#5B8CFF",
       imageUrl: null,
@@ -393,13 +458,15 @@ if (!setupCard) {
         '<rect x="76" y="20" width="38" height="32" rx="8" fill="none" stroke="#64748B" stroke-width="2"/>' +
         '<path d="M86 30h18M86 36h18M86 42h11" stroke="#64748B" stroke-width="2" stroke-linecap="round"/>' +
         "</svg>",
-      status: "active",
-      progress: 0,
       ctaLabel: "Read the agent skill",
-      ctaLink: "https://github.com/EntangledQuantum/Life_OS/blob/master/docs/skills/life-os/SKILL.md",
+      ctaLink:
+        "https://github.com/EntangledQuantum/Life_OS/blob/master/docs/skills/life-os/SKILL.md",
+      controlJson: null,
+      progress: 0,
+      sound: false,
+      flash: false,
+      source: "agent",
       metaJson: JSON.stringify({ connected: false }),
-      xpOnComplete: 0,
-      webhookOnComplete: false,
       completedAt: null,
       createdAt: now,
       updatedAt: now,

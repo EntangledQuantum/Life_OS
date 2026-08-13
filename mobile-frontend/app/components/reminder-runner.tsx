@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { DashboardCard } from "@/lib/types";
+import type { Task } from "@/lib/types";
 import { api } from "@/lib/api";
 import { isSilenced } from "@/lib/schedule";
 import {
@@ -19,8 +19,8 @@ export function ReminderRunner({
   due,
   scheduled,
 }: {
-  due: DashboardCard[];
-  scheduled?: DashboardCard[];
+  due: Task[];
+  scheduled?: Task[];
 }) {
   const qc = useQueryClient();
   const router = useRouter();
@@ -33,7 +33,7 @@ export function ReminderRunner({
   });
 
   const markNotified = useMutation({
-    mutationFn: (id: string) => api.markCardNotified(id),
+    mutationFn: (id: string) => api.markTaskNotified(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
@@ -47,10 +47,10 @@ export function ReminderRunner({
    * one button left to press. A notification you can only dismiss is just noise.
    */
   useEffect(() => {
-    const sub = onNotificationTapped((cardId) => {
+    const sub = onNotificationTapped((taskId) => {
       router.navigate(
-        cardId
-          ? { pathname: "/(tabs)/timeline", params: { card: cardId } }
+        taskId
+          ? { pathname: "/(tabs)/timeline", params: { task: taskId } }
           : "/(tabs)/timeline",
       );
     });
@@ -59,18 +59,18 @@ export function ReminderRunner({
 
   useEffect(() => {
     const silent = isSilenced(settings);
-    for (const card of due) {
-      if (firedRef.current.has(card.id)) continue;
-      firedRef.current.add(card.id);
+    for (const task of due) {
+      if (firedRef.current.has(task.id)) continue;
+      firedRef.current.add(task.id);
 
       void fireLocalReminder({
-        card,
+        task,
         soundId: settings?.notificationSound ?? "chime",
         silent,
       });
 
       // Always mark notified — even under DND (prevents avalanche later)
-      markNotified.mutate(card.id);
+      markNotified.mutate(task.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [due, settings]);
@@ -81,6 +81,7 @@ export function ReminderRunner({
       scheduled,
       settings?.notificationSound ?? "chime",
       isSilenced(settings),
+      settings?.reminderLeadMinutes,
     );
   }, [scheduled, settings]);
 

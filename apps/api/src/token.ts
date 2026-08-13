@@ -69,7 +69,11 @@ export function upsertEnvValue(envPath: string, key: string, value: string): voi
  * Returns a usable token, generating and persisting one if `.env` does not have
  * a real one yet. Called once at boot, before anything can serve a request.
  */
-export function ensureApiToken(root: string, current: string | undefined): {
+export function ensureApiToken(
+  root: string,
+  current: string | undefined,
+  opts: { persist?: boolean } = {},
+): {
   token: string;
   generated: boolean;
   reason: "missing" | "weak" | null;
@@ -80,6 +84,15 @@ export function ensureApiToken(root: string, current: string | undefined): {
 
   const reason = current && current.trim() ? "weak" : "missing";
   const token = generateToken();
+
+  /*
+   * `persist: false` means the token was handed to this process through the
+   * environment, so `.env` belongs to some *other* instance. Mint a token for
+   * this run, but leave that file alone.
+   */
+  if (opts.persist === false) {
+    return { token, generated: true, reason };
+  }
 
   try {
     upsertEnvValue(path.join(root, ".env"), "API_TOKEN", token);
@@ -98,16 +111,22 @@ export function ensureApiToken(root: string, current: string | undefined): {
 export function announceGeneratedToken(
   token: string,
   reason: "missing" | "weak" | null,
+  persisted = true,
 ): void {
   const rule = "─".repeat(72);
   console.log(`\n${rule}`);
   console.log(
     reason === "weak"
-      ? "  API_TOKEN was still the shared default — replaced with a strong one."
+      ? "  API_TOKEN was too weak to use — generated a strong one."
       : "  No API_TOKEN found — generated one for you.",
   );
   console.log(`\n    ${token}\n`);
-  console.log("  Saved to .env. Paste it into the web app and any other client.");
+  console.log(
+    persisted
+      ? "  Saved to .env. Paste it into the web app and any other client."
+      : "  NOT saved — your API_TOKEN came from the environment, so .env was\n" +
+          "  left alone. This token lasts until this process exits.",
+  );
   console.log("  This is the only credential Life OS has. Do not commit it.");
   console.log(`${rule}\n`);
 }

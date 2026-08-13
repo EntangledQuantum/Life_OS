@@ -288,15 +288,22 @@ export function buildFactResolver(db: LifeOsDb): GoalFactResolver {
             .filter((s) => opts.window === "all" || inWindow(s.createdAt, from))
             .reduce((sum, s) => sum + (s.durationMinutes ?? 0), 0);
         }
+        /*
+         * `cards_completed` is the old spelling and still counts, because it is
+         * baked into goals people already have. Both read `tasks` — the table
+         * it used to read stopped being written, which would have quietly
+         * frozen every goal counting completions.
+         */
+        case "tasks_completed":
         case "cards_completed": {
           return db
             .select()
-            .from(schema.dashboardCards)
+            .from(schema.tasks)
             .all()
             .filter(
-              (c) =>
-                c.status === "done" &&
-                (opts.window === "all" || inWindow(c.completedAt, from)),
+              (t) =>
+                t.status === "done" &&
+                (opts.window === "all" || inWindow(t.completedAt, from)),
             ).length;
         }
         case "days_active": {

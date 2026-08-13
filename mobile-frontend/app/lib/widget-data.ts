@@ -30,7 +30,12 @@ export function dashboardToWidget(
   offline = false,
 ): WidgetSnapshot {
   const habits = d.habits ?? [];
-  const upcoming = d.upcoming?.[0] ?? null;
+  /*
+   * The next thing landing. `current` is already filtered and ordered by the
+   * server — inside the lead window, not past its own end — so the widget shows
+   * the same "next" the app does rather than computing a second opinion.
+   */
+  const upcoming = d.current?.[0] ?? null;
   return {
     updatedAt: new Date().toISOString(),
     date: d.date,

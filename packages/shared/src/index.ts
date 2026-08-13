@@ -6,3 +6,5 @@ export * from "./svg.js";
 export * from "./schedule.js";
 export * from "./conditions.js";
 export * from "./webhooks.js";
+export * from "./tasks.js";
+export * from "./protocol.js";

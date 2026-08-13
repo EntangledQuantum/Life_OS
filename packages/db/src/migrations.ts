@@ -346,6 +346,345 @@ const webhooks: Migration = {
   },
 };
 
+/**
+ * v6 — one task system.
+ *
+ * Four tables were doing the same job with slightly different rules:
+ * `dashboard_cards` (scheduled events and reminders), `agent_events` (queued
+ * agent work), `light_reviews` (prompts) and `schedule_blocks` (study). An
+ * agent had to guess which to use, and the wrong guess meant the thing could
+ * not repeat, could not carry XP, or showed up somewhere nobody was looking.
+ *
+ * Everything becomes a `task`. The originals are **not dropped** — they are
+ * still read by the compatibility layer that keeps an already-installed mobile
+ * build working, and they are the fallback if anything about the import turns
+ * out to be wrong. `source_table` + `source_id` make the import idempotent.
+ */
+const unifiedTasks: Migration = {
+  version: 6,
+  name: "one task system: cards, agent events, reviews and study become tasks",
+  up(db) {
+    if (!hasTable(db, "tasks")) {
+      db.exec(`
+        CREATE TABLE tasks (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL DEFAULT 'task',
+          title TEXT NOT NULL,
+          subtitle TEXT,
+          body TEXT,
+          purpose TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          activity_tag TEXT,
+          show_at TEXT,
+          event_at TEXT,
+          duration_minutes INTEGER,
+          remind_at TEXT,
+          notified_at TEXT,
+          repeat_rule TEXT NOT NULL DEFAULT 'none',
+          repeat_index INTEGER NOT NULL DEFAULT 0,
+          repeat_offsets_json TEXT,
+          xp_on_complete INTEGER NOT NULL DEFAULT 0,
+          webhook_on_complete INTEGER NOT NULL DEFAULT 0,
+          webhook_on_interact INTEGER NOT NULL DEFAULT 0,
+          resources_json TEXT,
+          slot INTEGER,
+          emoji TEXT,
+          theme_color TEXT,
+          image_url TEXT,
+          image_data TEXT,
+          svg TEXT,
+          cta_label TEXT,
+          cta_link TEXT,
+          control_json TEXT,
+          progress INTEGER NOT NULL DEFAULT 0,
+          sound INTEGER NOT NULL DEFAULT 1,
+          flash INTEGER NOT NULL DEFAULT 1,
+          source TEXT NOT NULL DEFAULT 'agent',
+          meta_json TEXT,
+          completed_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          source_table TEXT,
+          source_id TEXT
+        );
+      `);
+      db.exec("CREATE INDEX tasks_status_idx ON tasks (status)");
+      db.exec("CREATE INDEX tasks_event_idx ON tasks (event_at)");
+      // Makes the import safe to re-run: a second attempt hits this and stops.
+      db.exec(
+        "CREATE UNIQUE INDEX tasks_origin_idx ON tasks (source_table, source_id) WHERE source_table IS NOT NULL",
+      );
+    }
+
+    const now = new Date().toISOString();
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO tasks (
+        id, kind, title, subtitle, body, purpose, status, activity_tag,
+        show_at, event_at, duration_minutes, remind_at, notified_at,
+        repeat_rule, repeat_index, repeat_offsets_json,
+        xp_on_complete, webhook_on_complete, webhook_on_interact,
+        resources_json, slot, emoji, theme_color, image_url, image_data, svg,
+        cta_label, cta_link, control_json, progress, sound, flash,
+        source, meta_json, completed_at, created_at, updated_at,
+        source_table, source_id
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?
+      )
+    `);
+
+    const id = (prefix: string, source: string) => `${prefix}_${source}`;
+
+    /* ---- dashboard_cards ------------------------------------------- */
+    if (hasTable(db, "dashboard_cards")) {
+      const rows = db.prepare("SELECT * FROM dashboard_cards").all() as Record<
+        string,
+        unknown
+      >[];
+      for (const r of rows) {
+        /*
+         * The agent-setup card is a status strip, not work — it never had a
+         * Complete button and never will. It comes across as a task like
+         * everything else, but with no slot (it does not consume one of the two
+         * content slots) and `meta.connected`, which is what the UI keys on.
+         */
+        const isStatusStrip = r.kind === "agent-setup";
+        const slot = Number(r.slot);
+        let meta = (r.meta_json as string) ?? null;
+        if (isStatusStrip) {
+          let parsed: Record<string, unknown> = {};
+          try {
+            parsed = meta ? (JSON.parse(meta) as Record<string, unknown>) : {};
+          } catch {
+            parsed = {};
+          }
+          if (parsed.connected === undefined) parsed.connected = true;
+          meta = JSON.stringify(parsed);
+        }
+        insert.run(
+          id("t", String(r.id)),
+          r.kind === "reminder" ? "reminder" : "task",
+          String(r.title),
+          (r.subtitle as string) ?? null,
+          (r.body as string) ?? null,
+          (r.purpose as string) ?? null,
+          String(r.status ?? "active"),
+          (r.activity_tag as string) ?? null,
+          (r.show_at as string) ?? null,
+          (r.event_at as string) ?? null,
+          (r.duration_minutes as number) ?? null,
+          (r.remind_at as string) ?? null,
+          (r.notified_at as string) ?? null,
+          String(r.repeat_rule ?? "none"),
+          Number(r.repeat_index ?? 0),
+          (r.repeat_offsets_json as string) ?? null,
+          Number(r.xp_on_complete ?? 0),
+          Number(r.webhook_on_complete ?? 0),
+          Number(r.webhook_on_interact ?? 0),
+          null,
+          !isStatusStrip && (slot === 0 || slot === 1) ? slot : null,
+          (r.emoji as string) ?? null,
+          (r.theme_color as string) ?? null,
+          (r.image_url as string) ?? null,
+          (r.image_data as string) ?? null,
+          (r.svg as string) ?? null,
+          (r.cta_label as string) ?? null,
+          (r.cta_link as string) ?? null,
+          (r.control_json as string) ?? null,
+          Number(r.progress ?? 0),
+          Number(r.sound ?? 1),
+          Number(r.flash ?? 1),
+          "agent",
+          meta,
+          (r.completed_at as string) ?? null,
+          String(r.created_at ?? now),
+          String(r.updated_at ?? now),
+          "dashboard_cards",
+          String(r.id),
+        );
+      }
+    }
+
+    /* ---- agent_events ---------------------------------------------- */
+    if (hasTable(db, "agent_events")) {
+      const rows = db.prepare("SELECT * FROM agent_events").all() as Record<
+        string,
+        unknown
+      >[];
+      for (const r of rows) {
+        const status =
+          r.status === "done" ? "done" : r.status === "dismissed" ? "dismissed" : "active";
+        insert.run(
+          id("e", String(r.id)),
+          r.kind === "review" ? "review" : r.kind === "study" ? "study" : "task",
+          String(r.title),
+          null,
+          (r.body as string) ?? null,
+          null,
+          status,
+          r.kind === "study" ? "Study" : null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "none",
+          0,
+          null,
+          Number(r.xp_on_complete ?? 0),
+          0,
+          0,
+          // An agent event's single link becomes the first resource.
+          r.link ? JSON.stringify([{ label: "Open", url: String(r.link) }]) : null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          (r.link as string) ?? null,
+          null,
+          0,
+          1,
+          1,
+          "agent",
+          null,
+          (r.completed_at as string) ?? null,
+          String(r.created_at ?? now),
+          String(r.created_at ?? now),
+          "agent_events",
+          String(r.id),
+        );
+      }
+    }
+
+    /* ---- light_reviews --------------------------------------------- */
+    if (hasTable(db, "light_reviews")) {
+      const rows = db.prepare("SELECT * FROM light_reviews").all() as Record<
+        string,
+        unknown
+      >[];
+      for (const r of rows) {
+        insert.run(
+          id("r", String(r.id)),
+          "review",
+          String(r.prompt),
+          null,
+          null,
+          null,
+          r.completed_at ? "done" : "active",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "none",
+          0,
+          null,
+          0,
+          0,
+          0,
+          r.link ? JSON.stringify([{ label: "Open", url: String(r.link) }]) : null,
+          null,
+          "📝",
+          null,
+          null,
+          null,
+          null,
+          null,
+          (r.link as string) ?? null,
+          null,
+          0,
+          1,
+          1,
+          "agent",
+          null,
+          (r.completed_at as string) ?? null,
+          String(r.created_at ?? now),
+          String(r.created_at ?? now),
+          "light_reviews",
+          String(r.id),
+        );
+      }
+    }
+
+    /* ---- schedule_blocks (study) ------------------------------------ */
+    if (hasTable(db, "schedule_blocks")) {
+      const rows = db.prepare("SELECT * FROM schedule_blocks").all() as Record<
+        string,
+        unknown
+      >[];
+      for (const r of rows) {
+        // `HH:mm` on a date becomes a real instant, which is what a task needs.
+        const at = (time: unknown): string | null => {
+          if (!time || !r.date) return null;
+          const parsed = new Date(`${String(r.date)}T${String(time)}:00`);
+          return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+        };
+        const start = at(r.planned_start);
+        const end = at(r.planned_end);
+        const minutes =
+          start && end
+            ? Math.max(
+                1,
+                Math.round((Date.parse(end) - Date.parse(start)) / 60_000),
+              )
+            : null;
+
+        insert.run(
+          id("b", String(r.id)),
+          String(r.category ?? "").toLowerCase() === "study" ? "study" : "task",
+          String(r.label),
+          null,
+          (r.notes as string) ?? null,
+          null,
+          r.status === "done" ? "done" : r.status === "skipped" ? "dismissed" : "active",
+          (r.category as string) ?? null,
+          null,
+          start,
+          minutes,
+          null,
+          null,
+          "none",
+          0,
+          null,
+          0,
+          Number(r.webhook_on_complete ?? 0),
+          0,
+          null,
+          null,
+          "📚",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          1,
+          1,
+          String(r.source ?? "agent"),
+          null,
+          (r.completed_at as string) ?? null,
+          String(r.created_at ?? now),
+          String(r.created_at ?? now),
+          "schedule_blocks",
+          String(r.id),
+        );
+      }
+    }
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -353,6 +692,7 @@ export const MIGRATIONS: Migration[] = [
   activityLog,
   reminderLead,
   webhooks,
+  unifiedTasks,
 ];
 
 /** The version a database is brought to by `runMigrations`. */

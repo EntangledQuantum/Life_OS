@@ -12,7 +12,7 @@ import * as schema from "@life-os/db";
 import type { AccentThemeId, GrowthStyle, HabitGraphic } from "@life-os/shared";
 import { createHabit, deleteHabit, listHabits, rebalanceHabitXp } from "./habits.js";
 import { getSettings, updateGamificationConfig, updateSettings } from "./settings.js";
-import { createCard } from "./cards.js";
+import { createTask } from "./tasks.js";
 
 export interface InitialSetupInput {
   /** Replace the seeded habits instead of adding alongside them. */
@@ -106,8 +106,14 @@ export function runInitialSetup(db: LifeOsDb, input: InitialSetupInput) {
 
   let setupCard = null;
   if (input.agentName || input.agentSetupCard) {
-    const card = createCard(db, {
-      kind: "agent-setup",
+    const card = createTask(db, {
+      kind: "task",
+      /*
+       * No slot. This is the agent status strip, not work — `meta.connected` is
+       * what marks it, and it must not eat one of the two content slots the
+       * agent has for actual cards.
+       */
+      slot: null,
       title: input.agentSetupCard?.title ?? `${input.agentName ?? "Agent"} connected`,
       subtitle:
         input.agentSetupCard?.subtitle ??
@@ -118,7 +124,7 @@ export function runInitialSetup(db: LifeOsDb, input: InitialSetupInput) {
       meta: { connected: true, agent: input.agentName ?? null },
       webhookOnComplete: false,
     });
-    if ("card" in card) setupCard = card.card;
+    if ("task" in card) setupCard = card.task;
   }
 
   return {

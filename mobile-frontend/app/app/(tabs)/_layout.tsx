@@ -32,6 +32,7 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="index" options={{ headerShown: false }} />
       <Tabs.Screen name="timeline" options={{ title: "Timeline" }} />
+      <Tabs.Screen name="study" options={{ title: "Study" }} />
       <Tabs.Screen name="goals" options={{ title: "Goals" }} />
       <Tabs.Screen name="settings" options={{ title: "Settings" }} />
       {/* hide template leftover if present */}

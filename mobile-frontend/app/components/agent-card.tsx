@@ -3,7 +3,7 @@ import { Linking, PanResponder, Pressable, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { DashboardCard } from "@/lib/types";
+import type { Task } from "@/lib/types";
 import { api } from "@/lib/api";
 import { activityColor, font, radius, rgba } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
@@ -17,7 +17,7 @@ export function AgentCard({
   card,
   onComplete,
 }: {
-  card: DashboardCard;
+  card: Task;
   onComplete?: () => void;
 }) {
   const t = useTokens();
@@ -147,7 +147,7 @@ export function AgentCard({
  * than on every frame — a drag from 1 to 9 would otherwise be dozens of POSTs
  * and, if the agent subscribed, dozens of webhooks.
  */
-function CardControl({ card, tint }: { card: DashboardCard; tint: string }) {
+function CardControl({ card, tint }: { card: Task; tint: string }) {
   const t = useTokens();
   const qc = useQueryClient();
   const control = card.control!;
@@ -157,7 +157,7 @@ function CardControl({ card, tint }: { card: DashboardCard; tint: string }) {
 
   const interact = useMutation({
     mutationFn: (body: { value?: number; pressed?: boolean }) =>
-      api.interactWithCard(card.id, body),
+      api.interactWithTask(card.id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
@@ -319,7 +319,7 @@ function Slider({
 }
 
 /** The agent's setup / status line. Informational — never a button. */
-export function AgentSetupStrip({ card }: { card: DashboardCard }) {
+export function AgentSetupStrip({ card }: { card: Task }) {
   const t = useTokens();
   return (
     <View

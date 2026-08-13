@@ -15,8 +15,8 @@ export type NotificationSoundId =
   | "pulse"
   | "alert"
   | "none";
-export type CardKind = "task" | "agent-setup" | "event" | "reminder";
-export type CardSlot = -1 | 0 | 1 | 2;
+export type TaskKind = "task" | "study" | "review" | "reminder";
+export type TaskStatus = "active" | "done" | "dismissed";
 export type RepeatRule = "none" | "daily" | "weekly" | "spaced";
 export type QualityFlag =
   | "normal"
@@ -87,43 +87,89 @@ export interface HabitWithToday {
   totalCompletions: number;
 }
 
-export interface DashboardCard {
+/** A link the agent attached — a chapter, a paper, a video. */
+export interface TaskResource {
+  label: string;
+  url: string;
+  /** Free-form icon hint: "book", "video", "paper", "link". */
+  kind?: string;
+}
+
+/**
+ * The only unit of work in Life OS, alongside habits.
+ *
+ * Cards, agent events, light reviews and study blocks were four tables that
+ * meant the same thing and supported different fields; they are one row now.
+ * Every optional part — a time, a repeat, XP, links, a card presentation — is
+ * a nullable field here.
+ *
+ * A task never starts. It has a target time and a completion, and completing it
+ * does not change what activity you are in.
+ */
+export interface Task {
   id: string;
-  slot: CardSlot;
-  kind: CardKind;
-  purpose: string | null;
-  activityTag: Activity | string | null;
-  showAt: string | null;
-  remindAt: string | null;
-  eventAt: string | null;
-  durationMinutes: number | null;
-  repeatRule: RepeatRule;
-  repeatIndex: number;
-  sound: boolean;
-  flash: boolean;
-  notifiedAt: string | null;
-  linkedBlockId: string | null;
+  kind: TaskKind;
   title: string;
   subtitle: string | null;
+  /** Long form — instructions, a chapter list, what to actually do. */
   body: string | null;
+  purpose: string | null;
+
+  status: TaskStatus;
+  activityTag: Activity | string | null;
+
+  showAt: string | null;
+  eventAt: string | null;
+  durationMinutes: number | null;
+  /** Explicit override; normally derived from eventAt minus the user's lead. */
+  remindAt: string | null;
+  notifiedAt: string | null;
+
+  repeatRule: RepeatRule;
+  repeatIndex: number;
+  repeatOffsetsDays: number[] | null;
+
+  xpOnComplete: number;
+  webhookOnComplete: boolean;
+  webhookOnInteract: boolean;
+
+  /** Links and references. What a "study block" always was underneath. */
+  resources: TaskResource[];
+
+  /** Pinned to a front-page card slot (0 or 1). Null = not pinned. */
+  slot: 0 | 1 | null;
   emoji: string | null;
   themeColor: string | null;
   imageUrl: string | null;
   imageData: string | null;
   svg: string | null;
-  status: "active" | "done" | "hidden";
-  progress: number;
   ctaLabel: string | null;
   ctaLink: string | null;
-  meta: Record<string, unknown> | null;
-  xpOnComplete: number;
-  webhookOnComplete: boolean;
-  /** One interactive widget the agent put on the card. */
   control: CardControl | null;
-  webhookOnInteract: boolean;
+
+  progress: number;
+  sound: boolean;
+  flash: boolean;
+
+  source: Source;
+  meta: Record<string, unknown> | null;
+
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Is this task drawn as a card on the front page? */
+export function isPinned(task: Pick<Task, "slot">): boolean {
+  return task.slot === 0 || task.slot === 1;
+}
+
+/**
+ * The agent status strip — "Hermes connected". It is a task only because
+ * everything is; it has no completion and holds no slot.
+ */
+export function isAgentStatus(task: Pick<Task, "meta">): boolean {
+  return Boolean(task.meta && "connected" in task.meta);
 }
 
 export interface Goal {
@@ -154,29 +200,6 @@ export interface AgentProperty {
   textValue: string | null;
   unit: string | null;
   description: string | null;
-}
-
-export interface AgentEvent {
-  id: string;
-  kind: string;
-  title: string;
-  body: string | null;
-  link: string | null;
-  forDate: string;
-  status: "pending" | "done" | "dismissed";
-  priority: number;
-  xpOnComplete: number;
-  completedAt: string | null;
-  createdAt: string;
-}
-
-export interface LightReview {
-  id: string;
-  prompt: string;
-  forDate: string;
-  completedAt: string | null;
-  createdAt: string;
-  link?: string | null;
 }
 
 export interface UserProgress {
@@ -290,10 +313,12 @@ export interface TimelineBlock {
 export interface DashboardToday {
   date: string;
   dayResetTime: string;
-  cards: DashboardCard[];
-  upcoming: DashboardCard[];
-  scheduled: DashboardCard[];
-  dueReminders: DashboardCard[];
+  /** Every open task. This is the model — there is nothing else alongside it. */
+  tasks: Task[];
+  /** What is current: inside the lead window, not past its own end. */
+  current: Task[];
+  /** Notifications that should fire now and have not yet. */
+  dueReminders: Task[];
   pendingCelebrations: Goal[];
   properties: AgentProperty[];
   habits: HabitWithToday[];
@@ -301,13 +326,9 @@ export interface DashboardToday {
   vsYesterday: VsYesterday;
   pulse: ImprovementPulse;
   pulseExplanation: string;
-  studyBlocks: unknown[];
   studySessions: unknown[];
   goals: Goal[];
   quests: unknown[];
-  lightReviews: LightReview[];
-  agentEvents: AgentEvent[];
-  pendingEventCount: number;
   achievements: unknown[];
   consistency7: { date: string; pct: number }[];
   xpSeries7: { date: string; current: number; target: number }[];
@@ -317,6 +338,19 @@ export interface DashboardToday {
     blockId?: string | null;
   } | null;
   timeline: TimelineBlock[];
+}
+
+/**
+ * What the server sends back on a 426. The app is older than the API and no
+ * amount of retrying will fix it — the only move is to install a new build.
+ */
+export interface ProtocolMismatch {
+  error: string;
+  hint: string;
+  clientProtocol: number;
+  serverProtocol: number;
+  minProtocol: number;
+  downloadUrl: string;
 }
 
 export interface HealthResponse {

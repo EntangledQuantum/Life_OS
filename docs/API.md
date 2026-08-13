@@ -30,11 +30,6 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | POST | `/api/v1/habits/:id/undo` | Undo today's completion |
 | PATCH | `/api/v1/habits/:id/theme` | Theme |
 | POST | `/api/v1/habits/rebalance-xp` | Redistribute the daily XP pool by weight |
-| GET | `/api/v1/blocks` | List today's schedule blocks |
-| GET | `/api/v1/blocks/study` | Study blocks only |
-| POST | `/api/v1/blocks` | Create a timeline block |
-| PATCH/DELETE | `/api/v1/blocks/:id` | Update / delete |
-| POST | `/api/v1/blocks/:id/complete` | Complete → logs the planned duration as study time |
 | GET/POST | `/api/v1/study` | List / log study |
 | GET/POST | `/api/v1/goals` | List / create goals (create takes a `condition`) |
 | PATCH/DELETE | `/api/v1/goals/:id` | Update / delete |
@@ -48,26 +43,14 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | GET | `/api/v1/dashboard/vs-yesterday` | Deltas |
 | GET | `/api/v1/dashboard/pulse` | Pulse |
 | GET | `/api/v1/analytics` | Analytics payload |
-| GET/POST/DELETE | `/api/v1/session/active` | What you are doing right now — set by hand, never by a card |
-| GET/POST | `/api/v1/events` | Quick log agent events |
-| POST | `/api/v1/events/:id/complete` | Complete → awards `xpOnComplete` |
-| POST | `/api/v1/events/:id/dismiss` | Dismiss without XP |
+| GET/POST/DELETE | `/api/v1/session/active` | What you are doing right now — set by hand, never by a task |
 | GET/POST | `/api/v1/quests` | Quests |
-| GET/POST | `/api/v1/reviews` | Light reviews |
-| POST | `/api/v1/reviews/:id/complete` | Complete a light review |
 | GET/POST | `/api/v1/achievements` | Achievements |
 | GET/PATCH | `/api/v1/settings` | Settings incl. `dayResetTime`, notification sound, do-not-disturb, agent webhook, backups |
 | GET/PATCH | `/api/v1/gamification/config` | `dailyXpTarget`, `growthStyle`, multipliers |
-| GET/POST | `/api/v1/cards` | List / create cards (pinned or scheduled) |
-| GET | `/api/v1/cards/upcoming` | Visible scheduled cards, soonest first |
-| GET | `/api/v1/cards/imminent` | Only what is inside the reminder lead window and not yet past its own end |
-| GET | `/api/v1/cards/due` | Reminders that should chime now |
-| GET/PATCH/DELETE | `/api/v1/cards/:id` | Read / update / delete card |
-| POST | `/api/v1/cards/:id/notified` | Client confirms the chime played (fires once) |
-| POST | `/api/v1/cards/:id/complete` | Complete → XP + webhook + next repeat occurrence |
 | GET/POST | `/api/v1/backups` | List snapshots / snapshot now |
 | GET | `/api/v1/export/json` | Full export |
-| GET | `/api/v1/agent/capabilities` | Card kinds, activity tags, repeat rules, tools |
+| GET | `/api/v1/agent/capabilities` | Task kinds, activity tags, repeat rules, tools |
 | GET | `/api/v1/agent/goal-syntax` | Condition language + worked examples |
 | POST | `/api/v1/agent/setup` | Reshape a fresh instance in one call |
 | GET | `/api/v1/agent/xp-model` | XP rules + this user's live shares |
@@ -77,81 +60,99 @@ any change to the database can complete a goal, whichever endpoint made it.
 
 ---
 
-## Dashboard cards
+## Tasks
 
-Two **content** slots (`0`, `1`) plus one reserved **agent-setup** card (slot `2`,
-singleton) that does not consume a content slot. Creating into an occupied slot replaces it.
+There are **two nouns in Life OS: habits and tasks.** Nothing else.
+
+Before this there were four tables that behaved almost but not quite alike —
+`dashboard_cards` (scheduled events and reminders), `agent_events` (queued work),
+`light_reviews` (prompts) and `schedule_blocks` (study). They differed in which fields they
+supported, not in what they meant, so an agent had to pick one and live with whatever that one
+happened not to offer. Users saw the seams: *"a card to complete, but also a session?"*
+
+A task is one thing with optional parts. Every part below is nullable, and any combination is
+valid.
 
 ```json
-POST /api/v1/cards
+POST /api/v1/tasks
 {
-  "slot": 0,
-  "kind": "task",
-  "title": "Currently reading",
+  "kind": "study",
+  "title": "Read one chapter",
   "subtitle": "Project Hail Mary · ch. 12",
-  "body": "Finish chapter 12.",
-  "emoji": "📖",
-  "themeColor": "#A78BFA",
-  "svg": "<svg viewBox=\"0 0 120 60\" xmlns=\"http://www.w3.org/2000/svg\">…</svg>",
-  "progress": 40,
-  "ctaLabel": "Finished chapter",
-  "meta": { "type": "reading", "chapter": 12 },
-  "xpOnComplete": 30,
+  "body": "Read it once for shape, then again with a pen.",
+  "purpose": "Spaced-repetition reading block",
+  "activityTag": "Study",
+  "showAt":   "2026-08-04T17:00:00Z",
+  "eventAt":  "2026-08-04T19:00:00Z",
+  "durationMinutes": 60,
+  "repeatRule": "spaced",
+  "resources": [
+    { "label": "Chapter 12 PDF", "url": "https://…", "kind": "paper" }
+  ],
+  "xpOnComplete": 25,
   "webhookOnComplete": true
 }
 ```
 
 | Field | Notes |
 |-------|-------|
-| `slot` | `-1` unpinned \| `0` \| `1` \| `2`. `2` implies `kind: "agent-setup"` |
-| `kind` | `task` (default) \| `agent-setup` \| `event` \| `reminder` |
+| `kind` | `task` (default) · `study` · `review` · `reminder`. Presentation and grouping only — every kind behaves identically |
+| `eventAt` / `durationMinutes` | When it should happen and how long it should take. Optional; a task with no time is just a thing to do |
+| `remindAt` | **Optional override.** Normally derived — see below. Must satisfy `showAt <= remindAt < eventAt` |
+| `repeatRule` | `none` · `daily` · `weekly` · `spaced` |
+| `resources` | Links the agent attached — chapters, papers, videos. This is what a "study block" always was underneath |
+| `slot` | `0`, `1` or `null`. Two content slots; a pinned task is drawn as a card on the front page |
+| `control` | One interactive widget — a slider or a button. See *Card controls* |
 | `svg` | Inline SVG markup — sanitized on write, rendered sandboxed |
-| `imageUrl` / `imageData` | Remote URL or small base64 data URI |
 | `xpOnComplete` | Bonus XP outside the habit pool |
 
----
+### Endpoints
 
-## Scheduled cards (events and reminders)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/tasks?status=&kind=` | Every visible task, filtered |
+| GET | `/api/v1/tasks/current` | Inside the lead window and not past its own end |
+| GET | `/api/v1/tasks/due` | Notifications that should fire now |
+| POST | `/api/v1/tasks` | Create |
+| GET/PATCH/DELETE | `/api/v1/tasks/:id` | Read / update / delete |
+| POST | `/api/v1/tasks/:id/complete` | XP + study session (if `kind: study`) + webhook + next repeat |
+| POST | `/api/v1/tasks/:id/dismiss` | Put it away without doing it. Distinct from done |
+| POST | `/api/v1/tasks/:id/notified` | Client confirms the notification fired (fires once) |
+| POST | `/api/v1/tasks/:id/interact` | Move a slider or press a button. **Not** a completion |
 
-`event` and `reminder` cards are **unpinned** (slot `-1`) and live in the Upcoming rail, so
-they never consume one of the two front-page slots. A card sent with `eventAt` or `remindAt`
-but no `kind` is treated as scheduled rather than evicting a pinned card.
+### Notification times are derived
 
-```json
-POST /api/v1/cards
-{
-  "kind": "event",
-  "title": "Read one chapter",
-  "purpose": "Spaced-repetition reading block",
-  "activityTag": "Study",
-  "showAt":   "2026-08-04T17:00:00Z",
-  "remindAt": "2026-08-04T18:50:00Z",
-  "eventAt":  "2026-08-04T19:00:00Z",
-  "durationMinutes": 60,
-  "repeatRule": "spaced",
-  "sound": true,
-  "flash": true,
-  "xpOnComplete": 25
-}
+The effective notify instant is:
+
 ```
+remindAt  ??  eventAt - reminderLeadMinutes
+```
+
+`reminderLeadMinutes` is a setting, default 15. Agents set `eventAt` and expect a warning
+beforehand; nothing used to derive that, so a task with only an `eventAt` was never
+pre-scheduled on the phone and the only notification anyone ever got was the one fired the
+moment they opened the app.
+
+A reminder is due from that instant until the end of the task's own window
+(`eventAt + durationMinutes`, or two hours if no duration is given). **It goes stale rather
+than staying due forever** — without the upper bound, every past task that was never notified
+stays pending and they all fire at once the next time a client polls.
 
 ### Where they surface
 
-`dashboard/today` splits them: `upcoming` holds only the **current** cards for the dashboard's
-Quick log, while `scheduled` holds every visible one for the Timeline tab. Agents can schedule
-as far ahead as they like without crowding the dashboard.
+`dashboard/today` carries `tasks` (everything open), `current` (what is landing now, for Quick
+log) and `dueReminders`. Agents can schedule as far ahead as they like without crowding the
+dashboard — the rest is on the Timeline tab.
 
-A card is current from `eventAt - reminderLeadMinutes` (a setting, default 15) until
-`eventAt + durationMinutes`. It leaves Quick log when its own window ends, completed or not —
-otherwise every missed thing piles up on the front page forever, which is the to-do list this
-app refuses to be. It is still on Timeline.
+A task leaves Quick log when its own window ends, completed or not. Otherwise every missed
+thing piles up on the front page forever, which is the to-do list this app refuses to be.
 
 ### There is no start
 
-A scheduled card has a target time and a completion. It does not run, it has no timer, and
-completing it does **not** change what activity the user is in — that is set by hand from
-`/api/v1/session/active` and nothing else writes it. `POST /api/v1/cards/:id/start` and
-`POST /api/v1/blocks/:id/start` have been removed.
+A task has a target time and a completion. It does not run, it has no timer, and completing it
+does **not** change what activity the user is in — that is set by hand from
+`/api/v1/session/active` and nothing else writes it. There is no `/tasks/:id/start` and there
+will not be one.
 
 ### The ordering rule
 
@@ -162,21 +163,75 @@ showAt  <=  remindAt  <  eventAt
 Enforced with `400` and a message naming the violated leg. A reminder that fires at or after
 its own event is useless, so it is rejected rather than quietly reordered. `remindAt` without
 an `eventAt` is likewise rejected. `PATCH` re-validates the **resulting** schedule, not just
-the patched fields — moving `eventAt` earlier can invalidate a stored `remindAt` — and
-re-arms the chime when either instant changes.
+the patched fields — moving `eventAt` earlier can invalidate a stored `remindAt`.
 
 ### Activity tags
 
 A closed set: `Deep Work` · `Study` · `Sleep` · `Exercise` · `Break` · `Life Admin` ·
 `Exploration`. Anything else is `400`. The tag says which bucket of the day the thing belongs
-to, for grouping and colour — it does not make the card take over the timeline.
+to, for grouping and colour — it does not make the task take over the timeline.
 
 ### Repetition
 
-`repeatRule`: `none` | `daily` | `weekly` | `spaced`. Completing a repeating card inserts the
-next occurrence as a **new** card (returned as `nextOccurrence`) and leaves the completed one
-in history. `spaced` walks `1, 3, 7, 14, 30, 60` days by default — override with
-`repeatOffsetsDays` — preserving the lead times between `showAt`, `remindAt` and `eventAt`.
+Completing a repeating task inserts the next occurrence as a **new** row (returned as
+`nextOccurrence`) and leaves the completed one in history. Rewinding it in place would make
+*"how many times did I actually do this"* unanswerable. `spaced` walks `1, 3, 7, 14, 30, 60`
+days by default — override with `repeatOffsetsDays` — preserving the lead times between
+`showAt`, `remindAt` and `eventAt`.
+
+This is also how Life OS schedules its own recurring work, instead of an agent re-creating it
+every night.
+
+### Card controls
+
+A task can carry one widget the agent owns:
+
+```json
+{ "kind": "slider", "label": "Energy", "min": 0, "max": 10, "step": 1, "value": 5, "unit": "/10" }
+{ "kind": "button", "label": "Took it" }
+```
+
+`POST /tasks/:id/interact` moves it and fires `card.interaction` if the agent subscribed. It is
+deliberately **not** a completion: an agent asking *"how did that feel, 1–10"* wants the answer,
+not the card gone. Slider values are clamped into `[min, max]` and snapped to `step`, the same
+as an `<input type=range>`.
+
+---
+
+## Protocol version
+
+Every `/api/v1/*` request must send:
+
+```
+X-LifeOS-Protocol: 2
+```
+
+A client that sends an older version — or none, which means it was written before the header
+existed — gets `426 Upgrade Required` with a body naming both versions and a download URL.
+
+```json
+{
+  "error": "This app is too old for this Life OS server",
+  "hint": "…",
+  "clientProtocol": 1,
+  "serverProtocol": 2,
+  "minProtocol": 2,
+  "downloadUrl": "https://github.com/EntangledQuantum/Life_OS/releases/latest/download/life-os.apk"
+}
+```
+
+`GET /api/v1/protocol` answers `{protocol, minProtocol}` without auth, so a client can check
+before it tries anything.
+
+There is no compatibility layer. Some changes genuinely require a new app — collapsing four
+tables into one is one of them — and the choice is between translating the new model back into
+the old shapes forever, or saying so once and clearly. A client that is too old should be
+*told*, not quietly served a lie about an empty day.
+
+| version | change |
+|---------|--------|
+| 1 | cards, agent events, light reviews and schedule blocks as separate things |
+| 2 | one task system: `tasks` replaces all four |
 
 ---
 
@@ -195,8 +250,8 @@ POST /api/v1/goals
 
 Node types: `property`, `metric`, `all`, `any`.
 Operators: `>=` `>` `<=` `<` `==` `!=`.
-Metrics: `total_xp`, `habit_completions`, `habit_streak`, `study_minutes`, `cards_completed`,
-`days_active`, over a `window` of `all` | `7d` | `30d` | `90d` | `year`.
+Metrics: `total_xp`, `habit_completions`, `habit_streak`, `study_minutes`, `tasks_completed`
+(`cards_completed` is the old spelling and still works), `days_active`, over a `window` of `all` | `7d` | `30d` | `90d` | `year`.
 Invalid conditions return `400` with **every** problem listed, not just the first.
 
 ### Met is not finished
@@ -262,8 +317,8 @@ efficiencyPct      = todayXpEarned ÷ dailyXpTarget × 100
 improvementPct     = todayEfficiency − yesterdayEfficiency
 ```
 
-Adding a habit **re-slices** the pool; it does not grow it. Bonus XP from cards, events,
-quests, and achievements all count toward today's total, which is why efficiency can exceed
+Adding a habit **re-slices** the pool; it does not grow it. Bonus XP from tasks, quests and
+achievements all counts toward today's total, which is why efficiency can exceed
 100%. There are no levels.
 
 Redistribution runs automatically on habit create/delete, on `xpWeight`/`extraXp`/`active`

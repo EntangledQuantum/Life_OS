@@ -31,6 +31,7 @@ interface TabBarProps {
 const TABS = [
   { name: "index", label: "Today", icon: "◉" },
   { name: "timeline", label: "Timeline", icon: "⌗" },
+  { name: "study", label: "Study", icon: "❑" },
   { name: "goals", label: "Goals", icon: "◈" },
   { name: "settings", label: "Settings", icon: "⚙" },
 ] as const;

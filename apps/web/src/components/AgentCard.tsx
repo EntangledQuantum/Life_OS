@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { svgToDataUri, type DashboardCard } from "@life-os/shared";
+import { svgToDataUri, type Task } from "@life-os/shared";
 import { Check } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,7 @@ export function AgentCard({
   onComplete,
   busy,
 }: {
-  card: DashboardCard;
+  card: Task;
   onComplete: () => void;
   busy?: boolean;
 }) {
@@ -57,7 +57,7 @@ export function AgentCard({
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold leading-tight">{card.title}</h3>
               <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--faint)]">
-                agent · slot {card.slot}
+                agent{card.slot !== null ? ` · slot ${card.slot}` : ""}
               </span>
             </div>
             {card.subtitle && (
@@ -132,7 +132,7 @@ export function AgentCard({
  * than on every pixel — a drag from 1 to 9 would otherwise be nine POSTs and,
  * if the agent subscribed, nine webhooks.
  */
-function CardControlWidget({ card }: { card: DashboardCard }) {
+function CardControlWidget({ card }: { card: Task }) {
   const qc = useQueryClient();
   const control = card.control!;
   const [draft, setDraft] = useState(
@@ -141,7 +141,7 @@ function CardControlWidget({ card }: { card: DashboardCard }) {
 
   const interact = useMutation({
     mutationFn: (body: { value?: number; pressed?: boolean }) =>
-      api.interactWithCard(card.id, body),
+      api.interactWithTask(card.id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
     onError: (e: Error) => toast.error(e.message),
   });

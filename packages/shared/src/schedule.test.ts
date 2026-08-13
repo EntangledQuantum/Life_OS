@@ -52,9 +52,14 @@ describe("expiresAt", () => {
     assert.equal(new Date(at!).toISOString(), "2026-08-14T19:30:00.000Z");
   });
 
-  it("with no duration, expires at the event itself", () => {
+  it("gives something with no stated duration a default window", () => {
+    /*
+     * It used to expire at the event itself, which meant a task at 19:00 with
+     * no length appeared and vanished in the same instant — the one moment you
+     * actually wanted to see it was the one moment it was gone.
+     */
     const at = expiresAt({ eventAt: "2026-08-14T19:00:00.000Z" });
-    assert.equal(new Date(at!).toISOString(), "2026-08-14T19:00:00.000Z");
+    assert.equal(new Date(at!).toISOString(), "2026-08-14T21:00:00.000Z");
   });
 
   it("is null for something with no time on it", () => {
@@ -123,6 +128,55 @@ describe("isReminderDue", () => {
     assert.equal(
       isReminderDue({ status: "done", eventAt: AT(5) }, new Date(), 15),
       false,
+    );
+  });
+
+  it("does not chase a dismissed one either", () => {
+    assert.equal(
+      isReminderDue({ status: "dismissed", eventAt: AT(5) }, new Date(), 15),
+      false,
+    );
+  });
+
+  it("goes stale rather than staying due forever", () => {
+    /*
+     * The bug: with only a lower bound, every past task that was never notified
+     * stayed due indefinitely, so a phone coming back online — or a fresh
+     * import — fired all of them at once. On real data that was 34 at a time.
+     */
+    assert.equal(
+      isReminderDue({ status: "active", eventAt: AT(-60 * 26) }, new Date(), 15),
+      false,
+      "yesterday's reminder is not news",
+    );
+  });
+
+  it("stops at the end of the task's own window", () => {
+    // Started 90 minutes ago, meant to take 30. It is over.
+    assert.equal(
+      isReminderDue(
+        { status: "active", eventAt: AT(-90), durationMinutes: 30 },
+        new Date(),
+        15,
+      ),
+      false,
+    );
+    // Started 10 minutes ago, meant to take 60. Still in it.
+    assert.equal(
+      isReminderDue(
+        { status: "active", eventAt: AT(-10), durationMinutes: 60 },
+        new Date(),
+        15,
+      ),
+      true,
+    );
+  });
+
+  it("gives an untimed reminder a couple of hours of grace", () => {
+    assert.equal(
+      isReminderDue({ status: "active", eventAt: AT(-30) }, new Date(), 15),
+      true,
+      "half an hour late is still worth saying",
     );
   });
 });

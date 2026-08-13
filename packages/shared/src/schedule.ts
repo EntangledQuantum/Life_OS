@@ -155,6 +155,16 @@ export function notifyAt(
 }
 
 /**
+ * How long a task with no stated duration stays current after its time.
+ *
+ * Not zero. A task at 14:00 with no length is still your problem at 14:05 —
+ * expiring it the instant its time arrives means it appears and disappears in
+ * the same breath, and the one moment you actually wanted to see it is the one
+ * moment it is gone.
+ */
+export const DEFAULT_TASK_WINDOW_MINUTES = 120;
+
+/**
  * When a scheduled thing stops being current. Its own window, not its
  * completion: something you were meant to do at 09:00 for 30 minutes is no
  * longer *now* at 10:00, whether or not you ticked it off. Otherwise every
@@ -168,7 +178,9 @@ export function expiresAt(card: {
   const event = instant(card.eventAt);
   if (event === null) return null;
   const mins =
-    card.durationMinutes && card.durationMinutes > 0 ? card.durationMinutes : 0;
+    card.durationMinutes && card.durationMinutes > 0
+      ? card.durationMinutes
+      : DEFAULT_TASK_WINDOW_MINUTES;
   return event + mins * 60_000;
 }
 
@@ -205,11 +217,29 @@ export function isCardImminent(
   return ping !== null && ping <= ms;
 }
 
-/** Is this card's notification due (and not yet fired)? */
+/**
+ * How long a reminder with no time at all stays worth firing, measured from
+ * when it was set to ping.
+ */
+export const REMINDER_SHELF_LIFE_MINUTES = 120;
+
+/**
+ * Is this task's notification due — and still worth firing?
+ *
+ * Two bounds, not one. The lower is the notify instant; the upper is the end of
+ * the task's own window. Without the upper bound, every past task that was
+ * never notified stays due forever, so they all fire at once the next time a
+ * client polls — which is exactly what "my phone only notifies me when I open
+ * the app" looks like from the inside. On real data that was 34 at once.
+ *
+ * A notification is a nudge toward something about to happen. Well past its
+ * moment it stops being a nudge and becomes an accusation about yesterday.
+ */
 export function isReminderDue(
   card: {
     remindAt?: string | null;
     eventAt?: string | null;
+    durationMinutes?: number | null;
     notifiedAt?: string | null;
     status?: string;
   },
@@ -218,8 +248,18 @@ export function isReminderDue(
 ): boolean {
   if (card.notifiedAt) return false;
   if (card.status === "done" || card.status === "hidden") return false;
-  const ms = instant(notifyAt(card, leadMinutes));
-  return ms !== null && ms <= now.getTime();
+  if (card.status === "dismissed") return false;
+
+  const ping = instant(notifyAt(card, leadMinutes));
+  if (ping === null) return false;
+
+  const ms = now.getTime();
+  if (ping > ms) return false;
+
+  const gone = expiresAt(card);
+  const deadline =
+    gone === null ? ping + REMINDER_SHELF_LIFE_MINUTES * 60_000 : gone;
+  return ms <= deadline;
 }
 
 function minutesOfDay(hhmm: string): number | null {

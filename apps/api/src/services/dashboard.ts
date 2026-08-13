@@ -18,16 +18,9 @@ import { listStudySessions } from "./study.js";
 import { listGoals, pendingCelebrations } from "./goals.js";
 import { listProperties } from "./properties.js";
 import { listAchievements } from "./achievements.js";
-import { listLightReviews, listQuests } from "./quests.js";
-import { listAgentEvents } from "./events.js";
+import { listQuests } from "./quests.js";
 import { getActiveSession, listActivityLog } from "./sessions.js";
-import { listStudyBlocks } from "./blocks.js";
-import {
-  listDueReminders,
-  listImminentCards,
-  listPinnedCards,
-  listUpcomingCards,
-} from "./cards.js";
+import { listCurrentTasks, listDueTasks, listOpenTasks } from "./tasks.js";
 import {
   getConsistencySeries,
   getPulse,
@@ -144,11 +137,29 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
   const yEff = vsYesterday.efficiency.yesterday;
   const imp = improvementPct(eff, yEff);
 
-  const blocks = db
-    .select()
-    .from(schema.scheduleBlocks)
-    .where(eq(schema.scheduleBlocks.date, dateStr))
-    .all();
+  /**
+   * The planned shape of the day comes from tasks that have a time and a
+   * duration. It used to come from `schedule_blocks`, which was a second way of
+   * saying the same thing — a task at 09:00 for 90 minutes *is* a block.
+   */
+  const blocks = listOpenTasks(db)
+    .filter((t) => t.eventAt && (t.eventAt ?? "").slice(0, 10) === dateStr)
+    .map((t) => {
+      const start = new Date(t.eventAt!);
+      const end = new Date(
+        start.getTime() + (t.durationMinutes ?? 30) * 60_000,
+      );
+      const hhmm = (d: Date) =>
+        `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      return {
+        id: t.id,
+        category: t.activityTag ?? (t.kind === "study" ? "Study" : "Deep Work"),
+        label: t.title,
+        plannedStart: hhmm(start),
+        plannedEnd: hhmm(end),
+        status: t.status === "done" ? "done" : "planned",
+      };
+    });
 
   /**
    * Continuous solid color strip for the full 0–24h day.
@@ -248,17 +259,15 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
   let timeline: Seg[] = [...lived, ...ahead];
 
   const active = getActiveSession(db);
-  const agentEvents = listAgentEvents(db);
-  const pendingEventCount = agentEvents.filter((e) => e.status === "pending").length;
 
   return {
     date: dateStr,
     dayResetTime: resetTime,
-    cards: listPinnedCards(db).filter((c) => c.status !== "hidden"),
-    // Dashboard shows only what is about to happen; the Timeline tab has the rest.
-    upcoming: listImminentCards(db),
-    scheduled: listUpcomingCards(db),
-    dueReminders: listDueReminders(db),
+
+    tasks: listOpenTasks(db),
+    // Only what is current; the Timeline tab has the rest.
+    current: listCurrentTasks(db),
+    dueReminders: listDueTasks(db),
     pendingCelebrations: pendingCelebrations(db),
     properties: listProperties(db),
     habits: listHabits(db),
@@ -277,13 +286,9 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
     vsYesterday,
     pulse: pulse.pulse,
     pulseExplanation: pulse.explanation,
-    studyBlocks: listStudyBlocks(db),
     studySessions: listStudySessions(db, 20),
     goals: listGoals(db),
     quests: listQuests(db),
-    lightReviews: listLightReviews(db),
-    agentEvents,
-    pendingEventCount,
     achievements: listAchievements(db),
     consistency7: getConsistencySeries(db, 7),
     xpSeries7: getXpSeries(db, 7),

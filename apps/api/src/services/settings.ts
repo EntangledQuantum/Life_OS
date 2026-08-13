@@ -183,13 +183,28 @@ export function exportAll(db: LifeOsDb) {
     studySessions: db.select().from(schema.studySessions).all(),
     goals: db.select().from(schema.goals).all(),
     sleepLogs: db.select().from(schema.sleepLogs).all(),
-    scheduleBlocks: db.select().from(schema.scheduleBlocks).all(),
     achievements: db.select().from(schema.achievements).all(),
     quests: db.select().from(schema.quests).all(),
-    lightReviews: db.select().from(schema.lightReviews).all(),
-    agentEvents: db.select().from(schema.agentEvents).all(),
     agentProperties: db.select().from(schema.agentProperties).all(),
-    dashboardCards: db.select().from(schema.dashboardCards).all(),
+    tasks: db.select().from(schema.tasks).all(),
+    activityLog: db.select().from(schema.activityLog).all(),
+    /*
+     * Deliberately no `secret` column. An export is a file people mail
+     * themselves and drop in cloud storage; a webhook signing key in it is a
+     * key you have to assume is public. Re-paste it when you restore.
+     */
+    webhookTargets: db
+      .select({
+        id: schema.webhookTargets.id,
+        name: schema.webhookTargets.name,
+        preset: schema.webhookTargets.preset,
+        url: schema.webhookTargets.url,
+        eventsJson: schema.webhookTargets.eventsJson,
+        active: schema.webhookTargets.active,
+        createdAt: schema.webhookTargets.createdAt,
+      })
+      .from(schema.webhookTargets)
+      .all(),
     dailySnapshots: db.select().from(schema.dailySnapshots).all(),
     userProgress: db.select().from(schema.userProgress).all(),
     settings: db.select().from(schema.settings).all(),

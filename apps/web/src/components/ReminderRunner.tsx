@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { isWithinQuietHours, type DashboardCard } from "@life-os/shared";
+import { isWithinQuietHours, type Task } from "@life-os/shared";
 import { api } from "@/lib/api";
 import {
   armAudio,
@@ -19,11 +19,11 @@ import {
  * computed. The server decides *whether* a reminder is due (it owns the clock
  * and the once-only flag); the client only decides *how* it lands.
  *
- * A card is marked notified as soon as it has chimed, so a refresh or a second
- * tab does not replay it. The card itself keeps flashing in the Upcoming rail
- * until the user actually deals with it.
+ * A task is marked notified as soon as it has chimed, so a refresh or a second
+ * tab does not replay it. The task itself keeps flashing in the Quick log until
+ * the user actually deals with it.
  */
-export function ReminderRunner({ due }: { due: DashboardCard[] }) {
+export function ReminderRunner({ due }: { due: Task[] }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   /** Ids already fired in this tab — guards against a double render racing the POST. */
@@ -35,7 +35,7 @@ export function ReminderRunner({ due }: { due: DashboardCard[] }) {
   });
 
   const markNotified = useMutation({
-    mutationFn: (id: string) => api.markCardNotified(id),
+    mutationFn: (id: string) => api.markTaskNotified(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
@@ -63,37 +63,37 @@ export function ReminderRunner({ due }: { due: DashboardCard[] }) {
       isWithinQuietHours(settings.quietHoursStart, settings.quietHoursEnd);
     const silent = Boolean(settings?.doNotDisturb) || quiet;
 
-    for (const card of due) {
-      if (firedRef.current.has(card.id)) continue;
-      firedRef.current.add(card.id);
+    for (const task of due) {
+      if (firedRef.current.has(task.id)) continue;
+      firedRef.current.add(task.id);
 
-      const when = card.eventAt
-        ? new Date(card.eventAt).toLocaleTimeString([], {
+      const when = task.eventAt
+        ? new Date(task.eventAt).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           })
         : null;
 
       fireReminderAlert({
-        title: card.title,
-        body: card.subtitle ?? card.purpose ?? (when ? `Starts at ${when}` : null),
-        sound: card.sound,
-        flash: card.flash,
+        title: task.title,
+        body: task.subtitle ?? task.purpose ?? (when ? `Starts at ${when}` : null),
+        sound: task.sound,
+        flash: task.flash,
         soundId: settings?.notificationSound ?? "chime",
         silent,
-        tag: `lifeos-card-${card.id}`,
+        tag: `lifeos-task-${task.id}`,
         // Clicking the notification is the fast path to finishing the thing:
-        // it lands on Timeline with the card highlighted and a Done button.
-        onClick: () => navigate(`/app/timeline?card=${card.id}`),
+        // it lands on Timeline with the task highlighted and a Done button.
+        onClick: () => navigate(`/app/timeline?task=${task.id}`),
       });
 
       // A silenced reminder still leaves a trace you can find on your own terms.
-      toast(`🔔 ${card.title}`, {
-        description: when ? `Coming up at ${when}` : (card.subtitle ?? undefined),
+      toast(`🔔 ${task.title}`, {
+        description: when ? `Coming up at ${when}` : (task.subtitle ?? undefined),
         duration: silent ? 4000 : 8000,
       });
 
-      markNotified.mutate(card.id);
+      markNotified.mutate(task.id);
     }
     // `markNotified` is a stable mutation object; re-running on it would refire.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -41,6 +41,33 @@ export function isSilenced(settings: {
   return isWithinQuietHours(settings.quietHoursStart, settings.quietHoursEnd);
 }
 
+/** Default lead, matching the server's when settings have not loaded yet. */
+export const DEFAULT_REMINDER_LEAD_MINUTES = 15;
+
+/**
+ * When a task's notification should fire.
+ *
+ * Port of `notifyAt` in packages/shared/src/schedule.ts. The agent almost never
+ * sets `remindAt` — it sets `eventAt` and expects to be told beforehand — so
+ * reading `remindAt` alone means most tasks are never pre-scheduled on the
+ * phone, and the only notification you ever get is the one fired the moment you
+ * happen to open the app. That was the bug.
+ */
+export function notifyAt(
+  task: { remindAt: string | null; eventAt: string | null },
+  leadMinutes = DEFAULT_REMINDER_LEAD_MINUTES,
+): number | null {
+  if (task.remindAt) {
+    const at = new Date(task.remindAt).getTime();
+    return Number.isNaN(at) ? null : at;
+  }
+  if (!task.eventAt) return null;
+  const event = new Date(task.eventAt).getTime();
+  if (Number.isNaN(event)) return null;
+  const lead = Number.isFinite(leadMinutes) ? Math.max(0, leadMinutes) : 0;
+  return event - lead * 60_000;
+}
+
 /**
  * Life-day bounds — port of getDayBounds from packages/shared/src/xp.ts.
  * Before reset time, still belongs to the previous life-day.

@@ -13,9 +13,11 @@ import { Link } from "react-router-dom";
 import {
   ACTIVITIES,
   GROWTH_STYLES,
-  type DashboardCard,
+  isAgentStatus,
+  isPinned,
   type GrowthStyle,
   type HabitWithToday,
+  type Task,
 } from "@life-os/shared";
 import { api } from "@/lib/api";
 import { celebrate } from "@/lib/celebrate";
@@ -73,26 +75,15 @@ export function OverviewPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
-  const completeCard = useMutation({
-    mutationFn: (id: string) =>
-      fetch((import.meta.env.VITE_API_URL ?? "") + `/api/v1/cards/${id}/complete`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
-        },
-        body: JSON.stringify({ source: "user" }),
-      }).then(async (r) => {
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Failed");
-        return r.json();
-      }),
+  const completeTask = useMutation({
+    mutationFn: (id: string) => api.completeTask(id),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       celebrate(intensity, "complete");
       toast.success(
         res.xpAwarded
-          ? `Card done · +${res.xpAwarded} XP`
-          : "Card complete · agent notified if webhook set",
+          ? `Done · +${res.xpAwarded} XP`
+          : "Done · agent notified if webhook set",
       );
     },
     onError: (e: Error) => toast.error(e.message),
@@ -155,14 +146,15 @@ export function OverviewPage() {
    * has planned. Quick log is for the two things you act on without thinking:
    * what is landing in the next few minutes, and your habits.
    */
-  const agentQueueCount =
-    data.agentEvents.filter((e) => e.status === "pending").length +
-    (data.lightReviews ?? []).filter((r) => !r.completedAt).length;
+  const currentIds = new Set(data.current.map((t) => t.id));
+  const agentQueueCount = data.tasks.filter(
+    (t) => !currentIds.has(t.id) && !isPinned(t) && !isAgentStatus(t),
+  ).length;
   /**
    * Scheduled things that are current — the server has already applied the
    * lead window and dropped anything past its own end time.
    */
-  const imminent = data.upcoming ?? [];
+  const imminent = data.current;
 
   const deltas = [
     {
@@ -305,9 +297,9 @@ export function OverviewPage() {
       <GoalCelebration goals={data.pendingCelebrations ?? []} />
 
       <AgentCardsSection
-        cards={data.cards ?? []}
-        busy={completeCard.isPending}
-        onComplete={(id) => completeCard.mutate(id)}
+        tasks={data.tasks}
+        busy={completeTask.isPending}
+        onComplete={(id) => completeTask.mutate(id)}
       />
 
       <section>
@@ -437,12 +429,12 @@ export function OverviewPage() {
           <ul className="mt-3 divide-y divide-white/[0.05]">
             {/* What is landing now, ahead of the habits. No Start — a scheduled
                 thing is done or it isn't. */}
-            {imminent.map((card) => (
+            {imminent.map((task) => (
               <QuickLogScheduled
-                key={card.id}
-                card={card}
-                busy={completeCard.isPending}
-                onComplete={() => completeCard.mutate(card.id)}
+                key={task.id}
+                task={task}
+                busy={completeTask.isPending}
+                onComplete={() => completeTask.mutate(task.id)}
               />
             ))}
 
@@ -559,32 +551,32 @@ function SectionLabel({
  * running clock — you are being told what is on your plate, not raced.
  */
 function QuickLogScheduled({
-  card,
+  task,
   onComplete,
   busy,
 }: {
-  card: DashboardCard;
+  task: Task;
   onComplete: () => void;
   busy?: boolean;
 }) {
-  const when = card.eventAt
-    ? new Date(card.eventAt).toLocaleTimeString([], {
+  const when = task.eventAt
+    ? new Date(task.eventAt).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       })
     : null;
-  const late = card.eventAt ? new Date(card.eventAt).getTime() < Date.now() : false;
+  const late = task.eventAt ? new Date(task.eventAt).getTime() < Date.now() : false;
 
   return (
     <li
       className={cn(
         "relative flex flex-wrap items-start gap-3 py-3 pl-3",
-        card.flash && card.notifiedAt && "quicklog-flash",
+        task.flash && task.notifiedAt && "quicklog-flash",
       )}
     >
       <span
         className="absolute inset-y-1 left-0 w-0.5 rounded-full"
-        style={{ background: card.themeColor ?? "var(--accent)" }}
+        style={{ background: task.themeColor ?? "var(--accent)" }}
       />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -598,20 +590,36 @@ function QuickLogScheduled({
               {when}
             </span>
           )}
-          {card.activityTag && (
+          {task.activityTag && (
             <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--faint)]">
-              {card.activityTag}
+              {task.activityTag}
             </span>
           )}
           <span className="font-medium">
-            {card.emoji ? `${card.emoji} ` : ""}
-            {card.title}
+            {task.emoji ? `${task.emoji} ` : ""}
+            {task.title}
           </span>
         </div>
-        {(card.subtitle || card.purpose) && (
+        {(task.subtitle || task.purpose) && (
           <p className="mt-1 text-sm text-[var(--muted)]">
-            {card.subtitle ?? card.purpose}
+            {task.subtitle ?? task.purpose}
           </p>
+        )}
+        {/* Whatever the agent attached — a chapter, a paper, a video. */}
+        {task.resources.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+            {task.resources.map((r, i) => (
+              <a
+                key={`${r.url}-${i}`}
+                href={r.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-[var(--accent)] hover:underline"
+              >
+                {r.label}
+              </a>
+            ))}
+          </div>
         )}
       </div>
       <button
@@ -622,7 +630,7 @@ function QuickLogScheduled({
       >
         <Check className="h-3.5 w-3.5" />
         Complete
-        {card.xpOnComplete > 0 ? ` · +${card.xpOnComplete}` : ""}
+        {task.xpOnComplete > 0 ? ` · +${task.xpOnComplete}` : ""}
       </button>
     </li>
   );

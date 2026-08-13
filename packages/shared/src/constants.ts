@@ -68,22 +68,6 @@ export function normalizeGrowthStyle(value: unknown): GrowthStyle {
   }
 }
 
-/**
- * Card kinds.
- * - `task`        pinned content card (slots 0/1, max two)
- * - `agent-setup` reserved singleton connection card (slot 2)
- * - `event`       something that happens at a time and can be *started*
- * - `reminder`    something that only needs to fire a notification
- *
- * `event` and `reminder` cards are unpinned (slot -1) and live in the Upcoming
- * rail, so they never eat one of the two precious front-page slots.
- */
-export const CARD_KINDS = ["task", "agent-setup", "event", "reminder"] as const;
-export type CardKind = (typeof CARD_KINDS)[number];
-
-/** Slot used by unpinned scheduled cards (events and reminders). */
-export const UNPINNED_SLOT = -1;
-
 /** How a card repeats after it is completed. */
 export const REPEAT_RULES = ["none", "daily", "weekly", "spaced"] as const;
 export type RepeatRule = (typeof REPEAT_RULES)[number];

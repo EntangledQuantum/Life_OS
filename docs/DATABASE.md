@@ -44,14 +44,25 @@ All three are **idempotent**. Re-running them never drops a table or deletes a r
 
 | Layer | File | Role |
 |-------|------|------|
-| Drizzle migrations | `packages/db/drizzle/*.sql` | Creates the core tables on a new database |
-| `ensureSchema()` | `packages/db/src/ensure-schema.ts` | Adds columns and newer tables to databases that already exist |
+| Drizzle migrations | `packages/db/drizzle/*.sql` | Creates the core tables on a brand-new database |
+| Versioned migrations | `packages/db/src/migrations.ts` | Brings any database — new or years old — up to the current version |
 
-`ensureSchema()` exists because SQLite's `ALTER TABLE` is limited and full
-re-migration on Windows is painful. It only ever **adds** — new columns with
-defaults, and `CREATE TABLE IF NOT EXISTS`-style guards. It also folds renamed
-config keys forward (for example the old `nurtureStyle` → `growthStyle`), so an old
-database keeps working after an upgrade.
+**The database carries its own version**, in SQLite's `user_version` header, with a
+matching row per step in `schema_migrations`. A database that is already current
+does nothing at all on boot; one that is three versions behind runs exactly the
+three steps it is missing. That replaced a hand-maintained list of `hasColumn`
+checks re-run in full on every start, which kept no record of what any given
+database had actually been through.
+
+Two rules, and they are not negotiable:
+
+- **Never renumber or edit a shipped migration.** Someone's database has already
+  run it and recorded that it did.
+- **Additive only.** New columns with defaults, new tables. Nothing is dropped
+  and nothing is rewritten in place — including tables that stopped being used.
+
+Adding one: append to `MIGRATIONS` with the next number and a `name` that says
+what it does. Each runs in its own transaction and rolls back on failure.
 
 ---
 
@@ -60,9 +71,10 @@ database keeps working after an upgrade.
 | Table | Holds |
 |-------|-------|
 | `habits`, `habit_logs` | Habit definitions, themes, XP weights, and every completion |
-| `schedule_blocks`, `study_sessions` | The agent-owned day timeline and logged study |
-| `dashboard_cards` | Pinned cards (2 content slots + the agent-setup card) **and** scheduled event/reminder cards, with their `show_at` / `remind_at` / `event_at` instants and repeat ladder |
-| `agent_events`, `light_reviews`, `quests` | The Quick log queue injected by agents |
+| `tasks` | **Everything that is not a habit.** Scheduled work, reminders, reviews, study, and the pinned front-page cards — one row each, with optional `event_at` / `duration_minutes`, repeat ladder, XP, resources and card presentation |
+| `study_sessions` | Recorded study, written when a `kind: study` task is completed |
+| `quests` | Daily challenge counters |
+| `webhook_targets`, `webhook_deliveries` | Where completions are pushed, and every attempt with its response |
 | `goals`, `goal_habit_links` | Agent-set goals: the serialized condition, when it was met, and whether the user has seen the celebration |
 | `agent_properties` | Counters the agent invented and maintains (`books_read`, …), each with a stable uid that goal conditions read |
 | `daily_snapshots` | Per-day aggregates that power "you vs yesterday" |
@@ -70,6 +82,7 @@ database keeps working after an upgrade.
 | `gamification_config` | Daily XP pool, multipliers, growth-meter style |
 | `settings` | Day reset time, quiet hours, theme, agent webhook |
 | `achievements`, `sleep_logs`, `active_sessions`, `activity_log` | Badges, sleep, the current hand-set activity, and the record of what was actually done |
+| `dashboard_cards`, `agent_events`, `light_reviews`, `schedule_blocks` | **Superseded by `tasks`.** Nothing reads or writes them. Left in place because dropping data on an upgrade is not a thing this project does — if the v6 import got something wrong, the original row is still there to check against |
 
 Life OS **never writes to your Obsidian vault.** Agents read from here and escalate
 only what is genuinely special into the vault themselves.

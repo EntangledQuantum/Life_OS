@@ -44,7 +44,12 @@ export function AppShell() {
   }, [settings?.accentTheme, setAccentTheme]);
 
   const eff = data?.progress.efficiencyPct ?? 0;
-  const pending = data?.pendingEventCount ?? 0;
+  /**
+   * The badge sits on Timeline, not Overview: agent-queued work lives there
+   * now. What is landing in the next few minutes is already the top of the
+   * Quick log, and a number on the tab you are looking at says nothing.
+   */
+  const pending = data?.tasks.filter((t) => t.status === "active").length ?? 0;
   const silenced = Boolean(
     settings &&
       (settings.doNotDisturb ||
@@ -102,7 +107,7 @@ export function AppShell() {
               >
                 <t.icon className="h-3.5 w-3.5" />
                 {t.label}
-                {t.to === "/app" && pending > 0 && (
+                {t.to === "/app/timeline" && pending > 0 && (
                   <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 font-mono text-[9px] font-bold text-[oklch(12%_0.02_260)]">
                     {pending}
                   </span>

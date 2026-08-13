@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
-import type { DashboardCard, NotificationSoundId } from "./types";
+import type { NotificationSoundId, Task } from "./types";
+import { DEFAULT_REMINDER_LEAD_MINUTES, notifyAt } from "./schedule";
 
 const isNative = Platform.OS === "ios" || Platform.OS === "android";
 
@@ -76,7 +77,7 @@ export async function ensureNotificationChannels(
  * yet — hence the flag rather than just returning `sub.remove`.
  */
 export function onNotificationTapped(
-  handler: (cardId: string | null) => void,
+  handler: (taskId: string | null) => void,
 ): (() => void) | null {
   if (!isNative) return null;
 
@@ -88,9 +89,9 @@ export function onNotificationTapped(
     if (!N || cancelled) return;
     const sub = N.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as
-        | { cardId?: string }
+        | { taskId?: string }
         | undefined;
-      handler(data?.cardId ?? null);
+      handler(data?.taskId ?? null);
     });
     if (cancelled) sub.remove();
     else remove = () => sub.remove();
@@ -114,19 +115,19 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 export async function fireLocalReminder(opts: {
-  card: DashboardCard;
+  task: Task;
   soundId: NotificationSoundId;
   silent: boolean;
 }): Promise<void> {
-  const { card, soundId, silent } = opts;
+  const { task, soundId, silent } = opts;
   if (silent || !isNative) return;
 
   await ensureHandler();
   const N = await Notifications();
   if (!N) return;
 
-  const when = card.eventAt
-    ? new Date(card.eventAt).toLocaleTimeString([], {
+  const when = task.eventAt
+    ? new Date(task.eventAt).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       })
@@ -137,29 +138,67 @@ export async function fireLocalReminder(opts: {
 
   await N.scheduleNotificationAsync({
     content: {
-      title: `${card.emoji ? `${card.emoji} ` : ""}${card.title}`,
+      title: `${task.emoji ? `${task.emoji} ` : ""}${task.title}`,
       body:
-        card.subtitle ??
-        card.purpose ??
+        task.subtitle ??
+        task.purpose ??
         (when ? `Starts at ${when}` : "Reminder from Life OS"),
       sound: soundId === "none" ? undefined : "default",
-      data: { cardId: card.id, kind: "reminder" },
+      data: { taskId: task.id, kind: "reminder" },
       ...(Platform.OS === "android" ? { channelId } : {}),
     },
     trigger: null,
   });
 }
 
+/** How far ahead we pre-register notifications with the OS. */
+const HORIZON_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
- * Schedule future local notifications from card.remindAt so a backgrounded
- * app still fires. Caller still POSTs /notified when the app next talks to the server.
+ * The set we last handed to the OS. Re-registering an identical set is not
+ * free: this runs on every dashboard poll, and cancelling then re-adding a
+ * notification that is about to fire is a good way to lose it. So we only touch
+ * the OS when the intended set actually changes.
+ */
+let lastScheduledKey = "";
+
+/**
+ * Pre-register local notifications so a backgrounded — or closed — app still
+ * fires on time. The caller still POSTs `/notified` when the app next reaches
+ * the server, which is what stops it firing twice.
+ *
+ * The instant comes from `notifyAt`, not from `remindAt` alone. Agents set
+ * `eventAt` and expect a warning beforehand; reading `remindAt` alone meant
+ * almost nothing was ever pre-registered, and the only notification you ever
+ * saw was the one fired at the moment you opened the app.
  */
 export async function scheduleUpcomingReminders(
-  cards: DashboardCard[],
+  tasks: Task[],
   soundId: NotificationSoundId,
   silent: boolean,
+  leadMinutes: number = DEFAULT_REMINDER_LEAD_MINUTES,
 ): Promise<void> {
-  if (silent || !isNative) return;
+  if (!isNative) return;
+
+  const now = Date.now();
+  const wanted = silent
+    ? []
+    : tasks
+        .filter((t) => t.status === "active" && !t.notifiedAt)
+        .map((t) => ({ task: t, at: notifyAt(t, leadMinutes) }))
+        .filter(
+          (x): x is { task: Task; at: number } =>
+            x.at !== null && x.at > now && x.at - now <= HORIZON_MS,
+        )
+        .sort((a, b) => a.at - b.at);
+
+  /*
+   * Identity of the intended set, not of the array. The dashboard query hands
+   * back a new array every poll, so comparing references would rewrite every
+   * notification every eight seconds.
+   */
+  const key = `${soundId}|${wanted.map((x) => `${x.task.id}@${x.at}`).join(",")}`;
+  if (key === lastScheduledKey) return;
 
   await ensureHandler();
   const N = await Notifications();
@@ -172,25 +211,16 @@ export async function scheduleUpcomingReminders(
     }
   }
 
-  const now = Date.now();
-  for (const card of cards) {
-    if (!card.remindAt || card.notifiedAt || card.status !== "active") continue;
-    const at = new Date(card.remindAt).getTime();
-    if (Number.isNaN(at) || at <= now) continue;
-    if (at - now > 48 * 60 * 60 * 1000) continue;
+  const channelId =
+    soundId === "none" ? "lifeos-silent" : channelForSound(soundId);
 
-    const channelId =
-      soundId === "none" ? "lifeos-silent" : channelForSound(soundId);
-
+  for (const { task, at } of wanted) {
     await N.scheduleNotificationAsync({
       content: {
-        title: `${card.emoji ? `${card.emoji} ` : ""}${card.title}`,
-        body: card.subtitle ?? card.purpose ?? "Upcoming",
+        title: `${task.emoji ? `${task.emoji} ` : ""}${task.title}`,
+        body: task.subtitle ?? task.purpose ?? "Upcoming",
         sound: soundId === "none" ? undefined : "default",
-        data: {
-          cardId: card.id,
-          kind: "scheduled-reminder",
-        },
+        data: { taskId: task.id, kind: "scheduled-reminder" },
         ...(Platform.OS === "android" ? { channelId } : {}),
       },
       trigger: {
@@ -199,4 +229,6 @@ export async function scheduleUpcomingReminders(
       },
     });
   }
+
+  lastScheduledKey = key;
 }

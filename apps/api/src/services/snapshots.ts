@@ -53,19 +53,12 @@ export function refreshTodaySnapshot(db: LifeOsDb) {
   const inDay = (ts: string | null | undefined) =>
     Boolean(ts && ts >= start && ts <= end);
 
-  const cardXp = db
+  const taskXp = db
     .select()
-    .from(schema.dashboardCards)
+    .from(schema.tasks)
     .all()
-    .filter((c) => inDay(c.completedAt))
-    .reduce((a, c) => a + (c.xpOnComplete ?? 0), 0);
-
-  const eventXp = db
-    .select()
-    .from(schema.agentEvents)
-    .all()
-    .filter((e) => e.status === "done" && inDay(e.completedAt))
-    .reduce((a, e) => a + ((e as { xpOnComplete?: number }).xpOnComplete ?? 0), 0);
+    .filter((t) => t.status === "done" && inDay(t.completedAt))
+    .reduce((a, t) => a + (t.xpOnComplete ?? 0), 0);
 
   const questXp = db
     .select()
@@ -84,8 +77,7 @@ export function refreshTodaySnapshot(db: LifeOsDb) {
   const totalXpEarned =
     habitLogs.reduce((a, l) => a + l.xpAwarded, 0) +
     study.reduce((a, s) => a + s.xpAwarded, 0) +
-    cardXp +
-    eventXp +
+    taskXp +
     questXp +
     achievementXp;
 

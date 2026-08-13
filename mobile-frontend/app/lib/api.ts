@@ -5,9 +5,23 @@ import type {
   HealthResponse,
   HabitWithToday,
   Goal,
-  DashboardCard,
+  ProtocolMismatch,
+  Task,
+  TaskKind,
+  TaskStatus,
 } from "./types";
 import { getBaseUrl, getToken, normalizeBaseUrl } from "./storage";
+
+/**
+ * Wire-format version this build speaks. Sent on every API call; a server that
+ * cannot serve it answers 426 rather than handing back a payload we would
+ * misread as an empty day.
+ *
+ * Bump this only when the app can no longer read an older server — that is the
+ * whole meaning of the number.
+ */
+export const PROTOCOL_VERSION = 2;
+const PROTOCOL_HEADER = "x-lifeos-protocol";
 
 export class ApiError extends Error {
   status: number;
@@ -15,6 +29,20 @@ export class ApiError extends Error {
     super(message);
     this.status = status;
     this.name = "ApiError";
+  }
+}
+
+/**
+ * The server is newer than this build. Distinct from ApiError because the fix
+ * is different in kind: nothing the user does in the app will help, and
+ * retrying is pointless. They need a new APK.
+ */
+export class ProtocolError extends ApiError {
+  detail: ProtocolMismatch;
+  constructor(detail: ProtocolMismatch) {
+    super(426, detail.error);
+    this.name = "ProtocolError";
+    this.detail = detail;
   }
 }
 
@@ -46,6 +74,7 @@ async function request<T>(path: string, options: RequestOpts = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
+    [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
     ...(options.headers as Record<string, string>),
   };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -66,6 +95,31 @@ async function request<T>(path: string, options: RequestOpts = {}): Promise<T> {
   if (res.status === 401) {
     onUnauthorized?.();
     throw new ApiError(401, "Wrong or expired API token");
+  }
+
+  /*
+   * 426 Upgrade Required: the server has moved past what this build can read.
+   * Surfaced as its own error type so the UI can say "install the new app"
+   * instead of showing a generic failure the user would try to fix by
+   * reconnecting.
+   */
+  if (res.status === 426) {
+    let detail: ProtocolMismatch | null = null;
+    try {
+      detail = (await res.json()) as ProtocolMismatch;
+    } catch {
+      /* fall through to the generic shape below */
+    }
+    throw new ProtocolError(
+      detail ?? {
+        error: "This app is too old for this Life OS server",
+        hint: "Install the latest Android build.",
+        clientProtocol: PROTOCOL_VERSION,
+        serverProtocol: 0,
+        minProtocol: 0,
+        downloadUrl: "https://github.com/EntangledQuantum/Life_OS/releases",
+      },
+    );
   }
 
   if (!res.ok) {
@@ -131,12 +185,31 @@ export async function validateToken(
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token.trim()}`,
+        [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
       },
     });
   } catch {
     throw new ApiError(0, "Life OS isn't running — can't reach the server");
   }
   if (res.status === 401) return { ok: false, status: 401 };
+  /*
+   * Catch the version gap here, at the point of connecting, rather than letting
+   * someone finish setup and then meet a broken app. This is the first
+   * authenticated call the app ever makes.
+   */
+  if (res.status === 426) {
+    const detail = (await res.json().catch(() => null)) as ProtocolMismatch | null;
+    throw new ProtocolError(
+      detail ?? {
+        error: "This app is too old for this Life OS server",
+        hint: "Install the latest Android build.",
+        clientProtocol: PROTOCOL_VERSION,
+        serverProtocol: 0,
+        minProtocol: 0,
+        downloadUrl: "https://github.com/EntangledQuantum/Life_OS/releases",
+      },
+    );
+  }
   if (!res.ok) {
     throw new ApiError(res.status, "Token check failed");
   }
@@ -203,39 +276,44 @@ export const api = {
   undoHabit: (id: string) =>
     request(`/api/v1/habits/${id}/undo`, { method: "POST" }),
 
-  completeCard: (id: string) =>
-    request<{ xpAwarded?: number; nextOccurrence?: unknown }>(
-      `/api/v1/cards/${id}/complete`,
+  /**
+   * Every task, optionally filtered. `/cards`, `/events`, `/reviews` and
+   * `/blocks` are gone — they were four views of one object, and this is it.
+   */
+  tasks: (filter: { status?: TaskStatus; kind?: TaskKind } = {}) => {
+    const q = new URLSearchParams();
+    if (filter.status) q.set("status", filter.status);
+    if (filter.kind) q.set("kind", filter.kind);
+    const qs = q.toString();
+    return request<Task[]>(`/api/v1/tasks${qs ? `?${qs}` : ""}`);
+  },
+
+  /*
+   * No `startTask`. Scheduled things are completed, never started, and
+   * completing one does not touch the running activity — that is
+   * `setActiveSession` and nothing else.
+   */
+  completeTask: (id: string) =>
+    request<{ xpAwarded?: number; nextOccurrence?: Task | null }>(
+      `/api/v1/tasks/${id}/complete`,
       {
         method: "POST",
         body: JSON.stringify({ source: "user" }),
       },
     ),
 
-  /*
-   * No `startCard` / `startBlock`. Scheduled things are completed, never
-   * started, and completing one does not touch the running activity — that is
-   * `setActiveSession` and nothing else.
-   */
+  dismissTask: (id: string) =>
+    request(`/api/v1/tasks/${id}/dismiss`, { method: "POST" }),
 
-  markCardNotified: (id: string) =>
-    request(`/api/v1/cards/${id}/notified`, { method: "POST" }),
+  markTaskNotified: (id: string) =>
+    request(`/api/v1/tasks/${id}/notified`, { method: "POST" }),
 
-  /** Move a card's slider or press its button. Not a completion. */
-  interactWithCard: (id: string, body: { value?: number; pressed?: boolean }) =>
-    request(`/api/v1/cards/${id}/interact`, {
+  /** Move a task's slider or press its button. Not a completion. */
+  interactWithTask: (id: string, body: { value?: number; pressed?: boolean }) =>
+    request(`/api/v1/tasks/${id}/interact`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-
-  completeEvent: (id: string) =>
-    request(`/api/v1/events/${id}/complete`, { method: "POST" }),
-
-  dismissEvent: (id: string) =>
-    request(`/api/v1/events/${id}/dismiss`, { method: "POST" }),
-
-  completeReview: (id: string) =>
-    request(`/api/v1/reviews/${id}/complete`, { method: "POST" }),
 
   markCelebrationSeen: (id: string) =>
     request<Goal>(`/api/v1/goals/${id}/celebration-seen`, { method: "POST" }),
@@ -249,9 +327,6 @@ export const api = {
   clearActiveSession: () =>
     request("/api/v1/session/active", { method: "DELETE" }),
 
-  completeBlock: (id: string) =>
-    request(`/api/v1/blocks/${id}/complete`, { method: "POST" }),
-
   logStudy: (body: {
     title: string;
     durationMinutes: number;
@@ -261,8 +336,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ...body, source: "user" }),
     }),
-
-  cards: () => request<DashboardCard[]>("/api/v1/cards"),
 
   analytics: () => request<unknown>("/api/v1/analytics"),
 };

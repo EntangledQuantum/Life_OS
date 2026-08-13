@@ -11,13 +11,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, ProtocolError } from "@/lib/api";
 import { useConnection } from "@/lib/connection";
 import { font, pulseColor, radius, rgba } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-provider";
 import { useLayout } from "@/lib/responsive";
 import { isSilenced } from "@/lib/schedule";
 import { cacheDashboard, readDashboardCache } from "@/lib/storage";
+import { isAgentStatus, isPinned } from "@/lib/types";
 import type { DashboardToday, Activity } from "@/lib/types";
 import {
   Body,
@@ -30,11 +31,12 @@ import {
 } from "@/components/ui";
 import { GrowthHero } from "@/components/growth-hero";
 import { HabitRow } from "@/components/habit-row";
-import { CardRow } from "@/components/card-row";
+import { TaskRow } from "@/components/task-row";
 import { AgentCard, AgentSetupStrip } from "@/components/agent-card";
 import { ActivitySession } from "@/components/activity-session";
 import { ReminderRunner } from "@/components/reminder-runner";
 import { CelebrationModal } from "@/components/celebration-modal";
+import { UpdateRequired } from "@/components/update-required";
 import { SwipeTabs } from "@/components/swipe-tabs";
 import { pushWidgetFromDashboard } from "@/widgets/update";
 
@@ -137,12 +139,13 @@ export default function TodayScreen() {
     onSuccess: invalidate,
   });
 
-  const completeCard = useMutation({
-    mutationFn: (id: string) => api.completeCard(id),
+  const completeTask = useMutation({
+    mutationFn: (id: string) => api.completeTask(id),
     onSuccess: (res) => {
       invalidate();
       if (res.xpAwarded) setToast(`+${res.xpAwarded} XP`);
     },
+    onError: (e: Error) => setToast(e.message),
   });
 
   const celebrate = useMutation({
@@ -157,14 +160,23 @@ export default function TodayScreen() {
    * habits never rendered at all. Habits are the one thing Today must always
    * show.
    */
-  const agentCount = useMemo(
-    () =>
-      (data?.agentEvents ?? []).filter((e) => e.status === "pending").length +
-      (data?.lightReviews ?? []).filter((r) => !r.completedAt).length,
-    [data],
-  );
+  const agentCount = useMemo(() => {
+    if (!data) return 0;
+    const current = new Set(data.current.map((t) => t.id));
+    return data.tasks.filter(
+      (t) => !current.has(t.id) && !isPinned(t) && !isAgentStatus(t),
+    ).length;
+  }, [data]);
 
   if (dashQ.isLoading && !data) return <Loading />;
+
+  /*
+   * A server that has outgrown this build is its own screen. It is not a
+   * connection problem and there is nothing to retry — see update-required.tsx.
+   */
+  if (dashQ.error instanceof ProtocolError) {
+    return <UpdateRequired error={dashQ.error} />;
+  }
 
   if (dashQ.isError && !data) {
     const msg =
@@ -195,16 +207,16 @@ export default function TodayScreen() {
   if (!data) return <Loading />;
 
   const celebration = data.pendingCelebrations?.[0] ?? null;
-  const contentCards = (data.cards ?? []).filter((c) => c.slot === 0 || c.slot === 1);
-  const setupCard = (data.cards ?? []).find(
-    (c) => c.slot === 2 || c.kind === "agent-setup",
-  );
-  const upcoming = data.upcoming ?? [];
-  const laterCount = (data.scheduled?.length ?? 0) - upcoming.length;
+  /* Pinned tasks are drawn as cards; the status strip is neither pinned nor work. */
+  const contentCards = data.tasks.filter((t) => isPinned(t) && !isAgentStatus(t));
+  const setupCard = data.tasks.find(isAgentStatus);
+  /* Already filtered by the server: inside the lead window, not past its end. */
+  const current = data.current;
+  const laterCount = agentCount;
 
   return (
     <SwipeTabs index={0}>
-      <ReminderRunner due={data.dueReminders ?? []} scheduled={data.scheduled} />
+      <ReminderRunner due={data.dueReminders ?? []} scheduled={data.tasks} />
       <CelebrationModal
         goal={celebration}
         intensity={settings?.celebrationIntensity ?? "full"}
@@ -283,7 +295,7 @@ export default function TodayScreen() {
                     <SectionHeader title="From your agent" />
                     {setupCard ? <AgentSetupStrip card={setupCard} /> : null}
                     {contentCards.map((c) => (
-                      <AgentCard key={c.id} card={c} onComplete={() => completeCard.mutate(c.id)} />
+                      <AgentCard key={c.id} card={c} onComplete={() => completeTask.mutate(c.id)} />
                     ))}
                   </View>
                 ) : null}
@@ -305,19 +317,19 @@ export default function TodayScreen() {
                     }
                   />
 
-                  {upcoming.map((c) => (
-                    <CardRow
-                      key={c.id}
-                      card={c}
-                      urgent={Boolean(c.flash && c.notifiedAt)}
-                      onComplete={() => completeCard.mutate(c.id)}
+                  {current.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      urgent={Boolean(task.flash && task.notifiedAt)}
+                      onComplete={() => completeTask.mutate(task.id)}
                     />
                   ))}
 
                   {/* Habits are always here — see AGENTS.md, this client
                       deliberately diverges from CLIENT_GUIDE §3.7. */}
                   {(data.habits ?? []).length === 0 ? (
-                    upcoming.length === 0 ? (
+                    current.length === 0 ? (
                       <Body>No habits yet. Ask your agent to build some.</Body>
                     ) : null
                   ) : (
@@ -326,7 +338,7 @@ export default function TodayScreen() {
                         style={{
                           flexDirection: "row",
                           justifyContent: "space-between",
-                          marginTop: upcoming.length > 0 ? 6 : 0,
+                          marginTop: current.length > 0 ? 6 : 0,
                         }}
                       >
                         <Text

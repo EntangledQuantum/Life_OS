@@ -1,7 +1,6 @@
 import type {
   AccentThemeId,
   Activity,
-  CardKind,
   Category,
   GrowthStyle,
   HabitGraphic,
@@ -12,6 +11,7 @@ import type {
 } from "./constants.js";
 import type { GoalCondition } from "./conditions.js";
 import type { CardControl } from "./webhooks.js";
+import type { Task } from "./tasks.js";
 
 export type Source = "user" | "agent";
 
@@ -39,79 +39,6 @@ export interface Habit {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
-}
-
-/**
- * Card slots. `0` and `1` are the two agent content cards; `2` is the reserved
- * singleton slot for the agent setup card, which does not consume a content
- * slot; `-1` marks an unpinned scheduled card (event/reminder) living in the
- * Upcoming rail rather than on the front page.
- */
-export type CardSlot = -1 | 0 | 1 | 2;
-
-/** @see CardKind — kept as an alias because it is part of the public API surface. */
-export type DashboardCardKind = CardKind;
-
-/** Agent-owned card: pinned content, the setup card, or a scheduled event/reminder. */
-export interface DashboardCard {
-  id: string;
-  slot: CardSlot;
-  kind: DashboardCardKind;
-  /**
-   * What this card is *for*, in the agent's own words ("spaced-repetition
-   * review", "evening wind-down nudge"). Free text — it is the card's function,
-   * not its category; `activityTag` carries the category.
-   */
-  purpose: string | null;
-  /** Which bucket of the day this belongs to; starting the card activates it. */
-  activityTag: Activity | null;
-  /** Card is hidden until this instant. Null = visible now. */
-  showAt: string | null;
-  /** Notification fires at this instant. Always strictly before `eventAt`. */
-  remindAt: string | null;
-  /** When the thing actually happens. */
-  eventAt: string | null;
-  /** How long it takes once started — drives the timeline block. */
-  durationMinutes: number | null;
-  repeatRule: RepeatRule;
-  /** Position on the spaced-repetition ladder. */
-  repeatIndex: number;
-  /** Custom spaced ladder in days; null uses SPACED_OFFSETS_DAYS. */
-  repeatOffsetsDays: number[] | null;
-  /** Play a chime when the reminder fires. */
-  sound: boolean;
-  /** Flash the card (and the tab) until it is dealt with. */
-  flash: boolean;
-  /** Set once the client has actually fired the notification. */
-  notifiedAt: string | null;
-  /** @deprecated cards no longer start; kept so old rows still deserialize. */
-  linkedBlockId: string | null;
-  /**
-   * One interactive widget the agent can put on the card — a slider to ask
-   * "how did that feel, 1–10", or a button for a plain acknowledgement.
-   */
-  control: CardControl | null;
-  /** Tell the agent when the control is used. Off unless it asked. */
-  webhookOnInteract: boolean;
-  title: string;
-  subtitle: string | null;
-  body: string | null;
-  emoji: string | null;
-  themeColor: string | null;
-  imageUrl: string | null;
-  imageData: string | null;
-  /** Sanitized inline SVG markup supplied by the agent (rendered sandboxed) */
-  svg: string | null;
-  status: "active" | "done" | "hidden";
-  progress: number;
-  ctaLabel: string | null;
-  ctaLink: string | null;
-  meta: Record<string, unknown> | null;
-  xpOnComplete: number;
-  webhookOnComplete: boolean;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface HabitLog {
@@ -147,22 +74,6 @@ export interface StudySession {
   createdAt: string;
   /** Linked schedule block if completed from timeline */
   blockId?: string | null;
-}
-
-/** Agent-defined time block on the day timeline */
-export interface ScheduleBlock {
-  id: string;
-  date: string;
-  category: string;
-  label: string;
-  plannedStart: string | null;
-  plannedEnd: string | null;
-  actualStart: string | null;
-  actualEnd: string | null;
-  status: "planned" | "active" | "done" | "skipped";
-  source: Source;
-  notes: string | null;
-  completedAt: string | null;
 }
 
 export interface Goal {
@@ -240,38 +151,6 @@ export interface Quest {
   progressCount: number;
   xpBonus: number;
   forDate: string | null;
-  completedAt: string | null;
-  createdAt: string;
-}
-
-export interface LightReview {
-  id: string;
-  prompt: string;
-  forDate: string;
-  completedAt: string | null;
-  createdAt: string;
-  link?: string | null;
-}
-
-/** Hermes-injected live task / review / reminder */
-export interface AgentEvent {
-  id: string;
-  kind:
-    | "review"
-    | "task"
-    | "life"
-    | "study"
-    | "reminder"
-    | "exploration"
-    | "other";
-  title: string;
-  body: string | null;
-  link: string | null;
-  forDate: string;
-  status: "pending" | "done" | "dismissed";
-  priority: number;
-  /** Bonus XP on complete, outside the habit pool */
-  xpOnComplete: number;
   completedAt: string | null;
   createdAt: string;
 }
@@ -376,18 +255,17 @@ export interface VsYesterday {
 export interface DashboardToday {
   date: string;
   dayResetTime: string;
-  /** Up to 2 agent custom cards for the front page (plus the setup card) */
-  cards: DashboardCard[];
   /**
-   * Scheduled cards about to happen — within 15 minutes, overdue, or already
-   * pinged. This is what the dashboard shows; everything further out is
-   * planning and belongs on the Timeline tab.
+   * Every open task. **This is the model.** `cards`, `agentEvents`,
+   * `lightReviews` and `studyBlocks` used to be four near-identical lists here;
+   * they are one list now, and a client that still asks for them is talking an
+   * older protocol and gets a 426 rather than a quietly empty day.
    */
-  upcoming: DashboardCard[];
-  /** Every visible scheduled card, soonest first. Powers the Timeline tab. */
-  scheduled: DashboardCard[];
-  /** Reminders whose remindAt has passed and that have not chimed yet. */
-  dueReminders: DashboardCard[];
+  tasks: Task[];
+  /** What is current: inside the lead window, not past its own end. */
+  current: Task[];
+  /** Notifications that should fire now and have not yet. */
+  dueReminders: Task[];
   /**
    * Goals whose condition is true but whose celebration the user has not seen.
    * The dashboard must play the animation; the goal is not finished until it has.
@@ -400,13 +278,9 @@ export interface DashboardToday {
   vsYesterday: VsYesterday;
   pulse: ImprovementPulse;
   pulseExplanation: string;
-  studyBlocks: ScheduleBlock[];
   studySessions: StudySession[];
   goals: Goal[];
   quests: Quest[];
-  lightReviews: LightReview[];
-  agentEvents: AgentEvent[];
-  pendingEventCount: number;
   achievements: Achievement[];
   consistency7: { date: string; pct: number }[];
   xpSeries7: { date: string; current: number; target: number }[];

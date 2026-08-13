@@ -1,8 +1,6 @@
 import { z } from "zod";
 import {
-  CATEGORIES,
-  CARD_KINDS,
-  GROWTH_STYLES,
+  CATEGORIES,  GROWTH_STYLES,
   HABIT_GRAPHICS,
   LEGACY_GROWTH_STYLES,
   QUALITY_FLAGS,
@@ -15,6 +13,7 @@ import {
 } from "./constants.js";
 import { MAX_SVG_LENGTH } from "./svg.js";
 import { WEBHOOK_EVENTS, WEBHOOK_PRESETS } from "./webhooks.js";
+import { TASK_KINDS, TASK_STATUSES } from "./tasks.js";
 import { parseGoalCondition, type GoalCondition } from "./conditions.js";
 
 /**
@@ -66,13 +65,13 @@ const isoInstant = z
   });
 
 /**
- * A card's interactive control. Shape-checked here, range-checked in
+ * A task's interactive control. Shape-checked here, range-checked in
  * `validateCardControl` — zod cannot express "value must sit inside min..max"
  * without a refinement that reports a worse message than the validator's.
  *
- * Declared above `createDashboardCardSchema` because that schema references it,
- * and a `const` referenced before its initializer is a runtime error, not a
- * type error TypeScript would have caught.
+ * Declared above `createTaskSchema` because that schema references it, and a
+ * `const` referenced before its initializer is a runtime error, not a type
+ * error TypeScript would have caught.
  */
 export const cardControlSchema = z.union([
   z.object({
@@ -90,62 +89,6 @@ export const cardControlSchema = z.union([
     pressedAt: z.string().nullable().optional(),
   }),
 ]);
-
-export const createDashboardCardSchema = z.object({
-  /**
-   * 0 and 1 are content slots; slot 2 is implied by kind:"agent-setup";
-   * event/reminder cards are unpinned and get slot -1 automatically.
-   */
-  slot: z
-    .union([z.literal(-1), z.literal(0), z.literal(1), z.literal(2)])
-    .optional(),
-  kind: z.enum(CARD_KINDS).default("task"),
-  /** What this card is for, in your own words. */
-  purpose: z.string().max(200).nullable().optional(),
-  /**
-   * Which bucket of the day this belongs to. Closed set on purpose: invent any
-   * content you like, but map it onto a day shape the timeline understands.
-   */
-  activityTag: z.enum(ACTIVITIES).nullable().optional(),
-  /** Card stays hidden until this instant. */
-  showAt: isoInstant.nullable().optional(),
-  /** Notification fires here. Must be strictly before eventAt. */
-  remindAt: isoInstant.nullable().optional(),
-  /** When the thing actually happens. */
-  eventAt: isoInstant.nullable().optional(),
-  durationMinutes: z.number().int().min(1).max(24 * 60).nullable().optional(),
-  repeatRule: z.enum(REPEAT_RULES).default("none"),
-  /** Custom spaced-repetition ladder in days; omit for the default 1/3/7/14/30/60. */
-  repeatOffsetsDays: z
-    .array(z.number().int().min(1).max(365))
-    .max(20)
-    .nullable()
-    .optional(),
-  sound: z.boolean().default(true),
-  flash: z.boolean().default(true),
-  title: z.string().min(1).max(200),
-  subtitle: z.string().max(300).nullable().optional(),
-  body: z.string().max(4000).nullable().optional(),
-  emoji: z.string().max(16).nullable().optional(),
-  themeColor: z.string().nullable().optional(),
-  imageUrl: z.string().max(2000).nullable().optional(),
-  imageData: z.string().max(2_000_000).nullable().optional(),
-  /** Inline SVG markup; sanitized server-side and rendered sandboxed. */
-  svg: z.string().max(MAX_SVG_LENGTH).nullable().optional(),
-  status: z.enum(["active", "done", "hidden"]).default("active"),
-  progress: z.number().int().min(0).max(100).default(0),
-  ctaLabel: z.string().max(80).nullable().optional(),
-  ctaLink: z.string().nullable().optional(),
-  meta: z.record(z.unknown()).nullable().optional(),
-  xpOnComplete: z.number().int().min(0).max(500).default(0),
-  webhookOnComplete: z.boolean().default(true),
-  /** One interactive widget — a slider to ask something, or a button. */
-  control: cardControlSchema.nullable().optional(),
-  /** Hear about the control being used. Off by default: a slider fires often. */
-  webhookOnInteract: z.boolean().default(false),
-});
-
-export const updateDashboardCardSchema = createDashboardCardSchema.partial();
 
 export const completeCardSchema = z.object({
   note: z.string().nullable().optional(),
@@ -170,24 +113,6 @@ export const createStudySessionSchema = z.object({
   source: z.enum(["user", "agent"]).default("user"),
   blockId: z.string().nullable().optional(),
 });
-
-export const createScheduleBlockSchema = z.object({
-  date: z.string().optional(),
-  category: z.string().default("Study"),
-  label: z.string().min(1),
-  plannedStart: z.string().nullable().optional(),
-  plannedEnd: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),
-  source: z.enum(["user", "agent"]).default("agent"),
-});
-
-export const updateScheduleBlockSchema = createScheduleBlockSchema
-  .partial()
-  .extend({
-    status: z.enum(["planned", "active", "done", "skipped"]).optional(),
-    actualStart: z.string().nullable().optional(),
-    actualEnd: z.string().nullable().optional(),
-  });
 
 export const createGoalSchema = z.object({
   title: z.string().min(1).max(200),
@@ -262,23 +187,56 @@ export const injectQuestSchema = z.object({
   forDate: z.string().nullable().optional(),
 });
 
-export const injectLightReviewSchema = z.object({
-  prompt: z.string().min(1),
-  forDate: z.string().optional(),
-  link: z.string().nullable().optional(),
+/** A link the agent attached to a task — a chapter, a paper, a video. */
+export const taskResourceSchema = z.object({
+  label: z.string().min(1).max(120),
+  url: z.string().min(1).max(2000),
+  /** Free-form icon hint: "book", "video", "paper", "link". */
+  kind: z.string().max(32).optional(),
 });
 
-export const injectAgentEventSchema = z.object({
-  kind: z
-    .enum(["review", "task", "life", "study", "reminder", "exploration", "other"])
-    .default("task"),
-  title: z.string().min(1),
-  body: z.string().nullable().optional(),
-  link: z.string().nullable().optional(),
-  forDate: z.string().optional(),
-  priority: z.number().int().default(0),
-  /** Bonus XP awarded when the user completes it — outside the habit pool. */
+export const createTaskSchema = z.object({
+  kind: z.enum(TASK_KINDS).default("task"),
+  title: z.string().min(1).max(200),
+  subtitle: z.string().max(300).nullable().optional(),
+  body: z.string().max(8000).nullable().optional(),
+  purpose: z.string().max(200).nullable().optional(),
+  activityTag: z.enum(ACTIVITIES).nullable().optional(),
+  showAt: isoInstant.nullable().optional(),
+  eventAt: isoInstant.nullable().optional(),
+  /** Override; normally derived from eventAt minus the user's lead. */
+  remindAt: isoInstant.nullable().optional(),
+  durationMinutes: z.number().int().min(1).max(24 * 60).nullable().optional(),
+  repeatRule: z.enum(REPEAT_RULES).default("none"),
+  repeatOffsetsDays: z
+    .array(z.number().int().min(1).max(365))
+    .max(20)
+    .nullable()
+    .optional(),
   xpOnComplete: z.number().int().min(0).max(500).default(0),
+  webhookOnComplete: z.boolean().default(false),
+  webhookOnInteract: z.boolean().default(false),
+  /** Links and references — what a "study block" always was underneath. */
+  resources: z.array(taskResourceSchema).max(30).nullable().optional(),
+  /** Pin to a front-page card slot. Null leaves it in the list. */
+  slot: z.union([z.literal(0), z.literal(1)]).nullable().optional(),
+  emoji: z.string().max(16).nullable().optional(),
+  themeColor: z.string().max(32).nullable().optional(),
+  imageUrl: z.string().max(2000).nullable().optional(),
+  imageData: z.string().max(2_000_000).nullable().optional(),
+  svg: z.string().max(MAX_SVG_LENGTH).nullable().optional(),
+  ctaLabel: z.string().max(80).nullable().optional(),
+  ctaLink: z.string().max(2000).nullable().optional(),
+  control: cardControlSchema.nullable().optional(),
+  progress: z.number().int().min(0).max(100).default(0),
+  sound: z.boolean().default(true),
+  flash: z.boolean().default(true),
+  source: z.enum(["agent", "user"]).default("agent"),
+  meta: z.record(z.unknown()).nullable().optional(),
+});
+
+export const updateTaskSchema = createTaskSchema.partial().extend({
+  status: z.enum(TASK_STATUSES).optional(),
 });
 
 export const cardInteractSchema = z.object({

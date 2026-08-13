@@ -347,6 +347,77 @@ export const settings = sqliteTable("settings", {
 });
 
 /**
+ * The only kind of work there is, besides a habit.
+ *
+ * Absorbs what used to be four tables — scheduled cards, agent events, light
+ * reviews and study blocks — because they were the same object wearing
+ * different hats, and an agent had to guess which hat to put on. Every optional
+ * part (a time, a repeat, XP, links, a card presentation) is just a column that
+ * may be null.
+ *
+ * `sourceTable` / `sourceId` record where a row was carried over from in the
+ * v6 migration. They make the import idempotent and keep a row traceable.
+ */
+export const tasks = sqliteTable("tasks", {
+  id: text("id").primaryKey(),
+  /** Presentation and grouping only — every kind behaves identically. */
+  kind: text("kind").notNull().default("task"),
+  title: text("title").notNull(),
+  subtitle: text("subtitle"),
+  body: text("body"),
+  purpose: text("purpose"),
+  status: text("status").notNull().default("active"),
+  activityTag: text("activity_tag"),
+
+  showAt: text("show_at"),
+  eventAt: text("event_at"),
+  durationMinutes: integer("duration_minutes"),
+  /** Explicit override; normally derived from eventAt minus the user's lead. */
+  remindAt: text("remind_at"),
+  notifiedAt: text("notified_at"),
+
+  repeatRule: text("repeat_rule").notNull().default("none"),
+  repeatIndex: integer("repeat_index").notNull().default(0),
+  repeatOffsetsJson: text("repeat_offsets_json"),
+
+  xpOnComplete: integer("xp_on_complete").notNull().default(0),
+  webhookOnComplete: integer("webhook_on_complete", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  webhookOnInteract: integer("webhook_on_interact", { mode: "boolean" })
+    .notNull()
+    .default(false),
+
+  /** Links and references — what a "study block" always was underneath. */
+  resourcesJson: text("resources_json"),
+
+  /** Pinned to a front-page card slot (0 or 1). Null = not pinned. */
+  slot: integer("slot"),
+  emoji: text("emoji"),
+  themeColor: text("theme_color"),
+  imageUrl: text("image_url"),
+  imageData: text("image_data"),
+  svg: text("svg"),
+  ctaLabel: text("cta_label"),
+  ctaLink: text("cta_link"),
+  controlJson: text("control_json"),
+
+  progress: integer("progress").notNull().default(0),
+  sound: integer("sound", { mode: "boolean" }).notNull().default(true),
+  flash: integer("flash", { mode: "boolean" }).notNull().default(true),
+
+  source: text("source").notNull().default("agent"),
+  metaJson: text("meta_json"),
+
+  completedAt: text("completed_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+
+  sourceTable: text("source_table"),
+  sourceId: text("source_id"),
+});
+
+/**
  * Where completions get delivered.
  *
  * More than one, because a person can plausibly run both Hermes and OpenClaw,

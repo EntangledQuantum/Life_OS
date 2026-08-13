@@ -1,3 +1,4 @@
+import { PROTOCOL_HEADER, PROTOCOL_VERSION } from "@life-os/shared";
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
 function getToken(): string | null {
@@ -13,6 +14,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
     ...(options.headers as Record<string, string>),
   };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -52,35 +54,23 @@ export const api = {
     }),
   undoHabit: (id: string) =>
     request<any>(`/api/v1/habits/${id}/undo`, { method: "POST" }),
-  studyBlocks: () =>
-    request<import("@life-os/shared").ScheduleBlock[]>("/api/v1/blocks/study"),
-  blocks: () =>
-    request<import("@life-os/shared").ScheduleBlock[]>("/api/v1/blocks"),
-  completeBlock: (id: string) =>
-    request<any>(`/api/v1/blocks/${id}/complete`, { method: "POST" }),
-  events: () =>
-    request<import("@life-os/shared").AgentEvent[]>("/api/v1/events"),
-  completeEvent: (id: string) =>
-    request(`/api/v1/events/${id}/complete`, { method: "POST" }),
-  dismissEvent: (id: string) =>
-    request(`/api/v1/events/${id}/dismiss`, { method: "POST" }),
-  completeReview: (id: string) =>
-    request(`/api/v1/reviews/${id}/complete`, { method: "POST" }),
-  cards: () =>
-    request<import("@life-os/shared").DashboardCard[]>("/api/v1/cards"),
-  completeCard: (id: string) =>
-    request<{ xpAwarded: number }>(`/api/v1/cards/${id}/complete`, {
+  tasks: (query = "") =>
+    request<import("@life-os/shared").Task[]>(`/api/v1/tasks${query}`),
+  completeTask: (id: string) =>
+    request<{ xpAwarded: number }>(`/api/v1/tasks/${id}/complete`, {
       method: "POST",
       body: JSON.stringify({ source: "user" }),
     }),
+  dismissTask: (id: string) =>
+    request<any>(`/api/v1/tasks/${id}/dismiss`, { method: "POST" }),
   /*
-   * There is no `startCard` / `startBlock`. Scheduled things are completed, not
-   * started — what activity you are in is set by hand through `setActiveSession`
-   * and nothing else touches it.
+   * There is no `startTask`. Scheduled things are completed, not started — what
+   * activity you are in is set by hand through `setActiveSession` and nothing
+   * else touches it.
    */
-  /** Move a card's slider or press its button. Not a completion. */
-  interactWithCard: (id: string, body: { value?: number; pressed?: boolean }) =>
-    request<any>(`/api/v1/cards/${id}/interact`, {
+  /** Move a task's slider or press its button. Not a completion. */
+  interactWithTask: (id: string, body: { value?: number; pressed?: boolean }) =>
+    request<any>(`/api/v1/tasks/${id}/interact`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -102,9 +92,9 @@ export const api = {
     request<import("@life-os/shared").WebhookDelivery[]>(
       "/api/v1/webhooks/deliveries?limit=20",
     ),
-  /** Confirm the chime actually played, so the reminder fires exactly once. */
-  markCardNotified: (id: string) =>
-    request<any>(`/api/v1/cards/${id}/notified`, { method: "POST" }),
+  /** Confirm the notification actually fired, so it fires exactly once. */
+  markTaskNotified: (id: string) =>
+    request<any>(`/api/v1/tasks/${id}/notified`, { method: "POST" }),
   goals: () => request<import("@life-os/shared").Goal[]>("/api/v1/goals"),
   createGoal: (body: unknown) =>
     request("/api/v1/goals", { method: "POST", body: JSON.stringify(body) }),

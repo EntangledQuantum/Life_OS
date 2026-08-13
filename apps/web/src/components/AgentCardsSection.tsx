@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import type { DashboardCard } from "@life-os/shared";
+import { isAgentStatus, isPinned, type Task } from "@life-os/shared";
 import { AgentCard } from "@/components/AgentCard";
 import { AgentSetupCard } from "@/components/AgentSetupCard";
 import { cn } from "@/lib/utils";
@@ -13,11 +13,12 @@ const STORAGE_KEY = "lifeos.agentCards.collapsed";
  * full cards. The choice persists across reloads.
  */
 export function AgentCardsSection({
-  cards,
+  tasks,
   onComplete,
   busy,
 }: {
-  cards: DashboardCard[];
+  /** Every open task; the two pinned ones are drawn as cards. */
+  tasks: Task[];
   onComplete: (id: string) => void;
   busy?: boolean;
 }) {
@@ -30,10 +31,10 @@ export function AgentCardsSection({
     window.localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
 
-  const setupCard = cards.find((c) => c.kind === "agent-setup");
-  const contentCards = cards
-    .filter((c) => c.kind !== "agent-setup")
-    .sort((a, b) => a.slot - b.slot)
+  const setupCard = tasks.find(isAgentStatus);
+  const contentCards = tasks
+    .filter((t) => isPinned(t) && !isAgentStatus(t))
+    .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
     .slice(0, 2);
 
   if (contentCards.length === 0 && !setupCard) return null;

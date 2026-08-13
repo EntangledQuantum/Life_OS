@@ -4,13 +4,28 @@ import { config } from "dotenv";
 import { announceGeneratedToken, ensureApiToken } from "./token.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
+/*
+ * Whether the token came from the real environment rather than from `.env`.
+ * Captured *before* dotenv runs, because after that the two are the same
+ * variable and there is no way to tell them apart.
+ *
+ * This matters: `API_TOKEN=... DATABASE_PATH=/tmp/x.db pnpm dev` is how you run
+ * a throwaway instance, and it must not rewrite the `.env` your real instance —
+ * and your phone, and your agent — are authenticating against.
+ */
+const tokenFromEnvironment = process.env.API_TOKEN !== undefined;
 config({ path: path.join(root, ".env") });
 
 // There is no default token. If .env has none — or still has the old shared
 // one — mint a strong one now and write it back, before anything can serve a
 // request with it.
-const token = ensureApiToken(root, process.env.API_TOKEN);
-if (token.generated) announceGeneratedToken(token.token, token.reason);
+const token = ensureApiToken(root, process.env.API_TOKEN, {
+  persist: !tokenFromEnvironment,
+});
+if (token.generated) {
+  announceGeneratedToken(token.token, token.reason, !tokenFromEnvironment);
+}
 
 export const env = {
   root,
