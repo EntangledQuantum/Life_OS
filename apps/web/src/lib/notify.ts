@@ -25,22 +25,40 @@ function audioContext(): AudioContext | null {
   return ctx;
 }
 
-/** Resume the audio context on the first real user gesture. Idempotent. */
+/** Have the listeners already been attached? Guards against double-arming. */
+let armed = false;
+
+/**
+ * Resume the audio context on the first real user gesture. Idempotent.
+ *
+ * The bookkeeping has to happen *inside* the promise. `resume()` is async, so a
+ * check placed after it read `unlocked` while it was still false, every time —
+ * the listeners were never removed, and `unlocked` never reflected reality for
+ * anything else that asked.
+ */
 export function armAudio(): void {
-  if (typeof window === "undefined" || unlocked) return;
+  if (typeof window === "undefined" || unlocked || armed) return;
+
   const unlock = () => {
     const c = audioContext();
     if (!c) return;
     void c.resume().then(() => {
-      unlocked = c.state === "running";
-    });
-    if (unlocked) {
+      if (c.state !== "running") return;
+      unlocked = true;
+      armed = false;
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
-    }
+    });
   };
+
+  armed = true;
   window.addEventListener("pointerdown", unlock);
   window.addEventListener("keydown", unlock);
+}
+
+/** Whether audio has actually been unlocked by a gesture. */
+export function audioReady(): boolean {
+  return unlocked;
 }
 
 interface Note {
@@ -170,6 +188,15 @@ export function stopTitleFlash(): void {
   document.title = originalTitle || document.title;
 }
 
+/**
+ * Ask for notification permission.
+ *
+ * **Call this from a real click and nothing else.** It used to be called from a
+ * mount effect, and browsers increasingly refuse a permission prompt with no
+ * user gesture behind it — silently. Permission stayed `default` forever,
+ * `showSystemNotification` returned false forever, and the whole feature looked
+ * broken with nothing in the console to say why.
+ */
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   if (typeof Notification === "undefined") return "denied";
   if (Notification.permission !== "default") return Notification.permission;
@@ -178,6 +205,12 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   } catch {
     return "denied";
   }
+}
+
+/** Current permission, for UI that needs to show where things stand. */
+export function notificationPermission(): NotificationPermission | "unsupported" {
+  if (typeof Notification === "undefined") return "unsupported";
+  return Notification.permission;
 }
 
 /**

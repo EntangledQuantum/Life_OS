@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useUiStore } from "@/lib/store";
-import { playSound } from "@/lib/notify";
+import {
+  fireReminderAlert,
+  notificationPermission,
+  playSound,
+  requestNotificationPermission,
+} from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
   ACCENT_THEMES,
@@ -10,7 +15,7 @@ import {
   isWithinQuietHours,
   type AccentThemeId,
 } from "@life-os/shared";
-import { Play, Volume2, VolumeX } from "lucide-react";
+import { Bell, BellOff, Check, Play, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
 
@@ -247,6 +252,8 @@ export function SettingsPage() {
           How agent reminders reach you. Sounds are generated in the browser, so
           there is nothing to download and they work offline.
         </p>
+
+        <SystemNotifications />
 
         <div>
           <label className="label">Reminder sound</label>
@@ -686,5 +693,98 @@ function WebhookTargets() {
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * System notification permission.
+ *
+ * This exists as a control because permission cannot be requested any other
+ * way. It used to be asked for from a mount effect, which browsers refuse
+ * without a user gesture — silently. Permission stayed "default" forever, every
+ * OS notification quietly failed, and there was nothing in the console to say
+ * so. A button is a gesture.
+ *
+ * The test button is not decoration either: "did that work" is otherwise
+ * unanswerable until a reminder happens to come due.
+ */
+function SystemNotifications() {
+  const [permission, setPermission] = useState(() => notificationPermission());
+  const [asking, setAsking] = useState(false);
+
+  if (permission === "unsupported") {
+    return (
+      <div className="rounded-xl border border-[var(--border)] px-3.5 py-3 text-sm text-[var(--muted)]">
+        This browser has no notification API. Reminders will still chime and
+        flash while the tab is open.
+      </div>
+    );
+  }
+
+  const granted = permission === "granted";
+  const denied = permission === "denied";
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] px-3.5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            {granted ? (
+              <Bell className="h-3.5 w-3.5 text-[#34D399]" />
+            ) : (
+              <BellOff className="h-3.5 w-3.5 text-[var(--faint)]" />
+            )}
+            System notifications
+          </div>
+          <p className="mt-1 text-[11px] leading-snug text-[var(--faint)]">
+            {granted
+              ? "Reminders reach you even when this tab is in the background."
+              : denied
+                ? "Blocked. Your browser will not ask again — allow notifications for this site in its address-bar settings."
+                : "Off. Without this, reminders only land while you are looking at the tab."}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 gap-2">
+          {!granted && !denied && (
+            <button
+              type="button"
+              className="btn btn-primary py-1.5 text-xs"
+              disabled={asking}
+              onClick={async () => {
+                setAsking(true);
+                // This click is the gesture the browser requires.
+                const result = await requestNotificationPermission();
+                setPermission(result);
+                setAsking(false);
+                if (result === "granted") toast.success("Notifications enabled");
+                else if (result === "denied") toast.error("Notifications blocked");
+              }}
+            >
+              <Check className="h-3 w-3" /> Enable
+            </button>
+          )}
+          {granted && (
+            <button
+              type="button"
+              className="btn py-1.5 text-xs"
+              onClick={() =>
+                fireReminderAlert({
+                  title: "Life OS",
+                  body: "This is what a reminder looks like.",
+                  sound: true,
+                  flash: true,
+                  soundId: "chime",
+                  silent: false,
+                  tag: "lifeos-test",
+                })
+              }
+            >
+              <Play className="h-3 w-3" /> Test
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

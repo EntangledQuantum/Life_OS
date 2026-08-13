@@ -4,12 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { isWithinQuietHours, type Task } from "@life-os/shared";
 import { api } from "@/lib/api";
-import {
-  armAudio,
-  fireReminderAlert,
-  requestNotificationPermission,
-  stopTitleFlash,
-} from "@/lib/notify";
+import { armAudio, fireReminderAlert, stopTitleFlash } from "@/lib/notify";
 
 /**
  * Fires agent reminders: chime, screen flash, flashing tab title, and an OS
@@ -39,10 +34,16 @@ export function ReminderRunner({ due }: { due: Task[] }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
-  // Audio needs a gesture before it will play; arm it once, up front.
+  /*
+   * Audio needs a gesture before it will play; arm it once, up front.
+   *
+   * Notification permission is deliberately *not* requested here. Browsers
+   * refuse a permission prompt with no user gesture behind it, silently — so
+   * this call left permission on "default" forever and every OS notification
+   * failed with nothing in the console. It lives on a button in Settings now.
+   */
   useEffect(() => {
     armAudio();
-    void requestNotificationPermission();
     return () => stopTitleFlash();
   }, []);
 
