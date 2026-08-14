@@ -90,6 +90,11 @@ Be clear-eyed about this before you turn it on.
   secret at all.
 - **Anyone on the same network can reach it.** On your own Wi-Fi that means your
   own devices. On a café or office network it means everyone there.
+- **That includes the agent surface.** `POST /mcp` is the full MCP tool set —
+  reading and writing every habit, task, goal and setting — behind the same
+  single token as everything else. Exposing the port exposes that too. It is the
+  reason an agent elsewhere can work at all, and the reason the token matters as
+  much as it does.
 - **Nothing is encrypted.** It is plain HTTP; the token crosses the network in
   the clear.
 

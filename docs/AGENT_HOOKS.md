@@ -9,6 +9,17 @@ Two supported gateways, and a fallback that works anywhere.
 Everything below is generated for you by the setup flow — this file is the
 reference for what it wrote and why.
 
+> **This whole file assumes the gateway and Life OS are on the same machine.**
+> A hook cannot start a process on a computer it is not on. If your agent runs
+> in a container or on another host, skip the start hooks entirely: connect to
+> MCP over HTTP at `<their-base>/mcp` and let the user's own machine keep Life
+> OS running for their phone. The webhook halves below still apply, with the
+> address caveat in each one.
+>
+> And if the user already runs Life OS, a start hook is not a safety net — it is
+> a second process fighting for the port. Every example here checks `/health`
+> first and does nothing when something answers. Keep that.
+
 ---
 
 ## OpenClaw
@@ -88,6 +99,14 @@ lifeos_add_webhook_target
   preset: "openclaw"
   secret: "<the same hooks.token>"
 ```
+
+**That `127.0.0.1` is Life OS's loopback, not yours.** Life OS resolves this URL
+and makes the call, so it only works when OpenClaw is on the same machine. In a
+container, use the host address the container is published on — often
+`http://host.docker.internal:18789/…` from the host's side, or the host's LAN
+IP — and make sure the port is actually published. Confirm with
+`lifeos_test_webhook_target` rather than waiting on a real completion:
+`lifeos_list_webhook_deliveries` then shows the status or the connection error.
 
 Life OS sends `Authorization: Bearer <token>` — query-string tokens are
 rejected by OpenClaw, so the secret never appears in a URL. The body is
@@ -175,6 +194,12 @@ lifeos_add_webhook_target
   preset: "hermes"
   secret: "<the same route secret>"
 ```
+
+Same caveat as above: **Life OS is what resolves this URL.** Loopback is right
+only when Hermes runs on the same machine. From a container it has to be an
+address Life OS can reach — the host's LAN IP with 8644 published — and the
+symptom of getting it wrong is silence, not an error, because the failure
+happens on Life OS's side. `lifeos_list_webhook_deliveries` is where it shows up.
 
 Life OS uses the **generic V2** scheme: `X-Webhook-Signature-V2` is
 `HMAC-SHA256(secret, "<timestamp>.<body>")` in hex, with `X-Webhook-Timestamp`
