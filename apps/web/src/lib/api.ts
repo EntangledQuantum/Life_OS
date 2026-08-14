@@ -133,7 +133,8 @@ export const api = {
   mintPairing: () =>
     request<{
       code: string;
-      url: string;
+      deepLink: string;
+      webUrl: string;
       baseUrl: string;
       expiresAt: string;
       expiresInSeconds: number;

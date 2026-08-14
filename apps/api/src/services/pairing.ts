@@ -63,20 +63,36 @@ function generateCode(length = 12): string {
 
 export interface MintedPairing {
   code: string;
-  /** The URL to put in the QR. The code is in the fragment — see below. */
-  url: string;
+  /**
+   * **What the QR encodes.** A `lifeos://` deep link, so the phone's own camera
+   * offers to open the app — no browser in the middle.
+   */
+  deepLink: string;
+  /** The same pairing as a web page, for a phone with no app installed yet. */
+  webUrl: string;
   baseUrl: string;
   expiresAt: string;
   expiresInSeconds: number;
 }
 
 /**
+ * The app's custom URL scheme, from `mobile-frontend/app/app.json`.
+ *
+ * It has to be the scheme and cannot be an `https://` link. Android App Links
+ * and iOS Universal Links both require a **verified web domain** — a file
+ * served from a domain you have proven you control. This instance answers on
+ * `192.168.x.x`, and an IP address can never be verified, so an http(s) URL in
+ * the QR could not open the app on any device, ever. The scheme can.
+ */
+const APP_SCHEME = "lifeos";
+
+/**
  * Mint a pairing code for a base URL.
  *
- * The code goes in the URL **fragment**, not the query string. A fragment is
- * never sent to a server, so it stays out of access logs, out of Referer
- * headers, and out of any proxy in between — which matters when the whole point
- * of the URL is that it can be traded for a credential.
+ * `baseUrl` is where the *phone* should talk to this instance — the public
+ * tunnel URL when there is one, the LAN address otherwise. It is carried inside
+ * the link rather than assumed, because the address the dashboard uses and the
+ * address a phone can reach are not always the same one.
  */
 export function mintPairingCode(baseUrl: string, now = Date.now()): MintedPairing {
   sweep(now);
@@ -95,9 +111,19 @@ export function mintPairingCode(baseUrl: string, now = Date.now()): MintedPairin
   const expiresAt = now + TTL_MS;
   outstanding.set(code, { code, baseUrl: trimmed, expiresAt });
 
+  const query = `code=${encodeURIComponent(code)}&url=${encodeURIComponent(trimmed)}`;
+
   return {
     code,
-    url: `${trimmed}/pair#c=${code}`,
+    deepLink: `${APP_SCHEME}://pair?${query}`,
+    /*
+     * The web fallback keeps the code in the **fragment**, which is never sent
+     * to a server — so it stays out of access logs and Referer headers. The
+     * deep link cannot do that (a scheme URL has no server to hide it from, and
+     * the app needs to read it), which is fine: it goes straight from the QR
+     * into the app on the same device.
+     */
+    webUrl: `${trimmed}/pair#c=${code}`,
     baseUrl: trimmed,
     expiresAt: new Date(expiresAt).toISOString(),
     expiresInSeconds: Math.round(TTL_MS / 1000),

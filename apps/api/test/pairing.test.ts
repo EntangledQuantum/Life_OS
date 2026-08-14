@@ -21,27 +21,48 @@ const TOKEN = "lifeos_the_real_token_value";
 beforeEach(() => revokeAllPairingCodes());
 
 describe("minting", () => {
-  it("puts the code in the fragment, never the query string", () => {
+  it("makes the QR a deep link, so a scan opens the app", () => {
     /*
-     * A fragment is never sent to a server. That keeps the one thing that can
-     * be traded for a credential out of access logs, out of Referer headers,
-     * and out of every proxy in between.
+     * The QR used to be a web page URL. That could never work: it opened a
+     * browser instead of the app, and Android App Links / iOS Universal Links
+     * — the only way an http(s) link opens an app — require a **verified web
+     * domain**. This instance answers on an IP address, which can never be
+     * verified. A custom scheme has no such requirement.
      */
-    const minted = mintPairingCode("https://box.tail1234.ts.net");
-    assert.ok(minted.url.includes(`#c=${minted.code}`));
-    assert.ok(!minted.url.includes("?"), "no query string");
+    const minted = mintPairingCode("http://192.168.1.20:8787");
+    assert.ok(
+      minted.deepLink.startsWith("lifeos://pair?"),
+      `the QR must carry the app scheme, got ${minted.deepLink}`,
+    );
+    assert.ok(!minted.deepLink.startsWith("http"), "not an http URL");
   });
 
-  it("never puts the token in the URL", () => {
+  it("carries both the code and where the phone should connect", () => {
+    // The address the dashboard is open on and the one a phone can reach are
+    // not always the same, so the link says which to use rather than assuming.
+    const minted = mintPairingCode("http://192.168.1.20:8787");
+    const params = new URLSearchParams(minted.deepLink.split("?")[1]);
+    assert.equal(params.get("code"), minted.code);
+    assert.equal(params.get("url"), "http://192.168.1.20:8787");
+  });
+
+  it("never puts the token in anything it hands out", () => {
     const minted = mintPairingCode("https://box.example");
-    assert.ok(!minted.url.includes(TOKEN));
     assert.ok(!JSON.stringify(minted).includes(TOKEN));
+  });
+
+  it("keeps the code in the fragment on the web fallback", () => {
+    // A fragment is never sent to a server, so the code stays out of access
+    // logs and Referer headers on the one path that involves a browser.
+    const minted = mintPairingCode("https://box.example");
+    assert.ok(minted.webUrl.includes(`#c=${minted.code}`));
+    assert.ok(!minted.webUrl.includes("?"), "no query string");
   });
 
   it("strips a trailing slash so the URL is not doubled", () => {
     const minted = mintPairingCode("https://box.example/");
     assert.equal(minted.baseUrl, "https://box.example");
-    assert.ok(minted.url.startsWith("https://box.example/pair#"));
+    assert.ok(minted.webUrl.startsWith("https://box.example/pair#"));
   });
 
   it("uses an alphabet without the characters people misread", () => {

@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
  */
 export function PairPhone() {
   const [dataUri, setDataUri] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
+  const [target, setTarget] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const timer = useRef<number | null>(null);
 
@@ -30,13 +32,29 @@ export function PairPhone() {
   const mint = useMutation({
     mutationFn: () => api.mintPairing(),
     onSuccess: async (result) => {
+      setCode(result.code);
+      setTarget(result.baseUrl);
       /*
-       * Rendered locally rather than through a QR image service — the URL is
-       * one request away from being a credential and has no business leaving
-       * this machine.
+       * The QR is the **deep link**, not a web page.
+       *
+       * It used to encode `<server>/pair#c=…`, which meant scanning it opened a
+       * browser — and pointed at the API, which serves JSON and has no such
+       * page, so the phone got a 404 and never came near the app. Worse, the
+       * idea itself was unfixable: Android App Links and iOS Universal Links
+       * both need a **verified web domain**, and this instance answers on an IP
+       * address, which can never be verified. An http(s) URL in this QR could
+       * not open the app on any device.
+       *
+       * A custom scheme has no such requirement. The camera decodes
+       * `lifeos://pair?…`, the OS recognises a scheme registered to Life OS,
+       * and offers to open it.
+       *
+       * Rendered locally rather than through a QR image service — this is one
+       * request away from being a credential and has no business leaving the
+       * machine.
        */
       setDataUri(
-        await QRCode.toDataURL(result.url, {
+        await QRCode.toDataURL(result.deepLink, {
           width: 512,
           margin: 1,
           color: { dark: "#0b0d12", light: "#ffffff" },
@@ -120,13 +138,33 @@ export function PairPhone() {
             alt="Pairing QR code"
             className="h-52 w-52 rounded-xl bg-white p-2"
           />
-          <div className="text-center">
-            <div className="font-mono text-sm tabular-nums">
+          <div className="w-full text-center">
+            <p className="text-xs text-[var(--muted)]">
+              Point your phone's camera at this. It will offer to open Life OS.
+            </p>
+            <div className="mt-2 font-mono text-sm tabular-nums">
               expires in {mm}:{ss}
             </div>
-            <p className="mt-1 text-[11px] text-[var(--faint)]">
-              One use. Scan it again for a new one.
-            </p>
+
+            {/*
+              The code in plain text, because the scan is not the only path: a
+              phone without the app installed has nothing to open, and typing
+              twelve characters is the honest fallback.
+            */}
+            {code && (
+              <div className="mt-3 border-t border-white/[0.06] pt-3">
+                <p className="text-[11px] text-[var(--faint)]">
+                  No app yet, or the scan did nothing? Install it, then type
+                  this on the connect screen:
+                </p>
+                <code className="mt-1.5 block select-all font-mono text-lg tracking-[0.2em]">
+                  {code}
+                </code>
+                <code className="mt-1 block select-all font-mono text-[11px] break-all text-[var(--faint)]">
+                  {target}
+                </code>
+              </div>
+            )}
           </div>
           <button
             type="button"
