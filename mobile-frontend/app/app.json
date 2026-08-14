@@ -67,7 +67,14 @@
         "expo-notifications",
         {
           "color": "#7C9CFF",
-          "defaultChannel": "lifeos-default"
+          "defaultChannel": "lifeos-chime",
+          "sounds": [
+            "./assets/sounds/chime.wav",
+            "./assets/sounds/bell.wav",
+            "./assets/sounds/marimba.wav",
+            "./assets/sounds/pulse.wav",
+            "./assets/sounds/alert.wav"
+          ]
         }
       ],
       [

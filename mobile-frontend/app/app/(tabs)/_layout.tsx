@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
 import { TabBar } from "@/components/tab-bar";
+import { ReminderRunner } from "@/components/reminder-runner";
 import { font } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
 import { useLayout } from "@/lib/responsive";
@@ -13,7 +14,11 @@ export default function TabLayout() {
   const { wide } = useLayout();
 
   return (
-    <Tabs
+    <>
+      {/* Headless, and mounted here rather than on a screen so notifications
+          keep being scheduled whichever tab you happen to open on. */}
+      <ReminderRunner />
+      <Tabs
       tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
         headerStyle: { backgroundColor: t.bg },
@@ -38,6 +43,7 @@ export default function TabLayout() {
       <Tabs.Screen name="settings" options={{ title: "Settings" }} />
       {/* hide template leftover if present */}
       <Tabs.Screen name="two" options={{ href: null }} />
-    </Tabs>
+      </Tabs>
+    </>
   );
 }

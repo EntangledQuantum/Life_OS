@@ -6,6 +6,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api";
 import { useConnection } from "@/lib/connection";
+import { fireTestNotification } from "@/lib/notifications";
 import {
   PALETTES,
   PALETTE_IDS,
@@ -235,6 +236,23 @@ export default function SettingsScreen() {
                         }
                       />
                     ))}
+                    {/*
+                      The only honest preview. On Android the channel owns the
+                      sound and the OS plays it — nothing in JS can audition
+                      that, so the way to hear marimba is to send a real
+                      notification. It doubles as the answer to "do
+                      notifications even work on this phone".
+                    */}
+                    <Button
+                      title="Send a test notification"
+                      variant="soft"
+                      onPress={() => {
+                        void fireTestNotification(
+                          (s.notificationSound ?? "chime") as NotificationSoundId,
+                        );
+                      }}
+                      style={{ marginTop: 10 }}
+                    />
                   </Card>
                 </View>
 

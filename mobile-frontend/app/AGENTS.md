@@ -188,6 +188,42 @@ completed.
 marker for what was really done, tinted-and-outlined ahead for the plan — and
 carries the colour legend the phone was missing.
 
+## Notifications
+
+Four rules, each of which was a bug first.
+
+**One channel per sound.** An Android channel's sound is fixed when the channel
+is created and cannot be changed afterwards — the OS owns it from that point on,
+deliberately, so an app cannot take a user's settings back. Sharing three
+channels across five sounds meant the picker in Settings did nothing. Channels
+are `lifeos-<soundId>` plus `lifeos-silent`, all created up front.
+
+**`channelId` goes on the trigger, not the content.** `NotificationContentInput`
+has no such field, so it was being passed and silently dropped, and everything
+landed on the default channel. For an immediate notification the whole trigger
+is `{ channelId }` (`ChannelAwareTriggerInput`); for a scheduled one it sits
+alongside `type` and `date`.
+
+**The WAVs are generated, not hand-made.** `scripts/build-sounds.mjs` renders the
+same note tables the web client synthesizes in WebAudio, so "chime" is the same
+two rising notes on both. Change a design in `apps/web/src/lib/notify.ts`, re-run
+the script, commit the output — a build must not depend on having run it, and
+`expo prebuild` needs the files to exist. They are registered through the
+`expo-notifications` plugin's `sounds` array in **app.json**; reference them by
+base filename only.
+
+**`ReminderRunner` lives in `app/(tabs)/_layout.tsx`, not on a screen.** It used
+to be mounted by Today, so if the app reopened on Timeline — which is where a
+tapped notification lands you — nothing was ever pre-registered with the OS, and
+the only notifications that fired were the ones raised while Today happened to
+be open. Do not move it back onto a screen.
+
+Notification times are derived, never read straight from `remindAt`: see
+`lib/schedule.ts`. Taps are handled through `onNotificationTapped`, which reads
+`getLastNotificationResponse()` as well as subscribing — the listener alone
+misses the cold start, which is the common case, since the notification is why
+the app is opening.
+
 ## Design tokens
 
 Dark only — there is no light theme.

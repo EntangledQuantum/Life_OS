@@ -27,13 +27,54 @@ async function ensureHandler(): Promise<void> {
   handlerInstalled = true;
 }
 
-/** Map Life OS sound ids onto Android channel behaviour. */
+/**
+ * The channel for a sound id.
+ *
+ * **One channel per sound, and that is not a style choice.** An Android
+ * channel's sound is fixed when the channel is created and cannot be changed
+ * afterwards — the OS owns it from that point on, precisely so an app cannot
+ * take a user's notification settings back. Three shared channels meant
+ * changing the sound in Settings did nothing at all.
+ */
 function channelForSound(soundId: NotificationSoundId): string {
-  if (soundId === "none") return "lifeos-silent";
-  if (soundId === "alert") return "lifeos-alert";
-  return "lifeos-default";
+  return soundId === "none" ? "lifeos-silent" : `lifeos-${soundId}`;
 }
 
+/** Every sound that ships as a WAV asset — see `scripts/build-sounds.mjs`. */
+const SOUND_FILES: Record<string, string> = {
+  chime: "chime.wav",
+  bell: "bell.wav",
+  marimba: "marimba.wav",
+  pulse: "pulse.wav",
+  alert: "alert.wav",
+};
+
+/** Alert is meant to wake you; the rest are meant to be noticed. */
+const CHANNEL_SHAPE: Record<
+  string,
+  { name: string; vibration: number[]; light: string; max?: boolean }
+> = {
+  chime: { name: "Reminders · chime", vibration: [0, 180, 100, 180], light: "#7C9CFF" },
+  bell: { name: "Reminders · bell", vibration: [0, 180, 100, 180], light: "#7C9CFF" },
+  marimba: { name: "Reminders · marimba", vibration: [0, 160, 90, 160], light: "#C084FC" },
+  pulse: { name: "Reminders · pulse", vibration: [0, 120, 80, 120], light: "#64748B" },
+  alert: {
+    name: "Reminders · alert",
+    vibration: [0, 250, 120, 250, 120, 250],
+    light: "#FB923C",
+    max: true,
+  },
+};
+
+/**
+ * Create every channel, once.
+ *
+ * All of them, not just the selected one: the user can switch sound at any
+ * time, and a channel created lazily at that moment would be created *after*
+ * notifications had already been scheduled against it. Creating them up front
+ * also puts them all in the system's notification settings, where the user can
+ * override anything we chose — which is whose decision it should be.
+ */
 export async function ensureNotificationChannels(
   soundId: NotificationSoundId = "chime",
 ): Promise<void> {
@@ -42,26 +83,23 @@ export async function ensureNotificationChannels(
   const N = await Notifications();
   if (!N) return;
 
-  await N.setNotificationChannelAsync("lifeos-default", {
-    name: "Life OS reminders",
-    importance: N.AndroidImportance.HIGH,
-    vibrationPattern: [0, 180, 100, 180],
-    lightColor: "#7C9CFF",
-    sound: "default",
-  });
-
-  await N.setNotificationChannelAsync("lifeos-alert", {
-    name: "Life OS alerts",
-    importance: N.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 120, 250, 120, 250],
-    lightColor: "#FB923C",
-    sound: "default",
-  });
+  for (const [id, file] of Object.entries(SOUND_FILES)) {
+    const shape = CHANNEL_SHAPE[id]!;
+    await N.setNotificationChannelAsync(channelForSound(id as NotificationSoundId), {
+      name: shape.name,
+      importance: shape.max ? N.AndroidImportance.MAX : N.AndroidImportance.HIGH,
+      vibrationPattern: shape.vibration,
+      lightColor: shape.light,
+      // Base filename only — the file is registered through the
+      // expo-notifications config plugin's `sounds` array in app.json.
+      sound: file,
+    });
+  }
 
   await N.setNotificationChannelAsync("lifeos-silent", {
-    name: "Life OS silent",
+    name: "Reminders · silent",
     importance: N.AndroidImportance.DEFAULT,
-    sound: undefined,
+    sound: null,
     vibrationPattern: [0],
   });
 
@@ -87,11 +125,30 @@ export function onNotificationTapped(
   void (async () => {
     const N = await Notifications();
     if (!N || cancelled) return;
-    const sub = N.addNotificationResponseReceivedListener((response) => {
+
+    const taskIdOf = (response: {
+      notification: { request: { content: { data?: unknown } } };
+    }): string | null => {
       const data = response.notification.request.content.data as
         | { taskId?: string }
         | undefined;
-      handler(data?.taskId ?? null);
+      return data?.taskId ?? null;
+    };
+
+    /*
+     * The tap that *launched* the app.
+     *
+     * The listener below only fires while the app is already running, so on a
+     * cold start — which is the common case, since the notification is the
+     * reason the app is opening at all — nothing ever arrived, and the user
+     * landed on Today wondering what they had been told about. Expo keeps the
+     * launching response for exactly this.
+     */
+    const initial = N.getLastNotificationResponse();
+    if (initial && !cancelled) handler(taskIdOf(initial));
+
+    const sub = N.addNotificationResponseReceivedListener((response) => {
+      handler(taskIdOf(response));
     });
     if (cancelled) sub.remove();
     else remove = () => sub.remove();
@@ -143,11 +200,18 @@ export async function fireLocalReminder(opts: {
         task.subtitle ??
         task.purpose ??
         (when ? `Starts at ${when}` : "Reminder from Life OS"),
-      sound: soundId === "none" ? undefined : "default",
+      // iOS takes the filename here; Android takes it from the channel.
+      sound: soundId === "none" ? false : (SOUND_FILES[soundId] ?? "default"),
       data: { taskId: task.id, kind: "reminder" },
-      ...(Platform.OS === "android" ? { channelId } : {}),
     },
-    trigger: null,
+    /*
+     * The channel belongs on the **trigger**, not on the content.
+     * `NotificationContentInput` has no `channelId` — it was being passed
+     * there and silently dropped, so every notification landed on the default
+     * channel and the user's chosen sound never played. A bare `{ channelId }`
+     * is `ChannelAwareTriggerInput`: deliver immediately, on this channel.
+     */
+    trigger: Platform.OS === "android" ? { channelId } : null,
   });
 }
 
@@ -219,16 +283,52 @@ export async function scheduleUpcomingReminders(
       content: {
         title: `${task.emoji ? `${task.emoji} ` : ""}${task.title}`,
         body: task.subtitle ?? task.purpose ?? "Upcoming",
-        sound: soundId === "none" ? undefined : "default",
+        sound: soundId === "none" ? false : (SOUND_FILES[soundId] ?? "default"),
         data: { taskId: task.id, kind: "scheduled-reminder" },
-        ...(Platform.OS === "android" ? { channelId } : {}),
       },
       trigger: {
         type: N.SchedulableTriggerInputTypes.DATE,
         date: new Date(at),
+        // Same story as above: this is where Android reads the channel from.
+        ...(Platform.OS === "android" ? { channelId } : {}),
       },
     });
   }
 
   lastScheduledKey = key;
+}
+
+/**
+ * Fire a sample notification on the channel a sound belongs to.
+ *
+ * The only honest preview on Android. The channel owns the sound, the OS plays
+ * it, and nothing in JS can audition that — so the way to answer "what does
+ * marimba sound like" is to send a real notification and listen. It also
+ * doubles as the answer to "are notifications even working", which is otherwise
+ * unanswerable until something happens to come due.
+ */
+export async function fireTestNotification(
+  soundId: NotificationSoundId,
+): Promise<boolean> {
+  if (!isNative) return false;
+
+  await ensureHandler();
+  await ensureNotificationChannels(soundId);
+  const N = await Notifications();
+  if (!N) return false;
+
+  const granted = await requestNotificationPermission();
+  if (!granted) return false;
+
+  await N.scheduleNotificationAsync({
+    content: {
+      title: "🔔 Life OS",
+      body: "This is what a reminder sounds like.",
+      sound: soundId === "none" ? false : (SOUND_FILES[soundId] ?? "default"),
+      data: { kind: "test" },
+    },
+    trigger:
+      Platform.OS === "android" ? { channelId: channelForSound(soundId) } : null,
+  });
+  return true;
 }

@@ -34,7 +34,6 @@ import { HabitRow } from "@/components/habit-row";
 import { TaskRow } from "@/components/task-row";
 import { AgentCard, AgentSetupStrip } from "@/components/agent-card";
 import { ActivitySession } from "@/components/activity-session";
-import { ReminderRunner } from "@/components/reminder-runner";
 import { CelebrationModal } from "@/components/celebration-modal";
 import { UpdateRequired } from "@/components/update-required";
 import { SwipeTabs } from "@/components/swipe-tabs";
@@ -216,7 +215,6 @@ export default function TodayScreen() {
 
   return (
     <SwipeTabs index={0}>
-      <ReminderRunner due={data.dueReminders ?? []} scheduled={data.tasks} />
       <CelebrationModal
         goal={celebration}
         intensity={settings?.celebrationIntensity ?? "full"}
