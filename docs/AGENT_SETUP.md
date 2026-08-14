@@ -246,8 +246,16 @@ Ask, in a conversation rather than a form:
    `books_read`, `gym_sessions`, `pages_written`. Anything you can push to when
    something happens on your side, and write goals against.
 6. **Whether they want you told when something is done.** If yes, set up a
-   webhook target so completions reach you without polling. See
-   `docs/API.md` → Webhooks.
+   webhook target so completions reach you without polling —
+   `lifeos_add_webhook_target`, presets in `docs/API.md` → Webhooks.
+
+   **Life OS resolves that URL, not you.** If you are not on their machine,
+   `127.0.0.1` in a target means *their* loopback and your listener will never
+   see anything — with no error on your side, just events that never arrive.
+   Give an address their machine can reach, then prove it with
+   `lifeos_test_webhook_target` and read the result from
+   `lifeos_list_webhook_deliveries`. Do not wait on a real completion to find
+   out.
 7. **Their notification lead.** Default is 15 minutes before a scheduled thing.
    Some people want an hour.
 8. **Where they are**, if you are not on their machine. Set `timezone` to an
