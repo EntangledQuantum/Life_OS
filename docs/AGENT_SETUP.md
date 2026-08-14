@@ -19,6 +19,11 @@ with different fields set.
 
 ## 1. Install it
 
+**First: is it already running?** If the user has a phone paired or a dashboard
+open, it is, and your job here is to connect rather than to install. Try
+`GET <their-url>/health`. Installing a second copy gives them two databases and
+one of them silently stops being the real one.
+
 ```bash
 git clone https://github.com/EntangledQuantum/Life_OS.git
 cd Life_OS
@@ -63,6 +68,12 @@ already up before you first need it. `docs/AGENT_HOOKS.md` has ready-to-paste
 files for Hermes and OpenClaw. An internal hook must **detach** the process
 rather than own it — a hook that holds a long-lived child blocks the gateway.
 
+This is **optional, and it must be idempotent.** If the user already runs Life
+OS for their phone, a hook that starts another one is not a safety net; it is a
+second process fighting for the port. Check `/health` first and do nothing if
+something answers. And if you are not on the same machine as Life OS, skip this
+section entirely — you cannot start a process on a computer you are not on.
+
 ---
 
 ## 2. Connect over MCP
@@ -76,12 +87,55 @@ shapes on purpose and you should not mix them:
   summarised, so you are not reconstructing someone's week out of forty
   round-trips.
 
-### You do not start it. Your client does.
+There are **two transports**, and which one you use depends on one question:
+are you on the same machine as Life OS?
 
-The transport is **stdio**, which means the MCP server is not a service and there
-is nothing to leave running. Your client spawns it as a child process when it
-connects and talks over that process's stdin and stdout. Register it and you are
-done:
+| | |
+|---|---|
+| **Same machine** | stdio. Your client spawns the server as a child process. |
+| **Anywhere else** — a container, a gateway, another host | HTTP at `/mcp` on the API's port, with the API's token. |
+
+Both serve the identical tools against the identical database. If you are
+remote, use `/mcp` — **not** the REST API. REST is the apps' surface: it answers
+"give me the dashboard", so you end up reassembling a day out of a dozen calls
+and seeing a screen's view of the data instead of all of it.
+
+### Remote: HTTP
+
+```json
+{
+  "mcpServers": {
+    "life-os": {
+      "type": "http",
+      "url": "http://<their-host>:8787/mcp",
+      "headers": { "Authorization": "Bearer <API_TOKEN>" }
+    }
+  }
+}
+```
+
+Or by hand, to check it:
+
+```bash
+curl -sX POST http://<their-host>:8787/mcp -H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Notes:
+
+- **POST only.** `GET` answers 405 by design — there are no server-initiated
+  messages, so there is no stream to open. Clients handle this and use POST.
+- **Stateless**, so there is no session to keep alive and a restart on their end
+  costs you nothing.
+- The host has to be reachable from where you are. `127.0.0.1` is *their*
+  loopback, not yours; see `docs/NETWORK.md` for the LAN address or tunnel URL.
+- **Set the timezone** if you are remote — see §5. You are probably on UTC and
+  they are not.
+
+### Same machine: stdio
+
+The MCP server is not a service and there is nothing to leave running. Your
+client spawns it as a child process when it connects and talks over that
+process's stdin and stdout. Register it and you are done:
 
 ```json
 {
@@ -110,7 +164,7 @@ Three things that catch people:
 - **On Windows, some clients need `"command": "pnpm.cmd"`**, because `pnpm` is a
   `.cmd` shim and not every client spawns through a shell.
 
-### It reads the database directly
+### Over stdio, it reads the database directly
 
 The MCP server opens the same SQLite file the API opens. It does **not** go
 through HTTP. Two consequences worth holding on to:
@@ -138,16 +192,32 @@ This is a **debugging command, not a setup step.** It starts the same server on
 your own terminal's stdio, prints one line, and then sits there silently waiting
 for JSON-RPC that a terminal is never going to send. That is it working
 correctly. Ctrl-C out of it. If you want a real check, ask your client to list
-the tools — there are 53.
+the tools — there are 55.
 
-### There is no HTTP transport yet
+Use the REST API only if you genuinely cannot speak MCP over either transport.
 
-stdio requires that you and Life OS are **on the same machine**. If you run
-somewhere else — a VPS, a hosted gateway — you cannot reach these tools today,
-and the REST API over the network is your only option. A streamable-HTTP MCP
-endpoint at `/mcp`, on the API's port and token, is designed but not built.
+### What the reads actually contain
 
-Use the REST API only if you genuinely cannot speak MCP.
+Two rules that have caused agents to misread this database. Both look like the
+data is wrong when it is not.
+
+**A list is not the whole table.** A task can carry a `showAt`, and until that
+instant no client displays it — that is the field working. `lifeos_list_tasks`
+returns everything stored by default and marks each row's `visibility`;
+`scope: "visible"` narrows it to what is on screen now. `lifeos_create_task` and
+`lifeos_bulk_create_tasks` tell you, in the response, how many of what you just
+wrote are hidden. **If you scheduled next week and a list looks short, read the
+`visibility` field before you write it all again.**
+
+**Untimed is not due.** A task with no `eventAt` is open work with no time on
+it — inventory. It is not part of today unless something says it is. Use
+`lifeos_get_workload`, which splits open work into `due` / `upcoming` /
+`missed` / `backlog` / `hidden`, rather than reading a flat list as a plan for
+the day. A backlog of thirty is normal and is not thirty things to do now.
+
+**After any bulk write, verify.** `lifeos_get_workload`, or fetch by id, or
+`lifeos_export_json` — not `lifeos_get_today`, which is a screen and will not
+show you what you just scheduled for Thursday.
 
 ---
 
@@ -180,6 +250,13 @@ Ask, in a conversation rather than a form:
    `docs/API.md` → Webhooks.
 7. **Their notification lead.** Default is 15 minutes before a scheduled thing.
    Some people want an hour.
+8. **Where they are**, if you are not on their machine. Set `timezone` to an
+   IANA name via `lifeos_update_settings`. Without it every time you write is in
+   *your* zone, and you will disagree with their app about which day things
+   happened on. `lifeos_get_settings` tells you what it currently resolves to.
+9. **What already tracks their reviews**, if anything. A vault, Anki, a
+   spaced-repetition plugin — if one exists, **it owns the dates and Life OS
+   does not**. See §5.
 
 Then, and only then, call `lifeos_setup` (MCP) or `POST /api/v1/agent/setup`
 with what they actually told you.
@@ -236,7 +313,21 @@ deliberate.
 - **Two front-page card slots.** That is the limit, and it is the point. If you
   want to show a third thing, decide which of the two matters less.
 - **The life-day is not the calendar day.** It rolls over at `dayResetTime`
-  (default 04:00), so a 01:00 completion belongs to the day before.
+  (default 04:00), so a 01:00 completion belongs to the day before. Do not
+  re-derive this: every day payload carries `lifeDay` with the exact start and
+  end instants and the zone they are in. Use those.
+- **Life OS is an execution shell, not a catalogue.** If the user has a system
+  that already knows when a card is due — a vault, Anki, an SR plugin — that
+  system owns the schedule. Bring across *what is due today* and leave the rest
+  where it is. Mirroring a whole review backlog in gives them hundreds of
+  permanent untimed tasks and a front page that means nothing. When you do
+  import from somewhere, tag it (`meta.source`, `meta.externalRef`) so it can be
+  synced or removed later without guessing.
+- **After an import or a migration, expect junk.** Duplicates, shells, rows
+  whose original meaning did not survive. `lifeos_bulk_dismiss_tasks` filters by
+  status, kind, creation time, untimed-ness and title, and is a dry run until
+  you pass `confirm:true`. Take a `lifeos_backup_now` first — it is one call and
+  the user's real data is on the other side of it.
 - **Obsidian**: if they have a vault, it is a memory layer you write to
   yourself. Life OS never touches it. If they do not, ignore this line.
 
@@ -262,7 +353,11 @@ Before you tell them you are done:
 - [ ] `GET /health` answers, and `lan: true` if they want phone access.
 - [ ] Your MCP client lists the Life OS tools, and one read tool returns their
       real data rather than an empty result — an empty one means you are on the
-      wrong `DATABASE_PATH`.
+      wrong `DATABASE_PATH` (stdio) or the wrong host (HTTP).
+- [ ] `lifeos_get_settings` shows a `timezone` that matches where they actually
+      live.
+- [ ] `lifeos_get_workload` looks like their real life — if `backlog` is in the
+      hundreds, you imported a catalogue that belongs somewhere else.
 - [ ] Their habits are in, and the demo ones are gone.
 - [ ] Their goals have real conditions, not just titles.
 - [ ] Tomorrow already has a schedule in it.

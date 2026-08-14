@@ -450,13 +450,44 @@ the *drink water* habit.
 
 ## Webhooks
 
-```json
-PATCH /api/v1/settings
-{ "agentWebhookUrl": "https://your-host/hooks/lifeos", "agentWebhookSecret": "shared-secret" }
+Named targets, with a delivery record per attempt — not the single global URL
+this section used to describe.
+
+```
+GET    /api/v1/webhooks/targets
+POST   /api/v1/webhooks/targets          { name, preset, url, secret?, events[] }
+PATCH  /api/v1/webhooks/targets/:id
+DELETE /api/v1/webhooks/targets/:id
+POST   /api/v1/webhooks/targets/:id/test   send a throwaway event now
+GET    /api/v1/webhooks/deliveries         status and error per attempt
 ```
 
-Fires on `habit.complete` and `card.complete`. Headers: `X-LifeOS-Event`, optional
-`X-LifeOS-Secret`. Fire-and-forget with an 8 second timeout.
+Presets: `hermes` (HMAC-SHA256 over `<timestamp>.<body>`), `openclaw` (bearer),
+`generic` (`X-LifeOS-Secret`). Three attempts with backoff, and every attempt is
+recorded — so a target that has been failing for a week stops looking identical
+to one that was never configured.
+
+**The URL is resolved by Life OS, not by you.** If Life OS runs on the user's
+machine and you run in a container or on another host, `127.0.0.1` in a target
+URL means *their* loopback and your listener will never see anything. Use the
+address Life OS can reach you at — the host's LAN IP and a published port — and
+confirm with `POST /webhooks/targets/:id/test` rather than waiting for a real
+completion.
+
+---
+
+## MCP
+
+```
+POST /mcp        Authorization: Bearer <API_TOKEN>
+```
+
+The agent surface, over HTTP, for an agent that is not on this machine. Same
+tools as stdio, same database, same token. Stateless; `GET` answers 405 because
+there are no server-initiated messages to stream. Deliberately outside
+`/api/v1`, so it is not subject to the dashboard's protocol negotiation.
+
+See [`docs/AGENT_SETUP.md`](AGENT_SETUP.md) §2.
 
 ---
 

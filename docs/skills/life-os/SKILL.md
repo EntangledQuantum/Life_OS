@@ -8,7 +8,7 @@ description: >
   long-running agent (Hermes, OpenClaw, Claude Code, cron) should read what
   actually happened, schedule what happens next, react to completions, or set
   Life OS up for a user who does not have it.
-version: 4.0.0
+version: 5.0.0
 license: MIT
 platforms: [macos, linux, windows]
 metadata:
@@ -17,7 +17,7 @@ metadata:
     related_skills: []
     config:
       - key: lifeos.api_base
-        description: Base URL of the Life OS API (only needed for the REST fallback)
+        description: Base URL of the Life OS API — MCP over HTTP lives at <base>/mcp
         default: "http://127.0.0.1:8787"
         prompt: Life OS API base URL
       - key: lifeos.api_token
@@ -32,7 +32,7 @@ required_environment_variables:
   - name: LIFEOS_API_TOKEN
     prompt: Life OS API bearer token
     help: "The API_TOKEN value in the Life OS .env — generated at setup, no default"
-    required_for: the REST fallback, and for the user's phone
+    required_for: MCP over HTTP, the REST fallback, and the user's phone
   - name: LIFEOS_API_BASE
     prompt: Life OS API base URL
     help: "Default http://127.0.0.1:8787"
@@ -47,7 +47,15 @@ is your job.
 **Use MCP.** The REST API exists and is documented, but it is the *apps'*
 transport — one big dashboard payload, polled every few seconds, shaped for a
 screen. The MCP tools are shaped for you: a whole day or a whole range in one
-call, already summarised. Reach for REST only if you genuinely cannot speak MCP.
+call, already summarised.
+
+There are two transports and both serve the same tools, so being remote is not
+a reason to fall back to REST:
+
+- **On the same machine as Life OS** — stdio; your client spawns the server.
+- **Anywhere else** — HTTP `POST <base>/mcp`, `Authorization: Bearer <token>`.
+  Stateless, POST only (`GET` answers 405 on purpose). If you are here, **set
+  `timezone`** — see the clock rule below.
 
 Not installed yet? [`docs/AGENT_SETUP.md`](../../AGENT_SETUP.md) is the install
 and interview procedure. Read that first, then come back here.
@@ -91,6 +99,7 @@ A task's optional parts:
 ```
 lifeos_get_day            → what happened today, summarised, with a story line
 lifeos_get_range          → a window: totals, per-habit rates, what is slipping
+lifeos_get_workload       → what is open, split into due / upcoming / missed / backlog
 ```
 
 These exist so you are not reassembling someone's week out of forty CRUD calls.
@@ -99,6 +108,25 @@ evidence underneath it. Use `lifeos_get_range` for the nightly check-in.
 
 `lifeos_search_history` answers "when did I last touch X" across tasks, study
 sessions and habits.
+
+### Two things a list will not tell you
+
+**Stored is not the same as visible.** A task with a future `showAt` exists and
+is correct, and no client displays it until then. `lifeos_list_tasks` returns
+everything by default and marks each row's `visibility`; pass `scope:"visible"`
+for what is on screen now. Creates report it too — `lifeos_bulk_create_tasks`
+tells you how many of the batch are hidden.
+
+> If you schedule next week and the list comes back short, **read `visibility`
+> before you write it all again.** A short list there is the `showAt` working.
+
+**Untimed is not due.** A task with no `eventAt` is inventory: open, real, and
+not part of today unless something says so. `lifeos_get_workload` separates
+them. A `backlog` of thirty is not thirty things to do now, and reading it as a
+plan is how someone's front page becomes meaningless.
+
+**After a bulk write, verify with `lifeos_get_workload` or a fetch by id** —
+not `lifeos_get_today`, which is a screen and will not show you Thursday.
 
 ---
 
@@ -165,7 +193,27 @@ been shown.
 means deciding which of the two matters less.
 
 **The life-day rolls at `dayResetTime`** (default 04:00), not midnight. A 01:00
-completion belongs to the previous day. Never assume the calendar date.
+completion belongs to the previous day. Never assume the calendar date — every
+day payload carries a `lifeDay` block with the exact start and end instants and
+the timezone they are in. Read it instead of deriving it.
+
+**Know which clock you are on.** If you are not running on the user's machine
+you are probably on UTC and they are not, and nothing will tell you: you will
+simply schedule "09:00" hours off and disagree about which day things landed in.
+Set it once — `lifeos_update_settings { "timezone": "Asia/Kolkata" }` — and
+check it with `lifeos_get_settings`.
+
+**Life OS is an execution shell, not a catalogue.** If something else already
+knows when a card is due — a vault, Anki, an SR plugin — that system owns the
+schedule. Bring across what is due *today*; leave the rest where it lives.
+Mirroring a whole review backlog in produces hundreds of permanent untimed tasks
+and a front page that means nothing. Tag anything you do import
+(`meta.source`, `meta.externalRef`) so it can be re-synced or removed later.
+
+**Clean up with the dry run first.** `lifeos_bulk_dismiss_tasks` filters by
+status, kind, `createdBefore`, `untimedOnly` and `titleContains`, and changes
+nothing until `confirm:true`. Call `lifeos_backup_now` before the confirmed
+pass — it is one call, and the user's real data is on the other side of it.
 
 **Notification times are derived.** Set `eventAt`; the notify instant is
 `eventAt - reminderLeadMinutes` (a user setting, default 15). Only set
@@ -233,7 +281,9 @@ This is the part that makes Life OS work, and it is the part agents skip.
 
 ## REST fallback
 
-Only if you cannot speak MCP. Full reference: [`docs/API.md`](../../API.md).
+Only if you cannot speak MCP **over either transport**. Being on another machine
+is not a reason — that is what `POST <base>/mcp` is for. Full reference:
+[`docs/API.md`](../../API.md).
 
 ```
 Authorization: Bearer <API_TOKEN>
