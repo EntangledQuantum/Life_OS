@@ -20,6 +20,9 @@ console.log(
 );
 // Say what actually changed. A silent upgrade is the thing that makes people
 // distrust a migration system.
+if (boot.preMigrationBackup) {
+  console.log(`  snapshot before migrating: data/backups/${boot.preMigrationBackup}`);
+}
 for (const m of boot.appliedMigrations) {
   console.log(`  migrated v${m.version}: ${m.name}`);
 }
