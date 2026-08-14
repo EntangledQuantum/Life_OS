@@ -76,13 +76,12 @@ shapes on purpose and you should not mix them:
   summarised, so you are not reconstructing someone's week out of forty
   round-trips.
 
-Start the MCP server:
+### You do not start it. Your client does.
 
-```bash
-pnpm mcp
-```
-
-Then register it with your client. For stdio:
+The transport is **stdio**, which means the MCP server is not a service and there
+is nothing to leave running. Your client spawns it as a child process when it
+connects and talks over that process's stdin and stdout. Register it and you are
+done:
 
 ```json
 {
@@ -96,6 +95,57 @@ Then register it with your client. For stdio:
   }
 }
 ```
+
+Do not add it to the service you set up in step 1, and do not start it from a
+hook. A stdio server with no client on the other end of the pipe does nothing at
+all.
+
+Three things that catch people:
+
+- **`cwd` must be the clone**, absolute. It is where `pnpm --filter` resolves the
+  workspace from.
+- **`env` beats `.env`.** The server loads the repo's `.env`, but dotenv does not
+  overwrite a variable the client already set — so what you put here wins. That
+  is the reliable way to be certain which database you are on.
+- **On Windows, some clients need `"command": "pnpm.cmd"`**, because `pnpm` is a
+  `.cmd` shim and not every client spawns through a shell.
+
+### It reads the database directly
+
+The MCP server opens the same SQLite file the API opens. It does **not** go
+through HTTP. Two consequences worth holding on to:
+
+- Your tools work whether or not the API is running. The dashboard being closed
+  does not put Life OS out of reach.
+- A write you make lands in the file immediately and appears on the dashboard on
+  its next poll, a few seconds later. There is no cache to invalidate.
+
+Concurrent access is fine — the database runs in WAL mode, so the API and your
+tools read and write the same file at once.
+
+**The API owns migrations, and MCP does not.** The MCP server assumes the schema
+is already current; the API brings it up to date at boot. So point
+`DATABASE_PATH` at a file the API has opened at least once. Aim it somewhere new
+and you get an empty database and tools that fail on the first call.
+
+### Checking it by hand
+
+```bash
+pnpm mcp
+```
+
+This is a **debugging command, not a setup step.** It starts the same server on
+your own terminal's stdio, prints one line, and then sits there silently waiting
+for JSON-RPC that a terminal is never going to send. That is it working
+correctly. Ctrl-C out of it. If you want a real check, ask your client to list
+the tools — there are 53.
+
+### There is no HTTP transport yet
+
+stdio requires that you and Life OS are **on the same machine**. If you run
+somewhere else — a VPS, a hosted gateway — you cannot reach these tools today,
+and the REST API over the network is your only option. A streamable-HTTP MCP
+endpoint at `/mcp`, on the API's port and token, is designed but not built.
 
 Use the REST API only if you genuinely cannot speak MCP.
 
@@ -210,6 +260,9 @@ Before you tell them you are done:
 
 - [ ] The service survives a reboot.
 - [ ] `GET /health` answers, and `lan: true` if they want phone access.
+- [ ] Your MCP client lists the Life OS tools, and one read tool returns their
+      real data rather than an empty result — an empty one means you are on the
+      wrong `DATABASE_PATH`.
 - [ ] Their habits are in, and the demo ones are gone.
 - [ ] Their goals have real conditions, not just titles.
 - [ ] Tomorrow already has a schedule in it.
