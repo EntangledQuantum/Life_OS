@@ -13,6 +13,7 @@
     "@hono/node-server": "^1.14.1",
     "@life-os/db": "workspace:*",
     "@life-os/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.44.2",
     "hono": "^4.7.5",

@@ -40,6 +40,7 @@ import {
   XP_MODEL_DOC,
 } from "@life-os/shared";
 import { requireAuth, type AuthVars } from "./middleware/auth.js";
+import { handleMcpRequest } from "./mcp/http.js";
 import * as auth from "./services/auth.js";
 import * as habits from "./services/habits.js";
 import * as study from "./services/study.js";
@@ -96,7 +97,19 @@ export function createApp() {
        * console and a dashboard that never loads, with nothing to connect it
        * back to the header the client started sending.
        */
-      allowHeaders: ["Content-Type", "Authorization", PROTOCOL_HEADER],
+      /*
+       * The `mcp-*` pair is for an MCP client running in a browser. Agents
+       * speak to `/mcp` from a server and never send a preflight, but a client
+       * that does would fail on the protocol-version header alone, and the
+       * failure looks like a dead endpoint rather than a missing header.
+       */
+      allowHeaders: [
+        "Content-Type",
+        "Authorization",
+        PROTOCOL_HEADER,
+        "mcp-protocol-version",
+        "mcp-session-id",
+      ],
     }),
   );
 
@@ -165,6 +178,23 @@ export function createApp() {
       minProtocol: MIN_PROTOCOL_VERSION,
     }),
   );
+
+  /**
+   * MCP, for an agent that cannot spawn a process on this machine.
+   *
+   * The tools were stdio-only, which quietly assumed the agent shared a
+   * filesystem with `lifeos.db`. Plenty do not — a gateway in a container, an
+   * agent on another host — and those were pushed onto the REST API, which is
+   * the apps' surface: shaped for a screen, and answering "here is the
+   * dashboard" when the question was "what happened on the 3rd".
+   *
+   * Deliberately **not** under `/api/v1`. The version negotiation there is
+   * about the shape of the dashboard payload and would 426 every MCP client for
+   * not sending a header it has never heard of; MCP does its own negotiation
+   * inside the protocol. Same token, though — `requireAuth` is the same
+   * middleware the rest of the surface uses.
+   */
+  app.all("/mcp", requireAuth, (c) => handleMcpRequest(c));
 
   // Protected API
   const api = new Hono<AppEnv>();

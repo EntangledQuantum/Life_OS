@@ -19,6 +19,9 @@ importers:
       '@life-os/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(zod@3.25.76)
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
