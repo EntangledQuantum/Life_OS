@@ -83,6 +83,18 @@ function RootNav() {
   useEffect(() => {
     if (!ready) return;
     const onConnect = segments[0] === "connect";
+    /*
+     * `/pair` is exempt from both redirects.
+     *
+     * It is reached from a QR deep link, and the phone is usually *already*
+     * connected when that happens — re-pairing to a new address is the whole
+     * point. The "authenticated, so go to the tabs" rule was throwing the user
+     * out of it before the code could be read, which made the link look
+     * completely dead: the app opened, and landed on Today.
+     */
+    const onPair = segments[0] === "pair";
+    if (onPair) return;
+
     if (!authenticated && !onConnect) {
       router.replace("/connect");
     } else if (authenticated && onConnect) {
@@ -103,6 +115,10 @@ function RootNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="connect"
+        options={{ headerShown: false, animation: "fade" }}
+      />
+      <Stack.Screen
+        name="pair"
         options={{ headerShown: false, animation: "fade" }}
       />
     </Stack>

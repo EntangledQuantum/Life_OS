@@ -27,9 +27,29 @@ export function PairPage() {
   }, []);
 
   const base = `${window.location.protocol}//${window.location.host}`;
-  const deepLink = code
-    ? `lifeos://connect?code=${encodeURIComponent(code)}&url=${encodeURIComponent(base)}`
+
+  /*
+   * Two forms of the same link, because Android Chrome will not follow a bare
+   * custom scheme from a page it did not navigate to. An `intent://` URL names
+   * the package explicitly and is the documented way to hand off on Android;
+   * everywhere else the custom scheme is right.
+   *
+   * The path is `/pair`, not `/connect`. The connect screen is redirected away
+   * from the moment the phone is authenticated — which it usually is by the
+   * time anyone re-pairs — so a link into it opened the app and bounced
+   * straight to Today, looking for all the world like the link was dead.
+   */
+  const query = code
+    ? `code=${encodeURIComponent(code)}&url=${encodeURIComponent(base)}`
     : null;
+  const schemeLink = query ? `lifeos://pair?${query}` : null;
+  const intentLink = query
+    ? `intent://pair?${query}#Intent;scheme=lifeos;package=com.lifeos.app;` +
+      `S.browser_fallback_url=${encodeURIComponent(`${base}/pair#c=${code}`)};end`
+    : null;
+  const isAndroid =
+    typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+  const deepLink = (isAndroid ? intentLink : schemeLink) ?? null;
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-5 py-12">
@@ -58,6 +78,19 @@ export function PairPage() {
           <a href={deepLink!} className="btn btn-primary justify-center py-3 text-base">
             <Smartphone className="h-4 w-4" /> Open in Life OS
           </a>
+
+          {/*
+            Some in-app browsers block both forms. Offering the other one is
+            cheaper than making someone type a twelve-character code.
+          */}
+          {isAndroid && schemeLink && (
+            <a
+              href={schemeLink}
+              className="btn justify-center py-2 text-sm"
+            >
+              Didn&apos;t work? Try the other way
+            </a>
+          )}
 
           <div className="card p-5">
             <h2 className="text-sm font-semibold">

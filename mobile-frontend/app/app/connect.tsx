@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -8,7 +8,6 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import * as Linking from "expo-linking";
 import { useConnection } from "@/lib/connection";
 import { checkHealth, claimPairingCode, ApiError, ProtocolError } from "@/lib/api";
 import { looksLikeWebUiPort } from "@/lib/storage";
@@ -33,61 +32,38 @@ export default function ConnectScreen() {
   const [healthNote, setHealthNote] = useState<string | null>(null);
   /** Set when the server turns out to speak a protocol this build cannot read. */
   const [outdated, setOutdated] = useState<ProtocolError | null>(null);
-  /** A code typed in by hand, when the deep link did not fire. */
+  /** A code typed in by hand, when the QR could not be scanned. */
   const [pairCode, setPairCode] = useState("");
 
   /**
-   * Finish a pairing: trade the code for the real token and connect.
+   * Trade a pairing code for the real token.
    *
-   * The token never travelled in the QR or the deep link — only this
-   * short-lived code did, and the server burns it as it hands the token over.
+   * The deep-link path does not come through here — `lifeos://pair?code=…` has
+   * its own screen, because this one gets redirected away the moment you are
+   * authenticated. This is only the by-hand fallback.
    */
-  const pair = useCallback(
-    async (serverUrl: string, code: string) => {
-      setError(null);
-      setBusy(true);
-      try {
-        const claimed = await claimPairingCode(serverUrl, code);
-        await connectWithToken(claimed.baseUrl, claimed.token);
-        router.replace("/(tabs)");
-      } catch (e) {
-        if (e instanceof ProtocolError) setOutdated(e);
-        else setError(e instanceof Error ? e.message : "Pairing failed");
-      } finally {
-        setBusy(false);
+  async function onPair() {
+    setError(null);
+    setHealthNote(null);
+    setBusy(true);
+    try {
+      const claimed = await claimPairingCode(url, pairCode);
+      await connectWithToken(claimed.baseUrl, claimed.token);
+      router.replace("/(tabs)");
+    } catch (e) {
+      if (e instanceof ProtocolError) {
+        setOutdated(e);
+      } else if (e instanceof ApiError && e.status === 0) {
+        setError(
+          `Could not reach ${url}. Check the server address above — is your phone on the same Wi-Fi?`,
+        );
+      } else {
+        setError(e instanceof Error ? e.message : "Pairing failed");
       }
-    },
-    [connectWithToken, router],
-  );
-
-  /**
-   * `lifeos://connect?code=…&url=…`, from the page the QR opened.
-   *
-   * Handled both ways round on purpose: `getInitialURL` covers a cold start
-   * (the tap launched the app) and the listener covers a warm one (the app was
-   * already backgrounded). Handling only one of the two is the classic way a
-   * deep link works for the developer and nobody else.
-   */
-  useEffect(() => {
-    let cancelled = false;
-
-    const handle = (incoming: string | null) => {
-      if (!incoming || cancelled) return;
-      const parsed = Linking.parse(incoming);
-      const code = String(parsed.queryParams?.code ?? "");
-      const serverUrl = String(parsed.queryParams?.url ?? "");
-      if (!code || !serverUrl) return;
-      setUrl(serverUrl);
-      void pair(serverUrl, code);
-    };
-
-    void Linking.getInitialURL().then(handle);
-    const sub = Linking.addEventListener("url", (e) => handle(e.url));
-    return () => {
-      cancelled = true;
-      sub.remove();
-    };
-  }, [pair]);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onTest() {
     setError(null);
@@ -242,17 +218,41 @@ export default function ConnectScreen() {
           </Body>
           <Field
             value={pairCode}
-            onChangeText={setPairCode}
+            onChangeText={(v) => setPairCode(v.toUpperCase())}
             autoCapitalize="characters"
             autoCorrect={false}
             placeholder="ABCD2345WXYZ"
-            style={{ fontFamily: font.mono, letterSpacing: 2, textAlign: "center" }}
+            maxLength={12}
+            style={{ letterSpacing: 3, textAlign: "center", fontSize: 18 }}
           />
           <Button
-            title="Pair"
-            onPress={() => void pair(url, pairCode)}
+            title={busy ? "Pairing…" : "Pair"}
+            onPress={onPair}
             disabled={busy || pairCode.trim().length < 6}
           />
+          {/*
+            The result belongs *here*, next to the button that caused it. It
+            used to render at the very bottom of the page, below the token card
+            and off the fold — so pressing Pair looked like it did nothing at
+            all: the button greyed out, came back, and the screen was unchanged.
+          */}
+          {error ? (
+            <Text
+              selectable
+              style={{
+                color: t.warning,
+                fontFamily: font.bodyMedium,
+                fontSize: 13,
+                lineHeight: 19,
+              }}
+            >
+              {error}
+            </Text>
+          ) : null}
+          <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 12 }}>
+            Codes are single-use and last five minutes. Used one already? Show a
+            new QR.
+          </Text>
         </Card>
 
         <Card style={{ gap: 12 }}>
@@ -305,23 +305,35 @@ export default function ConnectScreen() {
   );
 }
 
-function Field(props: ComponentProps<typeof TextInput>) {
+/**
+ * A text input that is actually readable.
+ *
+ * `style` is merged, not replaced. It used to be `style={{…}} {...props}`, so
+ * any caller passing its own `style` — to centre the text, say — silently wiped
+ * the whole base style including `color: t.text`. The input then fell back to
+ * the platform default, which on Android is near-black, on a near-black
+ * surface: you could type into it and see nothing at all.
+ */
+function Field({ style, ...props }: ComponentProps<typeof TextInput>) {
   const t = useTokens();
   return (
     <TextInput
       placeholderTextColor={t.faint}
-      style={{
-        backgroundColor: t.surface2,
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: t.border,
-        color: t.text,
-        fontFamily: font.mono,
-        fontSize: 14,
-        paddingHorizontal: 14,
-        paddingVertical: 13,
-      }}
       {...props}
+      style={[
+        {
+          backgroundColor: t.surface2,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: t.border,
+          color: t.text,
+          fontFamily: font.mono,
+          fontSize: 14,
+          paddingHorizontal: 14,
+          paddingVertical: 13,
+        },
+        style,
+      ]}
     />
   );
 }
