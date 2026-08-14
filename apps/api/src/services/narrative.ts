@@ -16,27 +16,62 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
-import { efficiencyPct } from "@life-os/shared";
-import { getDayResetTime, loadGamificationConfig } from "./helpers.js";
+import {
+  efficiencyPct,
+  lifeDayBounds,
+  resolveTimezone,
+  type LifeDay,
+} from "@life-os/shared";
+import {
+  getDayResetTime,
+  getSettingsRow,
+  loadGamificationConfig,
+} from "./helpers.js";
 
-/** Bounds of a life-day, which starts at `dayResetTime` rather than midnight. */
+/**
+ * Bounds of a life-day, which starts at `dayResetTime` rather than midnight.
+ *
+ * Computed in the configured timezone rather than the machine's, which are the
+ * same value until someone sets one. They stop being the same when the reader
+ * is an agent in a container: it is on UTC, and without being told the zone it
+ * puts a 01:00 completion in a different day than the app does.
+ */
 function dayBounds(db: LifeOsDb, dateStr: string) {
   const reset = getDayResetTime(db);
-  const [h, m] = reset.split(":").map(Number);
-  const start = new Date(`${dateStr}T00:00:00`);
-  start.setHours(h ?? 4, m ?? 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start: start.toISOString(), end: end.toISOString(), reset };
+  const zone = resolveTimezone(
+    (getSettingsRow(db) as { timezone?: string | null }).timezone,
+  );
+  const day = lifeDayBounds(dateStr, reset, zone);
+  return { start: day.lifeDayStart, end: day.lifeDayEnd, reset, day };
 }
 
-const hhmm = (iso: string) => {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+/**
+ * Wall-clock time in the configured zone, not the server's.
+ *
+ * These end up in a story an agent quotes back — "you finished at 23:40" — so
+ * they have to agree with the day bounds above. Reading one in the machine's
+ * zone and the other in the user's would put a completion outside the day it
+ * was counted in, in the same payload.
+ */
+const clock = (timezone: string) => (iso: string) =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
 
 export interface DaySummary {
   date: string;
+  /**
+   * Exactly which stretch of time `date` covers, and in which zone.
+   *
+   * Reported rather than described because the rule is unusual and agents get
+   * it wrong: the day starts at `dayResetTime` (04:00 by default), so 01:00
+   * belongs to the day before. An agent reading this from another machine also
+   * has no way to know which zone the instants are in.
+   */
+  lifeDay: LifeDay;
   /** One paragraph an agent can quote. Everything below is the evidence. */
   story: string;
   xp: { earned: number; target: number; efficiencyPct: number };
@@ -59,7 +94,8 @@ export interface DaySummary {
 }
 
 export function getDaySummary(db: LifeOsDb, dateStr: string): DaySummary {
-  const { start, end } = dayBounds(db, dateStr);
+  const { start, end, day } = dayBounds(db, dateStr);
+  const hhmm = clock(day.timezone);
   const config = loadGamificationConfig(db);
   const within = (ts: string | null | undefined) =>
     Boolean(ts && ts >= start && ts < end);
@@ -156,6 +192,7 @@ export function getDaySummary(db: LifeOsDb, dateStr: string): DaySummary {
 
   return {
     date: dateStr,
+    lifeDay: day,
     story: tellDay({
       dateStr,
       eff,

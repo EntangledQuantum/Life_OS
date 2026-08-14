@@ -151,6 +151,71 @@ describe("the tools", () => {
     assert.equal(typeof day.story, "string");
   });
 
+  /** Call a tool and hand back the parsed payload. */
+  async function callTool(name: string, args: Record<string, unknown> = {}) {
+    const res = await rpc({
+      jsonrpc: "2.0",
+      id: Math.floor(Math.random() * 1e6),
+      method: "tools/call",
+      params: { name, arguments: args },
+    });
+    assert.equal(res.status, 200, `${name} answered ${res.status}`);
+    const text = res.body?.result?.content?.[0]?.text as string;
+    return JSON.parse(text);
+  }
+
+  it("tells you a created task is hidden instead of letting it vanish", async () => {
+    /*
+     * The whole failure in one call: an agent writes next week's schedule, then
+     * lists tasks to check, finds nothing, and concludes the writes failed.
+     */
+    const soon = new Date(Date.now() + 3 * 24 * 3600_000).toISOString();
+    const created = await callTool("lifeos_create_task", {
+      title: "Scheduled for later",
+      showAt: soon,
+    });
+    assert.equal(created.visibility.state, "hidden_until_show_at");
+    assert.equal(created.visibility.visibleFrom, soon);
+  });
+
+  it("lists everything by default, including what no client is showing", async () => {
+    const all = await callTool("lifeos_list_tasks", { status: "active" });
+    assert.ok(
+      all.some((t: any) => t.title === "Scheduled for later"),
+      "the hidden task must be in the default listing",
+    );
+
+    const visible = await callTool("lifeos_list_tasks", {
+      status: "active",
+      scope: "visible",
+    });
+    assert.ok(
+      !visible.some((t: any) => t.title === "Scheduled for later"),
+      "and out of the visible-only one",
+    );
+  });
+
+  it("splits open work rather than returning one flat list", async () => {
+    await callTool("lifeos_create_task", { title: "Untimed inventory item" });
+    const w = await callTool("lifeos_get_workload");
+    assert.ok(
+      w.backlog.some((t: any) => t.title === "Untimed inventory item"),
+      "something with no time is backlog",
+    );
+    assert.ok(!w.due.some((t: any) => t.title === "Untimed inventory item"));
+    assert.match(w.lifeDay.lifeDay, /^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("does not delete anything on a cleanup call without confirm", async () => {
+    const dry = await callTool("lifeos_bulk_dismiss_tasks", { untimedOnly: true });
+    assert.equal(dry.dryRun, true);
+    assert.ok(dry.wouldDismiss >= 1);
+
+    // Still there, because a dry run that changed something would be a disaster.
+    const after = await callTool("lifeos_list_tasks", { status: "active" });
+    assert.ok(after.some((t: any) => t.title === "Untimed inventory item"));
+  });
+
   it("reports a bad tool name as an error, not a crash", async () => {
     const call = await rpc({
       jsonrpc: "2.0",

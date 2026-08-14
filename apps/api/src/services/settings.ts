@@ -5,6 +5,7 @@ import {
   DEFAULT_GAMIFICATION_CONFIG,
   IMMINENT_WINDOW_MINUTES,
   isNotificationSound,
+  resolveTimezone,
   type AccentThemeId,
   type AppSettings,
   type GamificationConfig,
@@ -50,6 +51,12 @@ export function getSettings(db: LifeOsDb): AppSettings {
     quietHoursStart: row.quietHoursStart,
     quietHoursEnd: row.quietHoursEnd,
     dayResetTime: row.dayResetTime ?? "04:00",
+    /*
+     * Always resolved, never null. A null here would put every reader back to
+     * guessing — and the readers that have to guess are exactly the ones not on
+     * this machine, which is where guessing goes wrong.
+     */
+    timezone: resolveTimezone((row as { timezone?: string | null }).timezone),
     storageMode: row.storageMode as "local" | "supabase",
     supabaseUrl: row.supabaseUrl,
     supabaseKeySet: Boolean(row.supabaseKey),
@@ -86,6 +93,7 @@ export function updateSettings(
     quietHoursStart: string;
     quietHoursEnd: string;
     dayResetTime: string;
+    timezone: string | null;
     storageMode: "local" | "supabase";
     supabaseUrl: string | null;
     supabaseKey: string | null;

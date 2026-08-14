@@ -20,12 +20,18 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { getDb } from "@life-os/db";
+import { getDb, type LifeOsDb } from "@life-os/db";
 import {
   getDaySummary,
   getRangeSummary,
   searchHistory,
 } from "../services/narrative.js";
+import {
+  currentLifeDay,
+  getWorkload,
+  selectForCleanup,
+  withVisibility,
+} from "../services/agent-view.js";
 import { z } from "zod";
 
 /*
@@ -393,6 +399,14 @@ const tools = [
           type: "string",
           description: "HH:mm — the life-day boundary, not midnight",
         },
+        timezone: {
+          type: "string",
+          description:
+            "IANA name, e.g. Asia/Kolkata. The zone every stored time is meant in. " +
+            "Set it if you are not running on the same machine as Life OS — otherwise you " +
+            "will schedule in your own zone and disagree with the app about which day a " +
+            "completion belongs to. Empty means the server's own zone.",
+        },
         agentWebhookUrl: { type: "string" },
         agentWebhookSecret: { type: "string" },
         backupsEnabled: { type: "boolean" },
@@ -605,13 +619,67 @@ const tools = [
     description:
       "Tasks — one of the two nouns, the other being habits. Everything the user has to do is " +
       "one of these: a thing with an optional time, an optional repeat, optional XP, optional " +
-      "links, and an optional card presentation. Filter by status (active|done|dismissed) and " +
-      "kind (task|study|review|reminder).",
+      "links, and an optional card presentation. " +
+      "scope defaults to `all`, which includes tasks hidden behind a future showAt — those are " +
+      "stored and correct but no client displays them yet, and leaving them out is what made " +
+      "created tasks look like they had vanished. Use scope `visible` for what a client is " +
+      "showing right now.",
     inputSchema: {
       type: "object" as const,
       properties: {
         status: { type: "string", enum: ["active", "done", "dismissed"] },
         kind: { type: "string", enum: ["task", "study", "review", "reminder"] },
+        scope: {
+          type: "string",
+          enum: ["all", "visible"],
+          description:
+            "all = everything stored, including not-yet-shown. visible = only what a client would display now. Default all.",
+        },
+      },
+    },
+  },
+  {
+    name: "lifeos_get_workload",
+    description:
+      "Open work, split by the question it answers, instead of one flat list. " +
+      "`due` is what should be happening now; `upcoming` has a time and is still ahead; " +
+      "`missed` had a time that went past; `backlog` is open work with **no time on it at all** — " +
+      "inventory, not today's plan; `hidden` is stored but behind a future showAt. " +
+      "Use this rather than lifeos_list_tasks when deciding what to tell the user to do: an " +
+      "untimed catalogue (imported reviews, a reading list) is not a day's workload, and reading " +
+      "it as one is how 'today' grows to seventeen things that are not due.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        horizonDays: {
+          type: "number",
+          description: "How far ahead `upcoming` reaches. Default 7.",
+        },
+      },
+    },
+  },
+  {
+    name: "lifeos_bulk_dismiss_tasks",
+    description:
+      "Dismiss many tasks at once, for cleaning up after an import or a migration that left " +
+      "duplicates. **Dry run by default** — it returns exactly what it would touch and changes " +
+      "nothing until you pass confirm:true. Dismissed rather than deleted, so the rows survive " +
+      "and the user's history stays intact. Take a backup first with lifeos_backup_now.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string", enum: ["active", "done", "dismissed"] },
+        kind: { type: "string", enum: ["task", "study", "review", "reminder"] },
+        createdBefore: { type: "string", description: "ISO instant." },
+        untimedOnly: {
+          type: "boolean",
+          description: "Only tasks with no eventAt — the usual shape of migration leftovers.",
+        },
+        titleContains: { type: "string" },
+        confirm: {
+          type: "boolean",
+          description: "false or absent = dry run. true = actually dismiss them.",
+        },
       },
     },
   },
@@ -828,12 +896,17 @@ const tools = [
   },
 ];
 
-/** Today's life-day key — the day rolls at dayResetTime, not midnight. */
-function todayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
+/**
+ * Today's life-day key.
+ *
+ * This said it was the life-day and returned the calendar date. They differ for
+ * the hours between midnight and `dayResetTime` — which is precisely when a
+ * night owl is still working, and precisely when an evening check-in runs. An
+ * agent asking "how did today go" at 01:00 was handed the key for a day that
+ * had barely started, and reported an empty one.
+ */
+function todayKey(db: LifeOsDb): string {
+  return currentLifeDay(db).lifeDay;
 }
 
 async function handleTool(name: string, args: Record<string, unknown>) {
@@ -841,11 +914,11 @@ async function handleTool(name: string, args: Record<string, unknown>) {
   switch (name) {
     /* ---- agent-shaped ------------------------------------------------ */
     case "lifeos_get_day":
-      return getDaySummary(db, args.date ? String(args.date) : todayKey());
+      return getDaySummary(db, args.date ? String(args.date) : todayKey(db));
     case "lifeos_get_range":
       return getRangeSummary(
         db,
-        args.to ? String(args.to) : todayKey(),
+        args.to ? String(args.to) : todayKey(db),
         args.days === undefined ? 7 : Number(args.days),
       );
     case "lifeos_search_history":
@@ -858,14 +931,36 @@ async function handleTool(name: string, args: Record<string, unknown>) {
       const input = Array.isArray(args.tasks) ? args.tasks : [];
       const created: unknown[] = [];
       const rejected: { index: number; error: string }[] = [];
+      let hidden = 0;
       input.forEach((entry, index) => {
         const result = createTask(db, entry as any);
         // Report each failure with its index rather than throwing: one bad
         // entry in a week's schedule must not discard the other thirty.
-        if ("error" in result) rejected.push({ index, error: result.error });
-        else created.push(result.task);
+        if ("error" in result) {
+          rejected.push({ index, error: result.error });
+          return;
+        }
+        const withState = withVisibility(result.task);
+        if (withState.visibility.state === "hidden_until_show_at") hidden++;
+        created.push(withState);
       });
-      return { created: created.length, rejected, tasks: created };
+      /*
+       * `hidden` is called out because this is the call that schedules a week
+       * ahead, and most of what it writes is deliberately not visible yet. An
+       * agent that lists tasks afterwards and finds four of thirty is looking
+       * at a working showAt, not a failed write.
+       */
+      return {
+        created: created.length,
+        hiddenUntilShowAt: hidden,
+        rejected,
+        tasks: created,
+        ...(hidden
+          ? {
+              note: `${hidden} of these are behind a future showAt and will not appear in task lists or on any client until then. That is the showAt working.`,
+            }
+          : {}),
+      };
     }
 
     case "lifeos_list_habits":
@@ -1006,12 +1101,70 @@ async function handleTool(name: string, args: Record<string, unknown>) {
         awaitingCelebration: pendingCelebrations(db),
       };
 
-    case "lifeos_list_tasks":
-      return listTasks(db, {
+    case "lifeos_list_tasks": {
+      /*
+       * This used to force `visibleOnly: true` with no way to turn it off, so a
+       * task created with a future showAt was written and then absent from
+       * every read an agent could make. The write looked like it had failed,
+       * and the honest response to that is to write it again.
+       */
+      const scope = args.scope === "visible" ? "visible" : "all";
+      const rows = listTasks(db, {
         status: args.status as never,
         kind: args.kind as never,
-        visibleOnly: true,
+        visibleOnly: scope === "visible",
       });
+      return scope === "visible"
+        ? rows
+        : rows.map((task) => withVisibility(task));
+    }
+    case "lifeos_get_workload":
+      return getWorkload(db, {
+        horizonDays:
+          args.horizonDays === undefined ? 7 : Number(args.horizonDays),
+      });
+    case "lifeos_bulk_dismiss_tasks": {
+      const filter = {
+        status: args.status as never,
+        kind: args.kind as never,
+        createdBefore: args.createdBefore as string | undefined,
+        untimedOnly: Boolean(args.untimedOnly),
+        titleContains: args.titleContains as string | undefined,
+      };
+      const matched = selectForCleanup(db, filter);
+      const summary = matched.map((t) => ({
+        id: t.id,
+        title: t.title,
+        kind: t.kind,
+        eventAt: t.eventAt,
+        createdAt: t.createdAt,
+      }));
+
+      // Nothing is touched without confirm. A cleanup that guesses wrong takes
+      // out real work, and the agent cannot see what it is about to hit.
+      if (args.confirm !== true) {
+        return {
+          dryRun: true,
+          wouldDismiss: matched.length,
+          tasks: summary,
+          note: "Nothing was changed. Check this list, take a backup with lifeos_backup_now, then call again with confirm:true.",
+        };
+      }
+
+      const failed: { id: string; error: string }[] = [];
+      for (const task of matched) {
+        const result = dismissTask(db, task.id);
+        if ("error" in result) {
+          failed.push({ id: task.id, error: String(result.error) });
+        }
+      }
+      return {
+        dryRun: false,
+        dismissed: matched.length - failed.length,
+        failed,
+        tasks: summary,
+      };
+    }
     case "lifeos_current_tasks":
       return listCurrentTasks(db);
     case "lifeos_due_tasks":
@@ -1019,7 +1172,12 @@ async function handleTool(name: string, args: Record<string, unknown>) {
     case "lifeos_create_task": {
       const result = createTask(db, args as never);
       if ("error" in result) throw new Error(result.error);
-      return result.task;
+      /*
+       * With the visibility attached, because the next thing an agent does is
+       * list tasks to check the write landed — and if this one is hidden behind
+       * a showAt it will not be there.
+       */
+      return withVisibility(result.task);
     }
     case "lifeos_update_task": {
       const { id, ...patch } = args as { id: string };
@@ -1114,6 +1272,7 @@ const READ_ONLY_TOOLS = new Set([
   "lifeos_get_day",
   "lifeos_get_range",
   "lifeos_search_history",
+  "lifeos_get_workload",
 ]);
 
 /**

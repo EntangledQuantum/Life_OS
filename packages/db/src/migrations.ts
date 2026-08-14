@@ -757,6 +757,33 @@ const changeHistory: Migration = {
   },
 };
 
+/**
+ * v8 — say which timezone the times are in.
+ *
+ * Every instant in this database is an ISO string, and every day boundary is
+ * computed in the server's local zone. That is invisible and correct while the
+ * only things reading it are the dashboard and the phone, which sit in the same
+ * zone as the machine.
+ *
+ * It stops being invisible the moment an agent reads it from somewhere else. A
+ * container runs in UTC; asked to schedule "tomorrow at 09:00" it produces an
+ * instant five and a half hours off, and asked which life-day a completion
+ * belongs to it gets a different answer than the app does. Nothing in the
+ * payload said which zone to interpret anything in, so there was nothing to
+ * disagree with — just two components quietly using different clocks.
+ *
+ * Empty means "this machine's zone", which is what every existing database
+ * already means. Nothing is rewritten and no behaviour changes; the value
+ * becomes explicit rather than assumed.
+ */
+const explicitTimezone: Migration = {
+  version: 8,
+  name: "explicit timezone on settings",
+  up(db) {
+    addColumn(db, "settings", "timezone", "TEXT");
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -766,6 +793,7 @@ export const MIGRATIONS: Migration[] = [
   webhooks,
   unifiedTasks,
   changeHistory,
+  explicitTimezone,
 ];
 
 /** The version a database is brought to by `runMigrations`. */

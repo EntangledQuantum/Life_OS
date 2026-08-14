@@ -15,6 +15,7 @@ import { MAX_SVG_LENGTH } from "./svg.js";
 import { WEBHOOK_EVENTS, WEBHOOK_PRESETS } from "./webhooks.js";
 import { TASK_KINDS, TASK_STATUSES } from "./tasks.js";
 import { parseGoalCondition, type GoalCondition } from "./conditions.js";
+import { isTimezone } from "./time.js";
 
 /**
  * A goal condition, validated by the hand-written parser so agents get a list
@@ -291,6 +292,16 @@ export const updateSettingsSchema = z.object({
   quietHoursStart: z.string().optional(),
   quietHoursEnd: z.string().optional(),
   dayResetTime: z.string().optional(),
+  /*
+   * Checked against the platform's own zone table rather than a regex. A typo
+   * like "Asia/Calcutta_" would otherwise be stored and then throw on every
+   * date it was used for, a long way from the call that set it.
+   */
+  timezone: z
+    .string()
+    .refine(isTimezone, "Not an IANA timezone name, e.g. Asia/Kolkata")
+    .nullable()
+    .optional(),
   storageMode: z.enum(["local", "supabase"]).optional(),
   supabaseUrl: z.string().nullable().optional(),
   supabaseKey: z.string().nullable().optional(),

@@ -202,6 +202,12 @@ export interface AppSettings {
   quietHoursEnd: string;
   /** Global life-day reset HH:mm — stats roll over at this time, not midnight */
   dayResetTime: string;
+  /**
+   * IANA zone these times are meant in, always resolved — never null on the way
+   * out. An agent elsewhere needs it to schedule in the user's day rather than
+   * its own; a client on this machine will find it already agrees.
+   */
+  timezone: string;
   storageMode: "local" | "supabase";
   supabaseUrl: string | null;
   supabaseKeySet: boolean;

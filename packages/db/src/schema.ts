@@ -330,6 +330,16 @@ export const settings = sqliteTable("settings", {
   quietHoursStart: text("quiet_hours_start").notNull().default("03:30"),
   quietHoursEnd: text("quiet_hours_end").notNull().default("10:30"),
   dayResetTime: text("day_reset_time").notNull().default("04:00"),
+  /**
+   * IANA zone the times in this database are meant in, e.g. `Asia/Kolkata`.
+   *
+   * Null means the machine's own zone, which is what it has always silently
+   * been. It matters for an agent reading this from somewhere else: a container
+   * runs in UTC, and without being told otherwise it schedules "09:00" in the
+   * wrong one and disagrees with the app about which life-day a completion
+   * belongs to.
+   */
+  timezone: text("timezone"),
   storageMode: text("storage_mode").notNull().default("local"),
   supabaseUrl: text("supabase_url"),
   supabaseKey: text("supabase_key"),
