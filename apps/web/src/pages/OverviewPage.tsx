@@ -91,17 +91,7 @@ export function OverviewPage() {
 
   const setGrowthStyle = useMutation({
     mutationFn: (growthStyle: GrowthStyle) =>
-      fetch((import.meta.env.VITE_API_URL ?? "") + "/api/v1/gamification/config", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
-        },
-        body: JSON.stringify({ growthStyle }),
-      }).then(async (r) => {
-        if (!r.ok) throw new Error("Failed to update growth style");
-        return r.json();
-      }),
+      api.updateGamificationConfig({ growthStyle }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Growth meter updated");

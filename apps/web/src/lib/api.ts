@@ -148,5 +148,24 @@ export const api = {
       hint: string | null;
     }>("/api/v1/pair/reachability"),
   exportJson: () => request("/api/v1/export/json"),
-  gamificationConfig: () => request("/api/v1/gamification/config"),
+  gamificationConfig: () =>
+    request<import("@life-os/shared").GamificationConfig>(
+      "/api/v1/gamification/config",
+    ),
+  /**
+   * The XP rules, including which growth meter is drawn.
+   *
+   * Both callers of this used to build their own `fetch` with their own headers.
+   * That worked until the API started requiring `X-LifeOS-Protocol`, at which
+   * point every hand-rolled request began failing with 426 while the ones
+   * through here kept working — a difference nothing in the calling code hinted
+   * at. Anything that talks to the API goes through `request`.
+   */
+  updateGamificationConfig: (
+    patch: Partial<import("@life-os/shared").GamificationConfig>,
+  ) =>
+    request<import("@life-os/shared").GamificationConfig>(
+      "/api/v1/gamification/config",
+      { method: "PATCH", body: JSON.stringify(patch) },
+    ),
 };

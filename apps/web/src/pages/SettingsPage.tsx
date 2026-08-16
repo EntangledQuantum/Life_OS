@@ -215,22 +215,22 @@ export function SettingsPage() {
                 key={option.id}
                 type="button"
                 className="btn flex-col items-start gap-0.5 text-left"
+                /*
+                 * This used to fire a hand-built fetch and never look at the
+                 * response, so it congratulated you on a change the server had
+                 * rejected — and the picker snapped back on the next refetch
+                 * with nothing to explain why.
+                 */
                 onClick={() =>
-                  fetch(
-                    (import.meta.env.VITE_API_URL ?? "") +
-                      "/api/v1/gamification/config",
-                    {
-                      method: "PATCH",
-                      headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${localStorage.getItem("lifeos_token") ?? ""}`,
-                      },
-                      body: JSON.stringify({ growthStyle: option.id }),
-                    },
-                  ).then(() => {
-                    qc.invalidateQueries({ queryKey: ["dashboard"] });
-                    toast.success(`Growth meter: ${option.label.toLowerCase()}`);
-                  })
+                  api
+                    .updateGamificationConfig({ growthStyle: option.id })
+                    .then(() => {
+                      qc.invalidateQueries({ queryKey: ["dashboard"] });
+                      toast.success(
+                        `Growth meter: ${option.label.toLowerCase()}`,
+                      );
+                    })
+                    .catch((e: Error) => toast.error(e.message))
                 }
               >
                 <span>{option.label}</span>
