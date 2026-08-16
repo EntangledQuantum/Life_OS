@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowRight,
   Bot,
@@ -238,6 +238,60 @@ function Nav() {
 
 /* ------------------------------------------------------------------- hero */
 
+/** Words cycled after "Let AI agent manage your" on the landing headline. */
+const MANAGED_WORDS = [
+  "life",
+  "habits",
+  "health",
+  "study",
+  "goals",
+  "sleep",
+] as const;
+
+/**
+ * Swaps one accent word in place so the headline stays put while the focus
+ * rotates. Reduced-motion users get a fixed "life".
+ */
+function RotatingManagedWord() {
+  const reduceMotion = useReducedMotion();
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    const id = window.setInterval(() => {
+      setIndex((n) => (n + 1) % MANAGED_WORDS.length);
+    }, 2400);
+    return () => window.clearInterval(id);
+  }, [reduceMotion]);
+
+  const word = MANAGED_WORDS[index];
+
+  return (
+    <span className="relative inline-grid text-left align-baseline text-[var(--accent)]">
+      {/* Widest word holds the slot so the line does not reflow on each swap. */}
+      <span className="invisible col-start-1 row-start-1" aria-hidden>
+        habits
+      </span>
+      {reduceMotion ? (
+        <span className="col-start-1 row-start-1">life</span>
+      ) : (
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={word}
+            className="col-start-1 row-start-1"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {word}
+          </motion.span>
+        </AnimatePresence>
+      )}
+    </span>
+  );
+}
+
 function Hero() {
   return (
     <section id="top" className="mx-auto max-w-6xl px-5 pb-20 pt-16 sm:pt-24">
@@ -249,11 +303,11 @@ function Hero() {
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         >
           {/* text-balance keeps the two clauses from breaking on a stray word */}
-          <h1 className="text-[2.6rem] font-extrabold leading-[1.1] tracking-tight text-balance sm:text-5xl lg:text-[3.1rem]">
-            An ADHD life manager{" "}
-            <span className="text-[var(--accent)]">
-              your AI agent runs for you.
-            </span>
+          <h1
+            className="text-[2.6rem] font-extrabold leading-[1.1] tracking-tight text-balance sm:text-5xl lg:text-[3.1rem]"
+            aria-label="Let AI agent manage your life, habits, health, study, goals, and sleep"
+          >
+            Let AI agent manage your <RotatingManagedWord />
           </h1>
 
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-[var(--muted)]">
@@ -918,7 +972,7 @@ function Footer() {
         <div className="flex items-center gap-2.5">
           <img src={asset("icon.png?v=3")} alt="" className="h-7 w-7" />
           <span className="font-mono text-xs text-[var(--faint)]">
-            LIFE OS · an ADHD life manager your agent runs
+            LIFE OS · let AI agent manage your life
           </span>
         </div>
         <div className="flex flex-wrap gap-5 font-mono text-xs text-[var(--faint)]">

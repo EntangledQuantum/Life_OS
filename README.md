@@ -4,7 +4,7 @@
 
 # Life OS
 
-### An ADHD life manager your AI agent runs for you
+### Let AI agent manage your **life** · **habits** · **health** · **study** · **goals** · **sleep**
 
 Your agent designs the system and keeps it up to date. You just tap to complete.
 
