@@ -1,0 +1,77 @@
+name: CI
+
+# Runs on every push to master and on anything proposing to land there.
+#
+# It exists because of a specific class of bug rather than as a formality: the
+# growth meter broke when a component built its own request and missed a header
+# the API had started requiring. Nothing about the change looked wrong, it
+# typechecked, and the failure only appeared by clicking that one button. The
+# tests below cover exactly those seams — the ones a reader cannot see.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same branch; nothing is
+# deployed from here, so there is nothing to leave half-finished.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version` input: package.json pins packageManager, and giving both
+      # makes this action fail with a version mismatch.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite, which the database layer is built on, needs 22.5+.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      # --no-bail so one failing package still reports the others. Finding out
+      # about three failures at once beats three pushes.
+      - name: Test
+        run: pnpm -r --no-bail test
+
+      # The dashboard builds under Vite rather than tsc alone, and has caught
+      # things typecheck does not — an import that only resolves in dev, a
+      # missing asset.
+      - name: Build the dashboard
+        run: pnpm --filter @life-os/web build
+
+  # The phone app is deliberately isolated from the workspace: no imports from
+  # packages/* or apps/*, its own lockfile, its own toolchain. So it is checked
+  # separately, and a failure here does not block the server and dashboard.
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile-frontend/app/package-lock.json
+
+      # npm, not pnpm — the isolation is the point, and it has its own
+      # package-lock.json.
+      - name: Install
+        working-directory: mobile-frontend/app
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: mobile-frontend/app
+        run: npx tsc --noEmit

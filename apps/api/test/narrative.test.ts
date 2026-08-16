@@ -18,20 +18,36 @@ let db: import("@life-os/db").LifeOsDb;
 let narrative: typeof import("../src/services/narrative.js");
 let analytics: typeof import("../src/services/analytics.js");
 let tasks: typeof import("../src/services/tasks.js");
+let view: typeof import("../src/services/agent-view.js");
 
-/** Today's local day key, matching what the service uses. */
+/*
+ * These used to use the calendar date and a fixed wall-clock hour, and both
+ * were wrong in a way that only showed up at night.
+ *
+ * A life-day runs 04:00 to 04:00. Between midnight and 04:00 the calendar has
+ * rolled over and the life-day has not, so `todayKey()` named tomorrow, the
+ * summary covered a window that had not started, and completions stamped `now`
+ * fell outside it. `todayAt(1)` was worse — 01:00 belongs to the *previous*
+ * life-day, always.
+ *
+ * Every assertion still passed during the working day, which is when anyone
+ * ran them. CI runs in UTC and at any hour, so this would have failed roughly
+ * one run in six with nothing in the diff to explain it.
+ *
+ * So: ask the service which life-day it is, and place fixtures as fractions of
+ * the time elapsed within it. That keeps them inside the window and in the
+ * past whatever o'clock it is.
+ */
 function todayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
+  return view.currentLifeDay(db).lifeDay;
 }
 
-/** Local time today at HH:00, as an ISO instant. */
-function todayAt(hour: number): string {
-  const d = new Date();
-  d.setHours(hour, 0, 0, 0);
-  return d.toISOString();
+/** An instant this far through the part of the life-day that has happened. */
+function earlierToday(fraction: number): string {
+  const day = view.currentLifeDay(db);
+  const start = Date.parse(day.lifeDayStart);
+  const elapsed = Date.now() - start;
+  return new Date(start + elapsed * fraction).toISOString();
 }
 
 before(async () => {
@@ -44,6 +60,7 @@ before(async () => {
   narrative = await import("../src/services/narrative.js");
   analytics = await import("../src/services/analytics.js");
   tasks = await import("../src/services/tasks.js");
+  view = await import("../src/services/agent-view.js");
 });
 
 after(() => {
@@ -67,8 +84,8 @@ describe("getDaySummary", () => {
      * when only 7 of the 23 scheduled things were actually done and the rest of
      * the count was untimed work that happened to be ticked off the same day.
      */
-    const timed = make({ title: "At 10", eventAt: todayAt(10), durationMinutes: 30 });
-    make({ title: "Also at 11", eventAt: todayAt(11), durationMinutes: 30 });
+    const timed = make({ title: "Earlier today", eventAt: earlierToday(0.3), durationMinutes: 30 });
+    make({ title: "Also earlier", eventAt: earlierToday(0.6), durationMinutes: 30 });
     const untimed = make({ title: "Whenever" });
 
     await tasks.completeTask(db, timed.id);
@@ -103,7 +120,7 @@ describe("getDaySummary", () => {
   it("marks a completion after its window as late", async () => {
     const late = make({
       title: "Long overdue",
-      eventAt: todayAt(1),
+      eventAt: earlierToday(0.1),
       durationMinutes: 15,
     });
     await tasks.completeTask(db, late.id);

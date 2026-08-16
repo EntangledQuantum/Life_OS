@@ -3,7 +3,13 @@ import {
   PROTOCOL_VERSION,
   type AnalyticsPayload,
 } from "@life-os/shared";
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
+/*
+ * `?.` because `import.meta.env` is Vite's, and this module is also imported by
+ * a test running under plain Node, where it does not exist. Without the guard
+ * the import throws before a single assertion runs — and this is the one module
+ * that most needs testing, since every call in the app goes through it.
+ */
+const API_BASE = import.meta.env?.VITE_API_URL ?? "";
 
 function getToken(): string | null {
   return localStorage.getItem("lifeos_token");
