@@ -48,8 +48,12 @@ const shots = [
   {
     file: "dashboard.png",
     path: "/app",
-    // Tall enough to reach the growth meter and Quick log.
-    height: 1560,
+    /*
+     * Tall enough for the graphic and the day's list, and no taller. It was
+     * 1560 when the page opened with five comparison tiles, a metrics strip and
+     * an XP chart above the work; all of that lives on Analytics now.
+     */
+    height: 940,
   },
   {
     file: "layers.png",
@@ -82,6 +86,25 @@ const page = await browser.newPage({
 });
 // Freeze the aurora drift and reveal transitions so shots are reproducible.
 await page.emulateMedia({ reducedMotion: "reduce" });
+
+/*
+ * `/app` is behind the API token, so without one every dashboard shot is the
+ * connect screen. Passed in rather than read from `.env`: these runs should be
+ * pointed at a throwaway instance, and a script that reaches for the real token
+ * by default will eventually be run against the real database.
+ */
+const token = process.env.LIFEOS_TOKEN;
+if (token) {
+  await page.addInitScript((value) => {
+    try {
+      localStorage.setItem("lifeos_token", value);
+    } catch {
+      /* private mode — the shot will show the connect screen, which is honest */
+    }
+  }, token);
+} else {
+  console.log("  (no LIFEOS_TOKEN — /app shots will show the connect screen)");
+}
 
 for (const shot of shots) {
   const url = `${baseUrl}${shot.path}`;

@@ -2,7 +2,6 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 import {
   BarChart3,
   BellOff,
-  BookOpen,
   CalendarClock,
   LayoutDashboard,
   Settings,
@@ -21,7 +20,6 @@ const tabs = [
   { to: "/app", end: true, label: "Overview", icon: LayoutDashboard },
   { to: "/app/timeline", label: "Timeline", icon: CalendarClock },
   { to: "/app/habits", label: "Habits", icon: CheckCircle2 },
-  { to: "/app/study", label: "Study", icon: BookOpen },
   { to: "/app/goals", label: "Goals", icon: Target },
   { to: "/app/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/app/settings", label: "Settings", icon: Settings },
@@ -79,9 +77,15 @@ export function AppShell() {
             <img
               src={asset("icon.png?v=3")}
               alt="Life OS"
-              className="h-12 w-12 drop-shadow-[0_0_18px_var(--accent-glow)] sm:h-14 sm:w-14"
+              className="h-9 w-9 drop-shadow-[0_0_18px_var(--accent-glow)] sm:h-12 sm:w-12"
             />
-            <div>
+            {/*
+              The wordmark and the reset line are the first things to go on a
+              narrow screen. Six labelled tabs plus a logo plus a readout wrapped
+              the header onto three rows on a phone, which pushed the day itself
+              below the fold — the one thing the page is for.
+            */}
+            <div className="hidden sm:block">
               <span className="text-xl font-bold tracking-tight sm:text-2xl">
                 LIFE OS
               </span>
@@ -91,7 +95,7 @@ export function AppShell() {
             </div>
           </Link>
 
-          <nav className="flex flex-1 flex-wrap items-center justify-center gap-1">
+          <nav className="flex flex-1 items-center justify-center gap-0.5 sm:gap-1">
             {tabs.map((t) => (
               <NavLink
                 key={t.to}
@@ -99,14 +103,15 @@ export function AppShell() {
                 end={t.end}
                 className={({ isActive }) =>
                   cn(
-                    "relative flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[var(--muted)] transition-colors",
+                    "relative flex items-center gap-1.5 rounded-xl px-2 py-2 text-sm text-[var(--muted)] transition-colors sm:px-3",
                     isActive &&
                       "bg-[var(--accent-soft)] text-[var(--text)] shadow-[0_0_20px_-8px_var(--accent-glow)]",
                   )
                 }
               >
-                <t.icon className="h-3.5 w-3.5" />
-                {t.label}
+                <t.icon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+                {/* Icons alone below `sm` — the labels are what wrapped. */}
+                <span className="hidden sm:inline">{t.label}</span>
                 {t.to === "/app/timeline" && pending > 0 && (
                   <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 font-mono text-[9px] font-bold text-[oklch(12%_0.02_260)]">
                     {pending}

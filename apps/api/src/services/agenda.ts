@@ -196,7 +196,18 @@ export function getAgenda(db: LifeOsDb, now = new Date()): Agenda {
   }
 
   const all = [...habitItems, ...taskItems];
-  const timed = all.filter((i) => i.at !== null).sort(compareAgenda);
+
+  /*
+   * Timed things sort by time and nothing else — including the done ones.
+   * Sinking completions to the bottom reads fine as a to-do list and wrong as a
+   * schedule: it put 07:30 after 22:00 and the morning disappeared under the
+   * evening. What is done is shown as done; it is not moved.
+   */
+  const timed = all
+    .filter((i) => i.at !== null)
+    .sort((a, b) => a.at!.localeCompare(b.at!));
+
+  // The untimed pile has no order of its own, so finished ones go to the end.
   const anytime = all.filter((i) => i.at === null).sort(compareAgenda);
 
   return {

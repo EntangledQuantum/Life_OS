@@ -192,7 +192,7 @@ This is a **debugging command, not a setup step.** It starts the same server on
 your own terminal's stdio, prints one line, and then sits there silently waiting
 for JSON-RPC that a terminal is never going to send. That is it working
 correctly. Ctrl-C out of it. If you want a real check, ask your client to list
-the tools — there are 55.
+the tools — there are 56.
 
 Use the REST API only if you genuinely cannot speak MCP over either transport.
 
@@ -235,6 +235,13 @@ Ask, in a conversation rather than a form:
 2. **What they want to be doing more of.** Three to six things, small enough to
    do on a bad day. These become habits. If they name something enormous
    ("get fit"), find the smallest daily version of it.
+
+   **Ask when each one happens.** A habit with `scheduledTime` ("07:00") lands
+   on the timeline at that slot every day, from that one row — no repeat to set
+   up and no second record. **Do not also create a task for it.** That was the
+   old shape and it gave the user two rows to tick for one act: tick both and
+   the XP pays twice, tick one and the other surface says it never happened.
+   Leave the time out for anything with no particular hour.
 3. **What they are studying**, if anything. A book, a course, a subject.
    You will schedule study tasks with the chapter and the links attached — the
    phone can show all of that, so use it.
@@ -305,6 +312,11 @@ belongs on your side; Life OS is what you check *on*.
 Some of these will contradict what you would do by default. They are
 deliberate.
 
+- **One act, one row.** Recurs and is scored → habit, with `scheduledTime` if it
+  has an hour. Never a habit plus a matching task.
+- **A day that ends closes.** Yesterday's unfinished scheduled work is `missed`,
+  drops off today's list, and cannot be completed — finishing it now would pay
+  today's XP for yesterday. Reschedule instead.
 - **Nothing starts.** A task has a target time and a completion. There is no
   timer, no session, no running state. Completing a task does **not** change
   what activity the user is in — that is set by hand, by them, and nothing else

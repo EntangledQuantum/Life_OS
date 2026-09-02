@@ -21,7 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { GROWTH_STYLES, type GrowthStyle } from "@life-os/shared";
-import { GrowthMeter } from "@/components/graphics/GrowthMeter";
+import { DayGraphic } from "@/components/graphics/DayGraphic";
 import {
   CodeBlock,
   Reveal,
@@ -496,26 +496,49 @@ function Features() {
 
 /* ----------------------------------------------------------- growth meter */
 
+/**
+ * Six habits closing in order as the slider moves, so the petals fill the way
+ * they would over a real day rather than all at once.
+ */
+function demoHabits(pct: number) {
+  const colors = ["#5B8CFF", "#34D399", "#A78BFA", "#FBBF24", "#F472B6", "#22D3EE"];
+  return colors.map((color, i) => ({
+    id: `demo-${i}`,
+    completedToday: pct >= ((i + 1) / colors.length) * 100 - 8,
+    themeColor: color,
+  })) as never;
+}
+
+/** Four weeks of plausible history, so the rings have something to say. */
+function demoHistory(pct: number) {
+  return Array.from({ length: 28 }, (_, i) =>
+    Math.max(0, Math.min(100, pct * (0.45 + (i / 28) * 0.6))),
+  );
+}
+
 function GrowthSection() {
   const [pct, setPct] = useState(64);
-  const [style, setStyle] = useState<GrowthStyle>("sprout");
+  const [style, setStyle] = useState<GrowthStyle>("bloom");
 
   return (
     <section className="mx-auto max-w-6xl px-5 py-24">
       <SectionHeading
-        eyebrow="Growth meter"
-        title="Progress you can see at a glance"
-        lede="Your daily XP target drawn as something that grows. The 100% state is always ghosted behind the live one, so the distance left is visible without reading a single number. Drag the slider."
+        eyebrow="The day, drawn"
+        title="What you did, which of your habits did it, and how long you have kept it up"
+        lede="A petal per habit, filled when you close it. A core for today against today's target. Rings behind for the weeks already kept — the part that accumulates. Drag the slider."
       />
 
       <Reveal className="mt-12">
         <div className="panel panel-accent grid items-center gap-10 p-8 lg:grid-cols-2">
           <div className="flex justify-center">
-            <GrowthMeter
-              efficiencyPct={pct}
+            <DayGraphic
               style={style}
-              dailyXp={Math.round((pct / 100) * 200)}
-              dailyXpTarget={200}
+              efficiencyPct={pct}
+              habits={demoHabits(pct)}
+              agenda={[]}
+              history={demoHistory(pct)}
+              dayProgress={pct / 100}
+              className="h-64 w-64 text-[var(--muted)]"
             />
           </div>
 

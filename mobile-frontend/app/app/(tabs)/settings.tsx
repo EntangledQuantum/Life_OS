@@ -23,7 +23,7 @@ import {
   type NotificationSoundId,
 } from "@/lib/types";
 import { useLayout } from "@/lib/responsive";
-import { GrowthMeter } from "@/components/growth-meter";
+import { DayGraphic } from "@/components/day-graphic";
 import {
   Body,
   Button,
@@ -93,17 +93,19 @@ export default function SettingsScreen() {
               <>
                 {/* --------------------------------------------------- growth meter */}
                 <View>
-                  <SectionHeader title="Growth meter" />
+                  <SectionHeader title="How the day is drawn" />
                   <Card style={{ gap: 14 }}>
                     <Body>
-                      How today&apos;s progress is drawn. Both show the full day ghosted
-                      behind where you actually are.
+                      All three read the same day and differ only in shape, so
+                      this is a preference rather than a choice about how much
+                      you see.
                     </Body>
                     <View style={{ flexDirection: "row", gap: 12 }}>
                       {(
                         [
-                          ["sprout", "Sprout", "grows leaf by leaf"],
-                          ["orb", "Orb", "fills with light"],
+                          ["bloom", "Bloom", "a petal per habit"],
+                          ["arc", "Arc", "the day as a horizon"],
+                          ["rings", "Rings", "one ring per week"],
                         ] as [GrowthStyle, string, string][]
                       ).map(([id, name, hint]) => (
                         <GrowthChoice
@@ -432,6 +434,22 @@ export default function SettingsScreen() {
  * real one, so both tiles look the same and you are comparing the drawing
  * rather than the day.
  */
+/** Six habits, four closed — enough for the three styles to look different. */
+const PREVIEW_HABITS = [
+  "#5B8CFF",
+  "#34D399",
+  "#A78BFA",
+  "#FBBF24",
+  "#F472B6",
+  "#22D3EE",
+].map((themeColor, i) => ({
+  id: `preview-${i}`,
+  completedToday: i < 4,
+  themeColor,
+})) as never;
+
+const PREVIEW_HISTORY = Array.from({ length: 21 }, (_, i) => 40 + i * 2);
+
 function GrowthChoice({
   id,
   name,
@@ -469,13 +487,18 @@ function GrowthChoice({
         borderCurve: "continuous",
       })}
     >
-      <GrowthMeter
-        efficiencyPct={62}
+      {/*
+        A preview with plausible data, so the three are compared as pictures
+        rather than as words. Four of six petals filled reads as a real day.
+      */}
+      <DayGraphic
         style={id}
-        size={104}
-        reducedMotion={reducedMotion}
-        celebrationIntensity="minimal"
-        showReadout={false}
+        efficiencyPct={62}
+        habits={PREVIEW_HABITS}
+        agenda={[]}
+        history={PREVIEW_HISTORY}
+        dayProgress={0.62}
+        size={98}
       />
       <Text
         style={{

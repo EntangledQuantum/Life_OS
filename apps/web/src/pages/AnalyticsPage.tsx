@@ -17,6 +17,14 @@ import { motion } from "motion/react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+/** Same four words the front-page chip uses, so they cannot drift apart. */
+function pulseColor(pulse: string): string {
+  if (pulse === "Improving") return "#34D399";
+  if (pulse === "Recovering") return "#FBBF24";
+  if (pulse === "Drifting") return "#94A3B8";
+  return "var(--accent)";
+}
+
 const RANGES = [
   { id: "7d", label: "7 days" },
   { id: "30d", label: "30 days" },
@@ -39,6 +47,18 @@ export function AnalyticsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["analytics", range],
     queryFn: () => api.analytics(range),
+  });
+
+  /*
+   * The day-over-day comparison used to open the front page as five tiles and
+   * two percentages. It is analysis, not work, and the first thing the app said
+   * every morning should not be a number about yesterday. It lives here, where
+   * there is room to show it against a series instead of on its own.
+   */
+  const { data: today } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: api.dashboard,
+    staleTime: 30_000,
   });
 
   if (isLoading || !data) {
@@ -81,6 +101,76 @@ export function AnalyticsPage() {
           ))}
         </div>
       </header>
+
+      {today && (
+        <section>
+          <div className="mb-3 flex items-baseline gap-3">
+            <h2
+              className="text-lg font-semibold"
+              style={{ color: pulseColor(today.pulse) }}
+            >
+              {today.pulse}
+            </h2>
+            <span className="text-sm text-[var(--muted)]">
+              {today.pulseExplanation}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-y-6 sm:grid-cols-5">
+            {[
+              {
+                label: "Habits",
+                value: today.vsYesterday.habitsCompleted.today,
+                delta: today.vsYesterday.habitsCompleted.delta,
+              },
+              {
+                label: "XP",
+                value: today.vsYesterday.xpEarned.today,
+                delta: today.vsYesterday.xpEarned.delta,
+              },
+              {
+                label: "Efficiency",
+                value: `${Math.round(today.vsYesterday.efficiency.today)}%`,
+                delta: today.vsYesterday.efficiency.delta,
+              },
+              {
+                label: "Study",
+                value: `${today.vsYesterday.studyMinutes.today}m`,
+                delta: today.vsYesterday.studyMinutes.delta,
+              },
+              {
+                label: "Sleep",
+                value: today.vsYesterday.sleepScore.today ?? "—",
+                delta: today.vsYesterday.sleepScore.delta,
+              },
+            ].map((s) => (
+              <div key={s.label}>
+                <div className="font-mono text-2xl font-semibold tabular-nums tracking-tight">
+                  {s.value}
+                </div>
+                {typeof s.delta === "number" && (
+                  <div
+                    className="mt-0.5 font-mono text-xs"
+                    style={{
+                      color:
+                        s.delta > 0
+                          ? "#34D399"
+                          : s.delta < 0
+                            ? "#94A3B8"
+                            : "var(--faint)",
+                    }}
+                  >
+                    {s.delta > 0 ? "+" : ""}
+                    {Math.round(s.delta)} vs yesterday
+                  </div>
+                )}
+                <div className="mt-1 text-[11px] uppercase tracking-wider text-[var(--faint)]">
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="grid grid-cols-2 gap-y-6 sm:grid-cols-4">
         <Stat label="Days recorded" value={data.daily.length} />

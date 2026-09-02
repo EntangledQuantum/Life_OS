@@ -8,6 +8,7 @@ export * from "./conditions.js";
 export * from "./webhooks.js";
 export * from "./tasks.js";
 export * from "./agenda.js";
+export * from "./growth.js";
 export * from "./time.js";
 export * from "./protocol.js";
 export * from "./analytics.js";

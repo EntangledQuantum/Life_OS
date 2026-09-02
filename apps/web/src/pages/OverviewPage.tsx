@@ -1,45 +1,34 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Area,
-  AreaChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { Link } from "react-router-dom";
-import {
-  ACTIVITIES,
-  GROWTH_STYLES,
-  isAgentStatus,
-  isPinned,
-  type GrowthStyle,
-  type HabitWithToday,
-  type Task,
-} from "@life-os/shared";
+import { ACTIVITIES, type AgendaItem } from "@life-os/shared";
 import { api } from "@/lib/api";
 import { celebrate } from "@/lib/celebrate";
 import { useUiStore } from "@/lib/store";
-import { cn, formatDelta, formatElapsed } from "@/lib/utils";
-import { GrowthMeter } from "@/components/graphics/GrowthMeter";
-import { AgentCard } from "@/components/AgentCard";
+import { cn } from "@/lib/utils";
+import { DayGraphic } from "@/components/graphics/DayGraphic";
+import { AgendaList } from "@/components/AgendaList";
 import { AgentCardsSection } from "@/components/AgentCardsSection";
 import { ReminderRunner } from "@/components/ReminderRunner";
 import { GoalCelebration } from "@/components/GoalCelebration";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { Check, Undo2 } from "lucide-react";
 
 /**
- * The dashboard.
+ * The front page: the day, and what is on it.
  *
- * Quick log is the act-now list, in the order you act: scheduled things landing
- * inside the lead window first, then habits — habits *always*, which is the one
- * rule this page previously broke. Everything the agent has queued lives on the
- * Timeline tab, and there is no separate "Up next" rail duplicating the top of
- * this list.
+ * It used to open with five comparison tiles, two efficiency percentages, an
+ * improvement delta and a seven-day XP chart — a report, above the work. All of
+ * that is analysis, it all belongs on Analytics, and putting it first meant the
+ * first thing the app said every morning was a number about yesterday.
+ *
+ * Now: the day drawn, and the day's list. The only judgement that survives here
+ * is one word and one figure in the corner, because whether things are trending
+ * up is worth a glance and not a dashboard.
+ *
+ * Habits and scheduled tasks are one list. They used to be two, which is what
+ * let an agent create a habit *and* a task for the same act and gave the user
+ * two things to tick.
  */
 export function OverviewPage() {
   const qc = useQueryClient();
@@ -50,24 +39,40 @@ export function OverviewPage() {
     refetchInterval: 8000,
   });
 
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  /**
+   * One handler for both kinds, because the list is one list. `source` is the
+   * only thing that differs, and it decides which record gets the completion —
+   * the habit that owns the streak, or the task that owns the XP.
+   */
   const complete = useMutation({
-    mutationFn: (id: string) => api.completeHabit(id),
-    onSuccess: (res) => {
+    mutationFn: (item: AgendaItem) =>
+      item.source === "habit"
+        ? api.completeHabit(item.refId)
+        : api.completeTask(item.refId),
+    onSuccess: (res: { xpAwarded?: number; streakRecovered?: boolean; error?: string }) => {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      if (res.streakRecovered) {
+      if (res?.error) return;
+      if (res?.streakRecovered) {
         celebrate(intensity, "streak");
         toast.success("Streak recovered");
-      } else if (!res.error) {
-        celebrate(intensity, "complete");
-        toast.success(`+${res.xpAwarded} XP`);
+        return;
       }
+      celebrate(intensity, "complete");
+      toast.success(res?.xpAwarded ? `+${res.xpAwarded} XP` : "Done");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const undo = useMutation({
-    mutationFn: (id: string) => api.undoHabit(id),
+    mutationFn: (item: AgendaItem) => api.undoHabit(item.refId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const setActivity = useMutation({
@@ -75,107 +80,166 @@ export function OverviewPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
-  const completeTask = useMutation({
-    mutationFn: (id: string) => api.completeTask(id),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      celebrate(intensity, "complete");
-      toast.success(
-        res.xpAwarded
-          ? `Done · +${res.xpAwarded} XP`
-          : "Done · agent notified if webhook set",
-      );
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const setGrowthStyle = useMutation({
-    mutationFn: (growthStyle: GrowthStyle) =>
-      api.updateGamificationConfig({ growthStyle }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success("Growth meter updated");
-    },
-  });
-
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
   if (isLoading || !data) {
     return <div className="text-[var(--muted)]">Loading…</div>;
   }
 
-  const elapsed = data.activeSession
-    ? now - new Date(data.activeSession.startedAt).getTime()
-    : 0;
+  const p = data.progress;
+  const agenda = data.agenda ?? [];
+
+  /* How far through the life-day we are — drives the sun on the arc graphic. */
+  const dayStart = Date.parse(data.lifeDay.lifeDayStart);
+  const dayEnd = Date.parse(data.lifeDay.lifeDayEnd);
+  const dayProgress = Math.max(0, Math.min(1, (now - dayStart) / (dayEnd - dayStart)));
+
+  const done = agenda.filter((i) => i.done).length;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mx-auto max-w-6xl pb-16"
+    >
+      <ReminderRunner due={data.dueReminders ?? []} />
+      <GoalCelebration goals={data.pendingCelebrations ?? []} />
+
+      <header className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            {greeting(now)}
+          </h1>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            {done} of {agenda.length} done today
+          </p>
+        </div>
+
+        {/*
+          The whole of the old metrics strip, reduced to what it was actually
+          for. One word and one number: are things going up. Anything more
+          belongs on Analytics, where there is room to be honest about it.
+        */}
+        <Link
+          to="/app/analytics"
+          className="shrink-0 rounded-full border border-white/[0.07] px-3 py-1.5 text-right transition-colors hover:bg-white/[0.04]"
+          title="See the full picture on Analytics"
+        >
+          <div
+            className="text-xs font-medium"
+            style={{ color: pulseColor(data.pulse) }}
+          >
+            {data.pulse}
+          </div>
+          <div className="font-mono text-[11px] text-[var(--faint)]">
+            {p.improvementPct > 0 ? "+" : ""}
+            {Math.round(p.improvementPct)}%
+          </div>
+        </Link>
+      </header>
+
+      {/*
+        Graphic above, list below on a phone; side by side once there is room.
+        The list is the part you touch, so on a narrow screen it gets the half
+        nearest your thumb.
+      */}
+      <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+        <section className="flex flex-col items-center">
+          <DayGraphic
+            style={p.growthStyle}
+            efficiencyPct={p.efficiencyPct}
+            habits={data.habits}
+            agenda={agenda}
+            history={(data.consistency7 ?? []).map((d) => d.pct)}
+            dayProgress={dayProgress}
+            className="h-56 w-56 text-[var(--muted)] sm:h-64 sm:w-64"
+          />
+
+          <div className="mt-2 font-mono text-xs text-[var(--faint)]">
+            {p.dailyXp} / {p.dailyXpTarget} XP
+          </div>
+
+          <DayRibbon timeline={data.timeline} now={now} />
+
+          {/*
+            Kept because it is a control, not a readout: this is the only thing
+            that writes what activity you are in, and nothing else should.
+          */}
+          <div className="mt-6 flex w-full flex-wrap justify-center gap-1.5">
+            {ACTIVITIES.map((a) => {
+              const on = data.activeSession?.activity === a;
+              return (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setActivity.mutate(a)}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs transition-colors",
+                    on
+                      ? "bg-[var(--accent)] font-medium text-[oklch(12%_0.02_260)]"
+                      : "bg-white/[0.04] text-[var(--muted)] hover:bg-white/[0.08]",
+                  )}
+                >
+                  {a}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="min-w-0">
+          <AgendaList
+            items={agenda}
+            busy={complete.isPending || undo.isPending}
+            onComplete={(item) => complete.mutate(item)}
+            onUndo={(item) => undo.mutate(item)}
+          />
+        </section>
+      </div>
+
+      <div className="mt-12">
+        <AgentCardsSection
+          tasks={data.tasks}
+          busy={complete.isPending}
+          onComplete={(id) =>
+            complete.mutate({ source: "task", refId: id } as AgendaItem)
+          }
+        />
+      </div>
+    </motion.div>
+  );
+}
+
+function greeting(now: number): string {
+  const h = new Date(now).getHours();
+  if (h < 5) return "Still up";
+  if (h < 12) return "Morning";
+  if (h < 17) return "Afternoon";
+  if (h < 22) return "Evening";
+  return "Tonight";
+}
+
+function pulseColor(pulse: string): string {
+  if (pulse === "Improving") return "#34D399";
+  if (pulse === "Recovering") return "#FBBF24";
+  if (pulse === "Drifting") return "#94A3B8";
+  return "var(--accent)";
+}
+
+/**
+ * The 24-hour ribbon, kept because it is the one thing that shows the *shape*
+ * of a day rather than its contents. Behind the marker it is what you actually
+ * did, from the activity log; ahead of it, what is planned.
+ */
+function DayRibbon({
+  timeline,
+  now,
+}: {
+  timeline: { id: string; startHour: number; endHour: number; color: string; status: string; label: string; category: string }[];
+  now: number;
+}) {
   const clock = new Date(now);
-  const clockLabel = clock.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
   const hourFrac = clock.getHours() + clock.getMinutes() / 60;
 
-  const pulseColor =
-    data.pulse === "Improving"
-      ? "#34D399"
-      : data.pulse === "Recovering"
-        ? "#FBBF24"
-        : data.pulse === "Drifting"
-          ? "#94A3B8"
-          : "var(--accent)";
-
-  const p = data.progress;
-  const growthMode: GrowthStyle = p.growthStyle === "orb" ? "orb" : "sprout";
-
-  /**
-   * Agent-queued work lives on Timeline now, next to the rest of what the agent
-   * has planned. Quick log is for the two things you act on without thinking:
-   * what is landing in the next few minutes, and your habits.
-   */
-  const currentIds = new Set(data.current.map((t) => t.id));
-  const agentQueueCount = data.tasks.filter(
-    (t) => !currentIds.has(t.id) && !isPinned(t) && !isAgentStatus(t),
-  ).length;
-  /**
-   * Scheduled things that are current — the server has already applied the
-   * lead window and dropped anything past its own end time.
-   */
-  const imminent = data.current;
-
-  const deltas = [
-    {
-      label: "Habits",
-      value: data.vsYesterday.habitsCompleted.today,
-      delta: data.vsYesterday.habitsCompleted.delta,
-    },
-    {
-      label: "XP",
-      value: data.vsYesterday.xpEarned.today,
-      delta: data.vsYesterday.xpEarned.delta,
-    },
-    {
-      label: "Efficiency",
-      value: `${Math.round(data.vsYesterday.efficiency.today)}%`,
-      delta: data.vsYesterday.efficiency.delta,
-    },
-    {
-      label: "Study",
-      value: `${data.vsYesterday.studyMinutes.today}m`,
-      delta: data.vsYesterday.studyMinutes.delta,
-    },
-    {
-      label: "Sleep",
-      value: data.vsYesterday.sleepScore.today ?? "—",
-      delta: data.vsYesterday.sleepScore.delta,
-    },
-  ];
-
-  // Solid bar: absolute % widths from continuous 0–24 segments (no Free holes)
-  const segs = [...data.timeline]
+  const segs = [...timeline]
     .map((b) => {
       const start = Math.max(0, Math.min(24, Number(b.startHour) || 0));
       let end = Math.max(0, Math.min(24, Number(b.endHour) || 0));
@@ -186,503 +250,34 @@ export function OverviewPage() {
     .sort((a, b) => a.startHour - b.startHour);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mx-auto max-w-6xl space-y-10 pb-16"
-    >
-      <header className="flex flex-col gap-6 border-b border-white/[0.06] pb-8 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--faint)]">
-            {data.date} · resets {data.dayResetTime}
-          </p>
-          <h1
-            className="mt-2 text-4xl font-semibold tracking-tight sm:text-5xl"
-            style={{ color: pulseColor }}
-          >
-            {data.pulse}
-          </h1>
-          <p className="mt-2 max-w-md text-sm leading-relaxed text-[var(--muted)]">
-            {data.pulseExplanation}
-          </p>
-          <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-sm">
-            <span>
-              <span className="text-2xl font-semibold text-[var(--accent)]">
-                {Math.round(p.efficiencyPct)}%
-              </span>
-              <span className="ml-2 text-[var(--faint)]">efficiency</span>
-            </span>
-            <span>
-              <span
-                className="text-2xl font-semibold"
-                style={{
-                  color:
-                    p.improvementPct > 0
-                      ? "#34D399"
-                      : p.improvementPct < 0
-                        ? "#94A3B8"
-                        : "var(--text)",
-                }}
-              >
-                {formatDelta(p.improvementPct)}%
-              </span>
-              <span className="ml-2 text-[var(--faint)]">vs yesterday</span>
-            </span>
-            <span className="text-[var(--faint)]">
-              {p.dailyXp}/{p.dailyXpTarget} XP
-            </span>
-          </div>
-        </div>
-
-        <div className="sm:text-right">
-          <p className="font-mono text-xs text-[var(--faint)]">{clockLabel}</p>
-          <p className="mt-1 font-mono text-4xl font-semibold tracking-tight text-[var(--accent)] sm:text-5xl">
-            {data.activeSession ? formatElapsed(elapsed) : "00:00:00"}
-          </p>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {data.activeSession
-              ? `Doing · ${data.activeSession.activity}`
-              : "Nothing running — pick below"}
-          </p>
-        </div>
-      </header>
-
-      <section>
-        <SectionLabel>Today vs yesterday</SectionLabel>
-        <div className="mt-4 grid grid-cols-2 gap-y-6 sm:grid-cols-5">
-          {deltas.map((s, i) => (
-            <div
-              key={s.label}
-              className={cn("sm:px-4", i > 0 && "sm:border-l sm:border-white/[0.06]")}
-            >
-              <div className="font-mono text-2xl font-semibold tabular-nums tracking-tight">
-                {s.value}
-              </div>
-              {typeof s.delta === "number" && (
-                <div
-                  className="mt-0.5 font-mono text-xs"
-                  style={{
-                    color:
-                      s.delta > 0
-                        ? "#34D399"
-                        : s.delta < 0
-                          ? "#94A3B8"
-                          : "var(--faint)",
-                  }}
-                >
-                  {formatDelta(s.delta)} vs yday
-                </div>
-              )}
-              <div className="mt-1 text-[11px] uppercase tracking-wider text-[var(--faint)]">
-                {s.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Headless: chimes and flashes when an agent reminder comes due. */}
-      <ReminderRunner due={data.dueReminders ?? []} />
-      {/* A met goal is not a finished goal until this has been on screen. */}
-      <GoalCelebration goals={data.pendingCelebrations ?? []} />
-
-      <AgentCardsSection
-        tasks={data.tasks}
-        busy={completeTask.isPending}
-        onComplete={(id) => completeTask.mutate(id)}
-      />
-
-      <section>
-        <SectionLabel>Right now</SectionLabel>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {ACTIVITIES.map((a) => {
-            const on = data.activeSession?.activity === a;
-            return (
-              <button
-                key={a}
-                type="button"
-                onClick={() => setActivity.mutate(a)}
-                className={cn(
-                  "rounded-full px-4 py-2 text-sm transition-colors",
-                  on
-                    ? "bg-[var(--accent)] font-medium text-[oklch(12%_0.02_260)]"
-                    : "bg-white/[0.04] text-[var(--muted)] hover:bg-white/[0.08] hover:text-[var(--text)]",
-                )}
-              >
-                {a}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Solid 24h ribbon: neighbors share edges — zero black Free gaps */}
-      <section>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <SectionLabel className="mb-0">Day timeline</SectionLabel>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {[
-              ...new Map(segs.map((b) => [b.category, b.color])).entries(),
-            ].map(([cat, color]) => (
-              <span
-                key={cat}
-                className="flex items-center gap-1.5 text-[10px] text-[var(--faint)]"
-              >
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: color }}
-                />
-                {cat}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="relative h-3.5 w-full overflow-hidden rounded-full bg-transparent">
-          {segs.map((b, i) => {
-            const left = (b.startHour / 24) * 100;
-            const width = ((b.endHour - b.startHour) / 24) * 100;
-            // overdraw 0.2px to kill subpixel seams
-            return (
-              <div
-                key={`${b.id}-${i}`}
-                title={`${b.label} · ${b.category}`}
-                className="absolute top-0 bottom-0"
-                style={{
-                  left: `${left}%`,
-                  width: `calc(${width}% + 0.2px)`,
-                  backgroundColor: b.color,
-                  opacity: b.status === "done" ? 0.55 : 1,
-                }}
-              />
-            );
-          })}
+    <div className="mt-6 w-full">
+      <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-white/[0.03]">
+        {segs.map((b, i) => (
           <div
-            className="pointer-events-none absolute top-[-2px] bottom-[-2px] z-10 w-0.5 bg-white"
-            style={{ left: `${(hourFrac / 24) * 100}%` }}
-            title="Now"
+            key={`${b.id}-${i}`}
+            title={`${b.label} · ${b.category}`}
+            className="absolute top-0 bottom-0"
+            style={{
+              left: `${(b.startHour / 24) * 100}%`,
+              width: `calc(${((b.endHour - b.startHour) / 24) * 100}% + 0.2px)`,
+              backgroundColor: b.color,
+              opacity: b.status === "done" ? 0.5 : 0.95,
+            }}
           />
-        </div>
-        <div className="mt-1.5 flex justify-between font-mono text-[9px] text-[var(--faint)]">
-          <span>00</span>
-          <span>06</span>
-          <span>12</span>
-          <span>18</span>
-          <span>24</span>
-        </div>
-      </section>
-
-      <div className="grid gap-12 lg:grid-cols-12">
-        <section className="lg:col-span-5">
-          <div className="flex items-center justify-between gap-2">
-            <SectionLabel className="mb-0">Growth</SectionLabel>
-            <div className="flex gap-1 text-xs">
-              {GROWTH_STYLES.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setGrowthStyle.mutate(mode)}
-                  className={cn(
-                    "rounded-full px-3 py-1 capitalize transition-colors",
-                    growthMode === mode
-                      ? "bg-white/[0.1] text-[var(--text)]"
-                      : "text-[var(--faint)] hover:text-[var(--muted)]",
-                  )}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mt-4">
-            <GrowthMeter
-              efficiencyPct={p.efficiencyPct}
-              style={growthMode}
-              dailyXp={p.dailyXp}
-              dailyXpTarget={p.dailyXpTarget}
-            />
-          </div>
-        </section>
-
-        <section className="lg:col-span-7">
-          <div className="flex items-baseline justify-between gap-2">
-            <SectionLabel className="mb-0">Quick log</SectionLabel>
-            {agentQueueCount > 0 && (
-              <Link
-                to="/app/timeline"
-                className="font-mono text-[10px] text-[var(--accent)] hover:underline"
-              >
-                {agentQueueCount} waiting on Timeline →
-              </Link>
-            )}
-          </div>
-
-          <ul className="mt-3 divide-y divide-white/[0.05]">
-            {/* What is landing now, ahead of the habits. No Start — a scheduled
-                thing is done or it isn't. */}
-            {imminent.map((task) => (
-              <QuickLogScheduled
-                key={task.id}
-                task={task}
-                busy={completeTask.isPending}
-                onComplete={() => completeTask.mutate(task.id)}
-              />
-            ))}
-
-            {/* Habits are always here. They used to be hidden whenever the agent
-                had anything queued, which against a standing queue meant never. */}
-            {data.habits.slice(0, 6).map((h) => (
-              <HabitRow
-                key={h.id}
-                habit={h}
-                busy={complete.isPending || undo.isPending}
-                onComplete={() => complete.mutate(h.id)}
-                onUndo={() => undo.mutate(h.id)}
-              />
-            ))}
-
-            {data.habits.length === 0 && imminent.length === 0 && (
-              <li className="py-3 text-sm text-[var(--muted)]">
-                Nothing right now. Ask your agent for some habits to start with.
-              </li>
-            )}
-          </ul>
-
-          <div className="mt-10">
-            <SectionLabel>XP · target vs current</SectionLabel>
-            <div className="mt-2 h-32 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={data.xpSeries7}
-                  margin={{ top: 4, right: 4, left: -18, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="xpOpen" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(d) => d.slice(5)}
-                    stroke="var(--faint)"
-                    fontSize={10}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    stroke="var(--faint)"
-                    fontSize={10}
-                    width={32}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "oklch(12% 0.014 260)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: 10,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="current"
-                    name="Current"
-                    stroke="var(--accent)"
-                    fill="url(#xpOpen)"
-                    strokeWidth={2}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="target"
-                    name="Target"
-                    stroke="rgba(255,255,255,0.25)"
-                    strokeDasharray="4 4"
-                    strokeWidth={1.5}
-                    dot={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
+        ))}
+        <div
+          className="pointer-events-none absolute top-[-2px] bottom-[-2px] z-10 w-0.5 bg-white"
+          style={{ left: `${(hourFrac / 24) * 100}%` }}
+          title="Now"
+        />
       </div>
-
-      {/* No "Up next" rail. What is about to happen is the top of the Quick log
-          — one list, in the order you act on it, instead of the same scheduled
-          card appearing twice on one page. */}
-    </motion.div>
-  );
-}
-
-function SectionLabel({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <h2
-      className={cn(
-        "mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--faint)]",
-        className,
-      )}
-    >
-      {children}
-    </h2>
-  );
-}
-
-/**
- * A scheduled thing that is landing now. One action: Complete.
- *
- * The time shown is when it was meant to start, not a countdown and not a
- * running clock — you are being told what is on your plate, not raced.
- */
-function QuickLogScheduled({
-  task,
-  onComplete,
-  busy,
-}: {
-  task: Task;
-  onComplete: () => void;
-  busy?: boolean;
-}) {
-  const when = task.eventAt
-    ? new Date(task.eventAt).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
-  const late = task.eventAt ? new Date(task.eventAt).getTime() < Date.now() : false;
-
-  return (
-    <li
-      className={cn(
-        "relative flex flex-wrap items-start gap-3 py-3 pl-3",
-        task.flash && task.notifiedAt && "quicklog-flash",
-      )}
-    >
-      <span
-        className="absolute inset-y-1 left-0 w-0.5 rounded-full"
-        style={{ background: task.themeColor ?? "var(--accent)" }}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          {when && (
-            <span
-              className={cn(
-                "font-mono text-[10px] uppercase tracking-wider",
-                late ? "text-[var(--warning,#FBBF24)]" : "text-[var(--accent)]",
-              )}
-            >
-              {when}
-            </span>
-          )}
-          {task.activityTag && (
-            <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--faint)]">
-              {task.activityTag}
-            </span>
-          )}
-          <span className="font-medium">
-            {task.emoji ? `${task.emoji} ` : ""}
-            {task.title}
-          </span>
-        </div>
-        {(task.subtitle || task.purpose) && (
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {task.subtitle ?? task.purpose}
-          </p>
-        )}
-        {/* Whatever the agent attached — a chapter, a paper, a video. */}
-        {task.resources.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-            {task.resources.map((r, i) => (
-              <a
-                key={`${r.url}-${i}`}
-                href={r.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-[var(--accent)] hover:underline"
-              >
-                {r.label}
-              </a>
-            ))}
-          </div>
-        )}
+      <div className="mt-1 flex justify-between font-mono text-[9px] text-[var(--faint)]">
+        <span>00</span>
+        <span>06</span>
+        <span>12</span>
+        <span>18</span>
+        <span>24</span>
       </div>
-      <button
-        type="button"
-        className="btn btn-primary py-1.5 text-sm"
-        disabled={busy}
-        onClick={onComplete}
-      >
-        <Check className="h-3.5 w-3.5" />
-        Complete
-        {task.xpOnComplete > 0 ? ` · +${task.xpOnComplete}` : ""}
-      </button>
-    </li>
-  );
-}
-
-function HabitRow({
-  habit,
-  onComplete,
-  onUndo,
-  busy,
-}: {
-  habit: HabitWithToday;
-  onComplete: () => void;
-  onUndo: () => void;
-  busy?: boolean;
-}) {
-  return (
-    <li className="flex items-center gap-3 py-3">
-      <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg"
-        style={{ background: `${habit.themeColor}18` }}
-      >
-        {habit.emoji}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{habit.name}</div>
-        <div className="mt-1 flex items-center gap-1">
-          {habit.history7.map((done, i) => (
-            <span
-              key={i}
-              className="h-1 flex-1 rounded-full"
-              style={{
-                background: done ? habit.themeColor : "rgba(255,255,255,0.06)",
-              }}
-            />
-          ))}
-        </div>
-      </div>
-      <span className="hidden font-mono text-[10px] text-[var(--faint)] sm:inline">
-        {habit.currentStreak}d · {habit.baseXp}xp
-      </span>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => (habit.completedToday ? onUndo() : onComplete())}
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
-          habit.completedToday
-            ? "text-[oklch(12%_0.02_260)]"
-            : "bg-white/[0.05] text-[var(--muted)] hover:bg-white/[0.1]",
-        )}
-        style={
-          habit.completedToday ? { background: habit.themeColor } : undefined
-        }
-        title={habit.completedToday ? "Undo" : "Complete"}
-      >
-        {habit.completedToday ? (
-          <Undo2 className="h-4 w-4" />
-        ) : (
-          <Check className="h-4 w-4" />
-        )}
-      </button>
-    </li>
+    </div>
   );
 }

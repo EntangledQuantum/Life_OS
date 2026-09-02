@@ -6,7 +6,7 @@
 
 export type Source = "user" | "agent";
 export type ImprovementPulse = "Improving" | "Stable" | "Recovering" | "Drifting";
-export type GrowthStyle = "sprout" | "orb";
+export type GrowthStyle = "bloom" | "arc" | "rings";
 export type AccentThemeId = "nebula" | "quantum" | "terminal" | "ember";
 export type NotificationSoundId =
   | "chime"
@@ -69,6 +69,15 @@ export interface HabitWithToday {
   emoji: string;
   category: string;
   frequencyRule: string;
+  /**
+   * "HH:mm" local, or null for no particular time.
+   *
+   * A habit with a time is on the timeline for that slot every day, from this
+   * one row. It used to take a habit *and* a task to say that, which gave two
+   * things to tick for one act.
+   */
+  scheduledTime: string | null;
+  durationMinutes: number | null;
   preferredTimeWindow: string | null;
   anchor: string | null;
   linkedGoalId: string | null;
@@ -310,9 +319,56 @@ export interface TimelineBlock {
   actual: boolean;
 }
 
+/* ------------------------------------------------------------- agenda */
+
+export type AgendaSource = "habit" | "task";
+
+export type AgendaState = "upcoming" | "now" | "done" | "overdue" | "anytime";
+
+/**
+ * One row of today, whatever table it came from.
+ *
+ * Habits and scheduled tasks were rendered as two lists, which is what made it
+ * reasonable for an agent to create one of each for the same act. `source` says
+ * which record a tick lands on.
+ */
+export interface AgendaItem {
+  id: string;
+  source: AgendaSource;
+  refId: string;
+  title: string;
+  subtitle: string | null;
+  emoji: string | null;
+  activityTag: string | null;
+  kind: TaskKind | null;
+  at: string | null;
+  durationMinutes: number | null;
+  startHour: number | null;
+  endHour: number | null;
+  state: AgendaState;
+  done: boolean;
+  xp: number;
+  streak: number | null;
+  themeColor: string | null;
+}
+
+/** The exact stretch a life-day covers, and the zone it is in. */
+export interface LifeDay {
+  lifeDay: string;
+  lifeDayStart: string;
+  lifeDayEnd: string;
+  dayResetTime: string;
+  timezone: string;
+}
+
 export interface DashboardToday {
   date: string;
   dayResetTime: string;
+  lifeDay: LifeDay;
+  /** Today as one list — this is what the home screen renders. */
+  agenda: AgendaItem[];
+  /** The untimed subset: a pile to draw from, not a plan. */
+  anytime: AgendaItem[];
   /** Every open task. This is the model — there is nothing else alongside it. */
   tasks: Task[];
   /** What is current: inside the lead window, not past its own end. */

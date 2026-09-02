@@ -199,16 +199,25 @@ export function SettingsPage() {
           ))}
         </div>
         <div>
-          <label className="label">Growth meter style</label>
+          <label className="label">How the day is drawn</label>
           <p className="mb-2 text-xs text-[var(--muted)]">
-            How daily XP progress is drawn. A sprout that grows, or an orb that
-            fills with light — this is about nurturing progress, not hydration.
+            All three read the same day and differ only in shape, so this is a
+            preference rather than a choice about how much you see.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {(
               [
-                { id: "sprout", label: "Sprout", hint: "grows leaf by leaf" },
-                { id: "orb", label: "Orb", hint: "fills with light" },
+                {
+                  id: "bloom",
+                  label: "Bloom",
+                  hint: "a petal per habit, rings for the weeks behind",
+                },
+                {
+                  id: "arc",
+                  label: "Arc",
+                  hint: "the day as a horizon, sun where the clock is",
+                },
+                { id: "rings", label: "Rings", hint: "one ring per week" },
               ] as const
             ).map((option) => (
               <button
@@ -226,9 +235,7 @@ export function SettingsPage() {
                     .updateGamificationConfig({ growthStyle: option.id })
                     .then(() => {
                       qc.invalidateQueries({ queryKey: ["dashboard"] });
-                      toast.success(
-                        `Growth meter: ${option.label.toLowerCase()}`,
-                      );
+                      toast.success(`Day graphic: ${option.label.toLowerCase()}`);
                     })
                     .catch((e: Error) => toast.error(e.message))
                 }

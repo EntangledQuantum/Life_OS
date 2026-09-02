@@ -22,7 +22,7 @@ import { getBaseUrl, getToken, normalizeBaseUrl } from "./storage";
  * Bump this only when the app can no longer read an older server — that is the
  * whole meaning of the number.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 const PROTOCOL_HEADER = "x-lifeos-protocol";
 
 export class ApiError extends Error {

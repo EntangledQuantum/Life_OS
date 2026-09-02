@@ -15,7 +15,6 @@ import { useLayout } from "@/lib/responsive";
 export const TAB_ROUTES = [
   "/(tabs)",
   "/(tabs)/timeline",
-  "/(tabs)/study",
   "/(tabs)/goals",
   "/(tabs)/analytics",
   "/(tabs)/settings",

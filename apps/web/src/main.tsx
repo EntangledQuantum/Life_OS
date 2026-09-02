@@ -12,7 +12,6 @@ import { RequireAuth } from "./pages/RequireAuth";
 import { OverviewPage } from "./pages/OverviewPage";
 import { TimelinePage } from "./pages/TimelinePage";
 import { HabitsPage } from "./pages/HabitsPage";
-import { StudyPage } from "./pages/StudyPage";
 import { GoalsPage } from "./pages/GoalsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -47,7 +46,6 @@ const routes = IS_PAGES ? (
         <Route index element={<OverviewPage />} />
         <Route path="timeline" element={<TimelinePage />} />
         <Route path="habits" element={<HabitsPage />} />
-        <Route path="study" element={<StudyPage />} />
         <Route path="goals" element={<GoalsPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="settings" element={<SettingsPage />} />

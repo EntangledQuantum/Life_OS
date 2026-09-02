@@ -68,8 +68,22 @@ and interview procedure. Read that first, then come back here.
 
 | | |
 |--|--|
-| **Habit** | Recurs, scored daily, draws from the fixed daily XP pool. |
+| **Habit** | Recurs, scored daily, draws from the fixed daily XP pool. **Can carry its own time.** |
 | **Task** | Everything else — scheduled work, reminders, reviews, study, and the pinned cards on the front page. One row with optional parts. |
+
+> ### A habit with a time needs no task. Do not create one.
+>
+> `lifeos_create_habit { name: "Meditate", scheduledTime: "07:00", durationMinutes: 20 }`
+> puts it on the timeline at 07:00 **every day**, derived from that one row.
+> There is nothing to repeat and nothing to keep in sync.
+>
+> Creating a habit *and* a task for the same act — which is what the model used
+> to force — gives the user two rows to tick. Tick both and the XP is paid
+> twice; tick one and the other surface says it never happened. Nothing links
+> them, so nothing can reconcile them afterwards.
+>
+> Omit `scheduledTime` for a habit with no particular time. Pass `null` on
+> update to take an existing one off the timeline.
 
 Before this there were four tables (`dashboard_cards`, `agent_events`,
 `light_reviews`, `schedule_blocks`) that meant the same thing and supported
@@ -80,7 +94,10 @@ fields set.
 A task's optional parts:
 
 - **When** — `eventAt` + `durationMinutes`. A task with no time is just a thing
-  to do.
+  to do. **A day that ends closes**: an unfinished scheduled task becomes
+  `missed` at the next reset, drops off the list, and can no longer be
+  completed. That is deliberate — completing it later would pay today's XP for
+  yesterday's work. Reschedule it if it still matters.
 - **Repeat** — `daily`, `weekly`, or `spaced` (1, 3, 7, 14, 30, 60 days).
   Completing one spawns the next as a **new row**, so history survives. This is
   how Life OS handles recurring work: you do not re-create it nightly.
@@ -97,6 +114,7 @@ A task's optional parts:
 ## Start here, every session
 
 ```
+lifeos_get_agenda         → today as one list, exactly what the user's screen shows
 lifeos_get_day            → what happened today, summarised, with a story line
 lifeos_get_range          → a window: totals, per-habit rates, what is slipping
 lifeos_get_workload       → what is open, split into due / upcoming / missed / backlog
@@ -168,6 +186,11 @@ lifeos_bulk_create_tasks {
 Some of these will contradict what you would do by default. They are deliberate,
 and users notice when they are broken.
 
+**One act, one row.** If something recurs and is scored, it is a habit — give
+it `scheduledTime` and it is on the timeline too. Do not pair it with a task.
+The user completes it from whichever surface is in front of them and it counts
+once, for that life-day, with one XP award and one streak.
+
 **Nothing starts.** A task has a target time and a completion. No timer, no
 session, no running state. Completing a task does **not** change what activity
 the user is in — that is set by hand, by them, from the *Right now* picker, and
@@ -191,6 +214,11 @@ been shown.
 
 **Two content slots.** That is the limit and it is the point. Wanting a third
 means deciding which of the two matters less.
+
+**A finished day stays finished.** Yesterday's unfinished scheduled work is
+`missed`, not pending. Do not re-open it and do not complete it on the user's
+behalf to tidy the list — the miss is information, and moving the XP to today
+makes today's number a lie. Reschedule if it still matters.
 
 **The life-day rolls at `dayResetTime`** (default 04:00), not midnight. A 01:00
 completion belongs to the previous day. Never assume the calendar date — every

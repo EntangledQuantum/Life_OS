@@ -122,6 +122,21 @@ describe("the agenda is one list", () => {
     assert.equal(tasks.listTasks(db, {}).length, 0, "and no task was created");
   });
 
+  it("keeps a completed morning in the morning", () => {
+    /*
+     * Done items used to sort to the bottom, which reads fine as a to-do list
+     * and wrong as a schedule: 07:30 landed after 22:00 and the morning
+     * vanished under the evening. Done is shown, not moved.
+     */
+    const early = makeHabit({ name: "Wake", scheduledTime: "07:30" });
+    makeHabit({ name: "Wind down", scheduledTime: "22:00" });
+    habits.completeHabit(db, early.id, { source: "user" });
+
+    const timed = agenda.getAgenda(db).items.filter((i) => i.at);
+    assert.equal(timed[0]!.title, "Wake", "the finished morning item moved");
+    assert.equal(timed[0]!.done, true);
+  });
+
   it("carries habits and tasks side by side, in time order", () => {
     makeHabit({ name: "Late habit", scheduledTime: "22:00" });
     makeHabit({ name: "Early habit", scheduledTime: "06:00" });
