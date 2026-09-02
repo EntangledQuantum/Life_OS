@@ -8,7 +8,7 @@ description: >
   long-running agent (Hermes, OpenClaw, Claude Code, cron) should read what
   actually happened, schedule what happens next, react to completions, or set
   Life OS up for a user who does not have it.
-version: 4.2.0
+version: 4.3.0
 license: MIT
 platforms: [macos, linux, windows]
 metadata:
@@ -104,8 +104,8 @@ A task's optional parts:
 - **Tag** — `activityTag`, for colour and grouping. It does not take over the
   timeline.
 - **Reward** — `xpOnComplete`, outside the habit pool.
-- **Presentation** — pin it to slot 0 or 1 and it draws as a card: emoji, body,
-  image, sanitized inline SVG, and one interactive control.
+- **Presentation** — pin it to slot 0 or 1 and it draws as a card. See
+  *Cards are yours* below; there is more there than most agents use.
 - **Resources** — `[{label, url, kind}]`. Chapters, papers, videos. This is what
   a "study block" always was underneath, and both clients render it.
 
@@ -178,6 +178,97 @@ lifeos_bulk_create_tasks {
   ]
 }
 ```
+
+---
+
+## Cards are yours
+
+Two slots on the front page, and **you decide entirely what goes in them.** This
+is the one surface in Life OS with no fixed shape — everything else is a row in
+a list. Use it. A card that is a wall of grey text next to a card with a book
+cover on it is a worse app than two cards that look like what they are about.
+
+Set any of these on a task with `slot: 0` or `slot: 1`:
+
+| Field | What it does |
+|---|---|
+| `title` · `subtitle` · `body` | The words. `body` keeps your line breaks. |
+| `emoji` | Shown in a tinted tile, unless a `side` image replaces it. |
+| `themeColor` | Tints the border, the tile and the default wash. |
+| `imageUrl` **or** `imageData` | A picture. `imageData` is a `data:` URI, so it needs no network and survives offline. |
+| `svg` | Inline SVG, sanitised server-side. Draw your own diagram. Web only — the phone skips it, so pair it with an image if the card matters there. |
+| `progress` | 0–100. Draws a bar. |
+| `ctaLabel` + `ctaLink` | A link out. |
+| `control` | **One** interactive widget — a slider to ask something, or a button. Fires `card.interaction` if you subscribed. |
+| `cardStyle` | Layout and paint. Below. |
+| `habitId` | The habit this card is about. |
+| `linkedTaskId` | The scheduled block this card is about. |
+| `resources` | `[{label, url, kind}]`. |
+| `xpOnComplete` | Reward for finishing it. |
+
+### `cardStyle` — the arrangement
+
+Every field optional. Omit it and the card looks as cards always have.
+
+```json
+{
+  "layout": "background",   // banner | background | side | plain
+  "overlay": 0.7,           // 0.35–0.92, scrim over a background image
+  "gradient": { "from": "#1E1B4B", "to": "#0B1020" },
+  "border": "accent",       // accent | hairline | none
+  "align": "left"           // left | center
+}
+```
+
+- **`banner`** — the picture across the top. The default, right for something wide.
+- **`background`** — behind the text, under a scrim. For atmosphere. The scrim
+  is floored at 0.35 and you cannot turn it off: a card whose body cannot be
+  read is not a style choice.
+- **`side`** — a small square beside the title. A book cover, an album, a face —
+  anything a banner crop would cut in half.
+- **`plain`** — no media even if an image is set. Turn a picture off without
+  deleting it.
+
+A book you are tracking:
+
+```json
+lifeos_create_task {
+  "title": "A Game of Thrones", "subtitle": "p.550 / ~800",
+  "slot": 0, "progress": 69, "habitId": "<the reading habit>",
+  "imageUrl": "https://…/cover.jpg",
+  "cardStyle": { "layout": "side", "border": "hairline" },
+  "body": "Next rung p.600. Companion book — progress is enough, no takes required."
+}
+```
+
+Tonight's session, explained:
+
+```json
+lifeos_create_task {
+  "title": "Why tonight is Ch 5", "slot": 1,
+  "linkedTaskId": "<the 19:00 study block>",
+  "imageData": "data:image/png;base64,…",
+  "cardStyle": { "layout": "background", "overlay": 0.72, "align": "center" },
+  "control": { "kind": "slider", "label": "How hard did that feel?", "min": 1, "max": 5 }
+}
+```
+
+### Linking, and what it does not do
+
+`habitId` and `linkedTaskId` are **pointers**. The card shows what it is about,
+so the user is not matching two similar titles by eye. Neither completes the
+other: a card explaining tonight's study block is not that block, and wiring
+them together would recreate exactly the duplication the agenda model removed.
+
+If you want the *thing itself* on the timeline, that is a habit with a
+`scheduledTime` or a task with an `eventAt`. The card is commentary.
+
+### Restraint
+
+Two slots is the limit and it is the point. A third thing means deciding which
+of the two matters less. Prefer one card that is worth reading over two that are
+not, and drop the picture entirely when it is decoration — a plain card is a
+perfectly good card.
 
 ---
 

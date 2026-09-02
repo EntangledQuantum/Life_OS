@@ -882,6 +882,32 @@ const defaultToBloom: Migration = {
   },
 };
 
+
+/**
+ * v12 — a card can say how it should look, and what it is about.
+ *
+ * A pinned card already carried a title, body, emoji, colour, image, inline
+ * SVG, progress, a call to action and one interactive control. What it could
+ * not do was *arrange* any of that: an image was always a banner across the
+ * top, whatever the picture was for, and the phone drew no image at all — so a
+ * card could look considered on the desktop and plain on the device it is
+ * mostly read on.
+ *
+ * `card_style_json` is that arrangement, and `linked_task_id` is the sibling of
+ * `habit_id`: a card can now point at the scheduled block it explains, the same
+ * way it can point at a habit. Both are pointers and neither completes the
+ * other — a card describing tonight's study session is not that session, and
+ * making it one would recreate the duplication the agenda model removed.
+ */
+const cardStyling: Migration = {
+  version: 12,
+  name: "cards carry their own layout and a link to what they are about",
+  up(db) {
+    addColumn(db, "tasks", "card_style_json", "TEXT");
+    addColumn(db, "tasks", "linked_task_id", "TEXT");
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -895,6 +921,7 @@ export const MIGRATIONS: Migration[] = [
   scheduledHabits,
   taskHabitLink,
   defaultToBloom,
+  cardStyling,
 ];
 
 /** The version a database is brought to by `runMigrations`. */

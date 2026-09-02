@@ -237,6 +237,15 @@ export const createTaskSchema = z.object({
   resources: z.array(taskResourceSchema).max(30).nullable().optional(),
   /** The habit this task is about. A pointer only — neither completes the other. */
   habitId: z.string().nullable().optional(),
+  /** The scheduled task this card explains. Same rule: a pointer, not a coupling. */
+  linkedTaskId: z.string().nullable().optional(),
+  /*
+   * Layout and paint. Passed through loosely and normalised in
+   * `normalizeCardStyle`, which drops anything it does not understand rather
+   * than rejecting the card — the style is decoration, and a typo in a gradient
+   * should not cost the user the card's actual content.
+   */
+  cardStyle: z.unknown().nullable().optional(),
   /** Pin to a front-page card slot. Null leaves it in the list. */
   slot: z.union([z.literal(0), z.literal(1)]).nullable().optional(),
   emoji: z.string().max(16).nullable().optional(),

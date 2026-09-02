@@ -9,6 +9,7 @@ import {
   isReminderDue,
   isTaskKind,
   nextOccurrence,
+  normalizeCardStyle,
   notifyAt,
   sanitizeSvg,
   shiftSchedule,
@@ -51,12 +52,28 @@ function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   }
 }
 
+/**
+ * A card's style on the way to the database.
+ *
+ * Normalised before storing, not just on read: a bad value written once would
+ * otherwise be re-validated on every single render, and the row would keep
+ * whatever nonsense arrived indefinitely.
+ */
+function serializeCardStyle(value: unknown): string | null {
+  const style = normalizeCardStyle(value);
+  return style ? JSON.stringify(style) : null;
+}
+
 function mapTask(row: typeof schema.tasks.$inferSelect): Task {
   const slot = row.slot === 0 || row.slot === 1 ? row.slot : null;
   return {
     id: row.id,
     kind: (isTaskKind(row.kind) ? row.kind : "task") as TaskKind,
     habitId: (row as { habitId?: string | null }).habitId ?? null,
+    linkedTaskId: (row as { linkedTaskId?: string | null }).linkedTaskId ?? null,
+    cardStyle: normalizeCardStyle(
+      parseJson<unknown>((row as { cardStyleJson?: string | null }).cardStyleJson, null),
+    ),
     title: row.title,
     subtitle: row.subtitle ?? null,
     body: row.body ?? null,
@@ -191,6 +208,8 @@ export interface CreateTaskInput {
   webhookOnInteract?: boolean;
   resources?: TaskResource[] | null;
   habitId?: string | null;
+  linkedTaskId?: string | null;
+  cardStyle?: unknown;
   slot?: 0 | 1 | null;
   emoji?: string | null;
   themeColor?: string | null;
@@ -292,6 +311,8 @@ export function createTask(
       webhookOnInteract: input.webhookOnInteract ?? false,
       resourcesJson: input.resources?.length ? JSON.stringify(input.resources) : null,
       habitId: input.habitId ?? null,
+      linkedTaskId: input.linkedTaskId ?? null,
+      cardStyleJson: serializeCardStyle(input.cardStyle),
       slot: input.slot ?? null,
       emoji: input.emoji ?? defaultEmoji(input.kind ?? "task"),
       themeColor: input.themeColor ?? null,
@@ -415,6 +436,12 @@ export function updateTask(
           }
         : {}),
       ...(patch.habitId !== undefined ? { habitId: patch.habitId } : {}),
+      ...(patch.linkedTaskId !== undefined
+        ? { linkedTaskId: patch.linkedTaskId }
+        : {}),
+      ...(patch.cardStyle !== undefined
+        ? { cardStyleJson: serializeCardStyle(patch.cardStyle) }
+        : {}),
       ...(patch.slot !== undefined ? { slot: patch.slot } : {}),
       ...(patch.emoji !== undefined ? { emoji: patch.emoji } : {}),
       ...(patch.themeColor !== undefined ? { themeColor: patch.themeColor } : {}),

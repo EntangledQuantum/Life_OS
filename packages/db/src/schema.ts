@@ -439,6 +439,10 @@ export const tasks = sqliteTable("tasks", {
    * the user to infer it from the titles.
    */
   habitId: text("habit_id"),
+  /** The scheduled task this card explains. A pointer, like `habitId`. */
+  linkedTaskId: text("linked_task_id"),
+  /** Serialized CardStyle — layout, scrim, gradient, border. Null = defaults. */
+  cardStyleJson: text("card_style_json"),
   metaJson: text("meta_json"),
 
   completedAt: text("completed_at"),

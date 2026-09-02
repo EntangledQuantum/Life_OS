@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { svgToDataUri, type Task } from "@life-os/shared";
+import { resolveCardStyle, svgToDataUri, type Task } from "@life-os/shared";
 import { Check } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -31,38 +31,102 @@ export function AgentCard({
   // Agent-supplied SVG is sanitized server-side and rendered via <img>,
   // so it is inert even if something slipped through.
   const svg = card.svg ? svgToDataUri(card.svg) : null;
+  const media = svg ?? img ?? null;
+
+  /*
+   * The arrangement used to be fixed: an image was always a 144px banner,
+   * whatever the picture was for. `resolveCardStyle` fills in the defaults so
+   * "no style set" and "style set to the defaults" draw the same card here and
+   * on the phone, rather than two slightly different ones.
+   */
+  const style = resolveCardStyle(card.cardStyle, Boolean(media));
+  const background = style.layout === "background" ? media : null;
+
+  const wash = card.cardStyle?.gradient
+    ? `linear-gradient(160deg, ${card.cardStyle.gradient.from}, ${card.cardStyle.gradient.to})`
+    : undefined;
 
   return (
     <article
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03]",
+        "relative overflow-hidden rounded-2xl",
+        style.border === "none"
+          ? "border border-transparent"
+          : style.border === "hairline"
+            ? "border border-white/[0.08]"
+            : "border",
+        !wash && !background && "bg-white/[0.03]",
         done && "opacity-70",
       )}
-      style={{ borderColor: `${color}44` }}
+      style={{
+        borderColor: style.border === "accent" ? `${color}44` : undefined,
+        backgroundImage: wash,
+      }}
     >
-      {svg ? (
-        <div
-          className="flex h-32 w-full items-center justify-center overflow-hidden"
-          style={{ background: `linear-gradient(160deg, ${color}1A, transparent)` }}
-        >
-          <img src={svg} alt="" className="max-h-24 w-auto max-w-[70%]" />
-        </div>
-      ) : (
-        img && (
+      {/*
+        A photograph behind the text, with a scrim over it. The scrim is not
+        optional and has a floor: a card whose body cannot be read is not a
+        style choice, it is a broken card.
+      */}
+      {background && (
+        <>
+          <img
+            src={background}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(180deg, rgba(7,8,12,${style.overlay * 0.82}), rgba(7,8,12,${Math.min(0.96, style.overlay + 0.16)}))`,
+            }}
+          />
+        </>
+      )}
+      <div className={cn(background && "relative")}>
+      {style.layout === "banner" && media && (
+        svg ? (
+          <div
+            className="flex h-32 w-full items-center justify-center overflow-hidden"
+            style={{ background: `linear-gradient(160deg, ${color}1A, transparent)` }}
+          >
+            <img src={svg} alt="" className="max-h-24 w-auto max-w-[70%]" />
+          </div>
+        ) : (
           <div className="relative h-36 w-full overflow-hidden bg-black/30">
-            <img src={img} alt="" className="h-full w-full object-cover" />
+            <img src={media} alt="" className="h-full w-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-[oklch(7%_0.01_260)] to-transparent" />
           </div>
         )
       )}
       <div className="space-y-3 p-4">
-        <div className="flex items-start gap-3">
-          <span
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl"
-            style={{ background: `${color}22` }}
-          >
-            {card.emoji ?? "📌"}
-          </span>
+        <div
+          className={cn(
+            "flex gap-3",
+            style.align === "center"
+              ? "flex-col items-center text-center"
+              : "items-start",
+          )}
+        >
+          {/*
+            `side` puts the picture where the emoji tile goes — a book cover or
+            an avatar, which a banner crop would cut in half.
+          */}
+          {style.layout === "side" && media ? (
+            <img
+              src={media}
+              alt=""
+              className="h-14 w-14 shrink-0 rounded-xl object-cover"
+              style={{ background: `${color}22` }}
+            />
+          ) : (
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl"
+              style={{ background: `${color}22` }}
+            >
+              {card.emoji ?? "📌"}
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold leading-tight">{card.title}</h3>
@@ -139,6 +203,7 @@ export function AgentCard({
             <span className="font-mono text-xs text-[var(--accent)]">Done</span>
           )}
         </div>
+      </div>
       </div>
     </article>
   );

@@ -24,6 +24,7 @@
  * It never starts. It has a target time and a completion, and completing it
  * does not change what activity the user is in.
  */
+import type { CardStyle } from "./card-style.js";
 import type { Activity, RepeatRule } from "./constants.js";
 import type { CardControl } from "./webhooks.js";
 
@@ -98,6 +99,12 @@ export interface Task {
   resources: TaskResource[];
 
   /**
+   * Layout and paint for a pinned card. Null renders exactly as cards always
+   * have — the arrangement used to be fixed and this is what unfixed it.
+   */
+  cardStyle: CardStyle | null;
+
+  /**
    * The habit this task is *about*, if any.
    *
    * A pointer, not a coupling: completing the card does not complete the habit
@@ -107,6 +114,15 @@ export interface Task {
    * from two similar titles sitting next to each other.
    */
   habitId: string | null;
+  /**
+   * The scheduled task this card is *about*, if any.
+   *
+   * Same rule as `habitId`: a pointer, not a coupling. It lets a card explain a
+   * block on the timeline — "here is what tonight's study session is for" —
+   * without becoming a second copy of that block, which is the duplication this
+   * whole model exists to avoid.
+   */
+  linkedTaskId: string | null;
 
   /** Pinned to a front-page card slot (0 or 1). Null = not pinned. */
   slot: 0 | 1 | null;

@@ -773,6 +773,37 @@ const tools = [
           description:
             "The habit this task is *about*. A pointer only — completing the task does not tick the habit, and vice versa. Use it on a pinned card so the user can see which habit your note concerns instead of matching two similar titles by eye.",
         },
+        linkedTaskId: {
+          type: "string",
+          description:
+            "The scheduled task this card explains — the same pointer, aimed at a block on the timeline instead of a habit. Neither completes the other.",
+        },
+        cardStyle: {
+          type: "object",
+          description:
+            "How a pinned card is laid out and painted. Everything optional; omit it entirely and the card looks as cards always have.",
+          properties: {
+            layout: {
+              type: "string",
+              enum: ["banner", "background", "side", "plain"],
+              description:
+                "Where imageUrl/imageData goes. banner = across the top (default). background = behind the text, with a scrim. side = a small square beside the title, for a book cover or an avatar. plain = no media even if an image is set.",
+            },
+            overlay: {
+              type: "number",
+              description:
+                "0.35–0.92. How dark the scrim over a background image is. Floored at 0.35 because text over a photograph has to stay readable.",
+            },
+            gradient: {
+              type: "object",
+              description: "Two-stop wash behind the card.",
+              properties: { from: { type: "string" }, to: { type: "string" } },
+              required: ["from", "to"],
+            },
+            border: { type: "string", enum: ["accent", "hairline", "none"] },
+            align: { type: "string", enum: ["left", "center"] },
+          },
+        },
         slot: { type: "number", enum: [0, 1] },
         emoji: { type: "string" },
         themeColor: { type: "string" },

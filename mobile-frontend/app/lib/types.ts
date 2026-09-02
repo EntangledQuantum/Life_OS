@@ -15,6 +15,8 @@ export type NotificationSoundId =
   | "pulse"
   | "alert"
   | "none";
+import type { CardStyle } from "./card-style";
+
 export type TaskKind = "task" | "study" | "review" | "reminder";
 export type TaskStatus = "active" | "done" | "dismissed";
 export type RepeatRule = "none" | "daily" | "weekly" | "spaced";
@@ -144,6 +146,10 @@ export interface Task {
 
   /** The habit this task is about, if any. A pointer — neither completes the other. */
   habitId: string | null;
+  /** The scheduled task this card explains. Same rule: a pointer, not a coupling. */
+  linkedTaskId: string | null;
+  /** Layout and paint for a pinned card. Null renders as cards always have. */
+  cardStyle: CardStyle | null;
   /** Links and references. What a "study block" always was underneath. */
   resources: TaskResource[];
 

@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 import { Linking, PanResponder, Pressable, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
+import { Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { resolveCardStyle } from "@/lib/card-style";
 import type { Task } from "@/lib/types";
 import { api } from "@/lib/api";
 import { activityColor, font, radius, rgba } from "@/lib/theme";
@@ -33,6 +35,19 @@ export function AgentCard({
   const t = useTokens();
   const tint = card.themeColor || activityColor(card.activityTag, t.accent);
 
+  /*
+   * The phone drew no card media at all — an agent could set an image and it
+   * appeared on the desktop and nowhere else, so a card looked considered in
+   * one place and plain on the device it is mostly read on.
+   *
+   * SVG is skipped rather than rendered: `card.svg` is raw markup, and turning
+   * it into something react-native-svg will draw means parsing it here. An
+   * image URL covers the same ground and is already sanitised.
+   */
+  const media = card.imageData || card.imageUrl || null;
+  const style = resolveCardStyle(card.cardStyle, Boolean(media));
+  const gradient = card.cardStyle?.gradient;
+
   return (
     <View
       style={{
@@ -43,13 +58,56 @@ export function AgentCard({
         borderCurve: "continuous",
       }}
     >
+      {/*
+        A photograph behind the text, with a scrim over it. The scrim has a
+        floor — a card whose body cannot be read is not a style choice.
+      */}
+      {style.layout === "background" && media ? (
+        <Image
+          source={{ uri: media }}
+          style={{ position: "absolute", inset: 0 }}
+          resizeMode="cover"
+        />
+      ) : null}
+
+      {style.layout === "banner" && media ? (
+        <Image
+          source={{ uri: media }}
+          style={{ width: "100%", height: 132 }}
+          resizeMode="cover"
+        />
+      ) : null}
+
       <LinearGradient
-        colors={[rgba(tint, 0.14), t.surface]}
+        colors={
+          style.layout === "background" && media
+            ? [
+                `rgba(7,8,12,${style.overlay * 0.82})`,
+                `rgba(7,8,12,${Math.min(0.96, style.overlay + 0.16)})`,
+              ]
+            : gradient
+              ? [gradient.from, gradient.to]
+              : [rgba(tint, 0.14), t.surface]
+        }
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ padding: 16, gap: 12 }}
       >
-        <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+        <View
+          style={
+            style.align === "center"
+              ? { flexDirection: "column", gap: 10, alignItems: "center" }
+              : { flexDirection: "row", gap: 12, alignItems: "flex-start" }
+          }
+        >
+          {/* `side` puts the picture where the emoji tile goes. */}
+          {style.layout === "side" && media ? (
+            <Image
+              source={{ uri: media }}
+              style={{ width: 52, height: 52, borderRadius: radius.md }}
+              resizeMode="cover"
+            />
+          ) : (
           <View
             style={{
               width: 44,
@@ -63,6 +121,7 @@ export function AgentCard({
           >
             <Text style={{ fontSize: 22 }}>{card.emoji || "✦"}</Text>
           </View>
+          )}
 
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={{ color: t.text, fontFamily: font.title, fontSize: 17 }}>
