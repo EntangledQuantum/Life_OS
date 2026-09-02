@@ -465,6 +465,24 @@ export async function completeTask(
   const task = getTask(db, id);
   if (!task) return { error: "Task not found" as const };
 
+  /*
+   * Only open work can be completed.
+   *
+   * `missed` is the one that matters: a task whose day ended without it. Paying
+   * out its XP now would credit *today* for something that was meant to happen
+   * yesterday — inflating today and quietly erasing the miss. `done` guards
+   * against a double-tap awarding twice, and `dismissed` against reviving
+   * something the user deliberately cleared.
+   */
+  if (task.status !== "active") {
+    return {
+      error:
+        task.status === "missed"
+          ? ("That was scheduled for a day that has ended. Reschedule it if it still matters — completing it now would put yesterday's XP on today." as const)
+          : (`Task is already ${task.status}` as const),
+    };
+  }
+
   const now = nowIso();
   const xp = task.xpOnComplete > 0 ? task.xpOnComplete : 0;
   if (xp > 0) addXp(db, xp);

@@ -14,8 +14,8 @@ export const DEFAULT_GAMIFICATION_CONFIG: GamificationConfig = {
    * Adding a habit does NOT increase this — base XP is redistributed by weight.
    */
   dailyXpTarget: 200,
-  /** Growth-meter visual: sprout | orb */
-  growthStyle: "sprout",
+  /** How the day is drawn: bloom | arc | rings */
+  growthStyle: "bloom",
 };
 
 /**

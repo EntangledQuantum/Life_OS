@@ -15,15 +15,19 @@
  * |---------|--------|
  * | 1 | cards, agent events, light reviews and schedule blocks as separate things |
  * | 2 | one task system: `tasks` replaces all four |
+ * | 3 | one agenda: habits carry their own time, and `missed` is a task status |
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /**
- * The oldest client this server will talk to. Equal to `PROTOCOL_VERSION`
- * because v2 removed the v1 payload entirely — there is nothing for a v1 client
- * to read.
+ * The oldest client this server will talk to.
+ *
+ * Equal to `PROTOCOL_VERSION`, and for the same reason each time: the payload
+ * that came before is gone rather than deprecated. A v2 client would read the
+ * agenda as an empty day and show a task whose status it has no name for, which
+ * is worse than being told to update.
  */
-export const MIN_PROTOCOL_VERSION = 2;
+export const MIN_PROTOCOL_VERSION = 3;
 
 /** Header a client sends to say what it can read. */
 export const PROTOCOL_HEADER = "x-lifeos-protocol";

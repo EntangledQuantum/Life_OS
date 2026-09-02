@@ -6,6 +6,18 @@ export const habits = sqliteTable("habits", {
   emoji: text("emoji").notNull().default("✨"),
   category: text("category").notNull().default("Custom"),
   frequencyRule: text("frequency_rule").notNull().default("daily"),
+  /**
+   * When in the day this habit happens, "HH:mm" local. Null means no
+   * particular time.
+   *
+   * A habit with a time appears on the timeline for that slot, every day,
+   * derived from this row — there is no second record to keep in sync. Before
+   * this an agent had to create a separate task to carry the time, which gave
+   * the user two things to tick for one act.
+   */
+  scheduledTime: text("scheduled_time"),
+  /** How long it takes. Only meaningful alongside `scheduledTime`. */
+  durationMinutes: integer("duration_minutes"),
   preferredTimeWindow: text("preferred_time_window"),
   anchor: text("anchor"),
   linkedGoalId: text("linked_goal_id"),

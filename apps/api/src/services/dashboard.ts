@@ -9,7 +9,6 @@ import {
 import {
   getLocalDayBounds,
   getProgressRow,
-  hourFromTime,
   loadGamificationConfig,
   nowIso,
 } from "./helpers.js";
@@ -21,6 +20,7 @@ import { listAchievements } from "./achievements.js";
 import { listQuests } from "./quests.js";
 import { getActiveSession, listActivityLog } from "./sessions.js";
 import { listCurrentTasks, listDueTasks, listOpenTasks } from "./tasks.js";
+import { getAgenda, rolloverPastDays } from "./agenda.js";
 import {
   getConsistencySeries,
   getPulse,
@@ -125,6 +125,12 @@ function buildActualSegments(
 }
 
 export function getDashboard(db: LifeOsDb): DashboardToday {
+  /*
+   * Close out anything whose day has ended before reading a thing. Yesterday's
+   * leftovers used to sit on today's list and pay today's XP when ticked, which
+   * flatters today and hides the fact that yesterday was missed.
+   */
+  rolloverPastDays(db);
   refreshTodaySnapshot(db);
   const config = loadGamificationConfig(db);
   const progressRow = getProgressRow(db);
@@ -137,29 +143,27 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
   const yEff = vsYesterday.efficiency.yesterday;
   const imp = improvementPct(eff, yEff);
 
+  const agenda = getAgenda(db);
+
   /**
-   * The planned shape of the day comes from tasks that have a time and a
-   * duration. It used to come from `schedule_blocks`, which was a second way of
-   * saying the same thing — a task at 09:00 for 90 minutes *is* a block.
+   * The planned shape of the day, from the agenda rather than from tasks alone.
+   *
+   * A habit with a time is a block like any other — that is the whole point of
+   * giving habits a time. Reading only tasks here is what used to force an
+   * agent to create a companion task just to make a habit visible on the
+   * ribbon, and that companion task was the duplicate.
    */
-  const blocks = listOpenTasks(db)
-    .filter((t) => t.eventAt && (t.eventAt ?? "").slice(0, 10) === dateStr)
-    .map((t) => {
-      const start = new Date(t.eventAt!);
-      const end = new Date(
-        start.getTime() + (t.durationMinutes ?? 30) * 60_000,
-      );
-      const hhmm = (d: Date) =>
-        `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      return {
-        id: t.id,
-        category: t.activityTag ?? (t.kind === "study" ? "Study" : "Deep Work"),
-        label: t.title,
-        plannedStart: hhmm(start),
-        plannedEnd: hhmm(end),
-        status: t.status === "done" ? "done" : "planned",
-      };
-    });
+  const blocks = agenda.items
+    .filter((item) => item.startHour !== null && item.endHour !== null)
+    .map((item) => ({
+      id: item.id,
+      category:
+        item.activityTag ?? (item.kind === "study" ? "Study" : "Deep Work"),
+      label: item.title,
+      startHour: item.startHour!,
+      endHour: item.endHour!,
+      status: item.done ? "done" : "planned",
+    }));
 
   /**
    * Continuous solid color strip for the full 0–24h day.
@@ -181,8 +185,8 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
 
   const segs = blocks
     .map((b) => {
-      let start = hourFromTime(b.plannedStart) ?? 0;
-      let end = hourFromTime(b.plannedEnd) ?? start + 1;
+      let start = b.startHour;
+      let end = b.endHour;
       if (end <= start) end += 24;
       start = Math.max(0, Math.min(24, start));
       end = Math.max(start, Math.min(24, end > 24 ? 24 : end));
@@ -263,6 +267,9 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
   return {
     date: dateStr,
     dayResetTime: resetTime,
+    lifeDay: agenda.lifeDay,
+    agenda: agenda.items,
+    anytime: agenda.anytime,
 
     tasks: listOpenTasks(db),
     // Only what is current; the Timeline tab has the rest.

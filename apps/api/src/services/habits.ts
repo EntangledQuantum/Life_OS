@@ -10,11 +10,13 @@ import {
 } from "@life-os/shared";
 import {
   addXp,
+  clampDuration,
   computeStreaks,
   getLocalDayBounds,
   history7,
   loadGamificationConfig,
   mapHabit,
+  normalizeClockTime,
   nowIso,
   reverseXp,
 } from "./helpers.js";
@@ -92,6 +94,8 @@ export function createHabit(
     emoji?: string;
     category?: string;
     frequencyRule?: string;
+    scheduledTime?: string | null;
+    durationMinutes?: number | null;
     preferredTimeWindow?: string | null;
     anchor?: string | null;
     linkedGoalId?: string | null;
@@ -123,6 +127,13 @@ export function createHabit(
       emoji: input.emoji ?? "✨",
       category: input.category ?? "Custom",
       frequencyRule: input.frequencyRule ?? "daily",
+      /*
+       * A time here is the whole reason a habit no longer needs a companion
+       * task: it puts the habit on the timeline itself, every day, with nothing
+       * to keep in sync.
+       */
+      scheduledTime: normalizeClockTime(input.scheduledTime),
+      durationMinutes: clampDuration(input.durationMinutes),
       preferredTimeWindow: input.preferredTimeWindow ?? "any",
       anchor: input.anchor ?? null,
       linkedGoalId: input.linkedGoalId ?? null,
@@ -155,6 +166,8 @@ export function updateHabit(
     emoji: string;
     category: string;
     frequencyRule: string;
+    scheduledTime: string | null;
+    durationMinutes: number | null;
     preferredTimeWindow: string | null;
     anchor: string | null;
     linkedGoalId: string | null;
@@ -173,6 +186,17 @@ export function updateHabit(
   const existing = db.select().from(schema.habits).where(eq(schema.habits.id, id)).get();
   if (!existing || existing.deletedAt) return null;
   const { redistribute, ...rest } = input;
+  /*
+   * Normalised on the way in, and `null` stays `null` — clearing the time is
+   * how you take a habit off the timeline, so it has to be distinguishable
+   * from not mentioning it.
+   */
+  if (rest.scheduledTime !== undefined) {
+    rest.scheduledTime = normalizeClockTime(rest.scheduledTime);
+  }
+  if (rest.durationMinutes !== undefined) {
+    rest.durationMinutes = clampDuration(rest.durationMinutes);
+  }
   db.update(schema.habits)
     .set({
       ...rest,

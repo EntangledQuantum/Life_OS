@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
-  CATEGORIES,  GROWTH_STYLES,
+  CATEGORIES,
+  GROWTH_STYLES,
   HABIT_GRAPHICS,
   LEGACY_GROWTH_STYLES,
   QUALITY_FLAGS,
@@ -30,16 +31,31 @@ const goalConditionSchema = z.unknown().superRefine((value, ctx) => {
   }
 }) as unknown as z.ZodType<GoalCondition>;
 
-/** Accepts `sprout`/`orb` plus the legacy `plant`/`water`/`both`, always yielding a GrowthStyle. */
+/** Accepts every historical name and always yields a current GrowthStyle. */
 const growthStyleSchema = z
   .enum([...GROWTH_STYLES, ...LEGACY_GROWTH_STYLES])
   .transform((v): GrowthStyle => normalizeGrowthStyle(v));
+
+/** "HH:mm" on a 24-hour clock. */
+const clockTime = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:mm on a 24-hour clock");
 
 export const createHabitSchema = z.object({
   name: z.string().min(1).max(120),
   emoji: z.string().min(1).max(16).default("✨"),
   category: z.enum(CATEGORIES).or(z.string()).default("Custom"),
   frequencyRule: z.string().default("daily"),
+  /**
+   * "HH:mm" — when in the day this happens. Null or absent means no particular
+   * time.
+   *
+   * Setting this is what puts the habit on the timeline; there is no separate
+   * task to create, and creating one alongside is the duplicate this replaced.
+   */
+  scheduledTime: clockTime.nullable().optional(),
+  /** How long it takes. Only meaningful with `scheduledTime`. */
+  durationMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   preferredTimeWindow: z.string().nullable().optional(),
   anchor: z.string().nullable().optional(),
   linkedGoalId: z.string().nullable().optional(),

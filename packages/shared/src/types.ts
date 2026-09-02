@@ -12,6 +12,8 @@ import type {
 import type { GoalCondition } from "./conditions.js";
 import type { CardControl } from "./webhooks.js";
 import type { Task } from "./tasks.js";
+import type { AgendaItem } from "./agenda.js";
+import type { LifeDay } from "./time.js";
 
 export type Source = "user" | "agent";
 
@@ -21,6 +23,17 @@ export interface Habit {
   emoji: string;
   category: Category | string;
   frequencyRule: string;
+  /**
+   * "HH:mm" local, or null for no particular time.
+   *
+   * A habit with a time is on the timeline for that slot every day, derived
+   * from this one row. It used to take a habit *and* a separate task to say
+   * that, which gave the user two things to tick for one act and two places for
+   * them to disagree.
+   */
+  scheduledTime: string | null;
+  /** How long it takes. Only meaningful with `scheduledTime`. */
+  durationMinutes: number | null;
   preferredTimeWindow: string | null;
   anchor: string | null;
   linkedGoalId: string | null;
@@ -261,6 +274,20 @@ export interface VsYesterday {
 export interface DashboardToday {
   date: string;
   dayResetTime: string;
+  /** The exact stretch `date` covers, and the zone it is in. */
+  lifeDay: LifeDay;
+  /**
+   * **Today, as one list.** Habits with a time and tasks with a time, in time
+   * order, then everything untimed.
+   *
+   * This is what the front page renders. `habits` and `tasks` below are still
+   * here for the pages that manage them, but a client showing "what is on
+   * today" from those two lists is rebuilding this — and will reintroduce the
+   * duplicate it exists to remove.
+   */
+  agenda: AgendaItem[];
+  /** The subset with no time on it: a pile to draw from, not a plan. */
+  anytime: AgendaItem[];
   /**
    * Every open task. **This is the model.** `cards`, `agentEvents`,
    * `lightReviews` and `studyBlocks` used to be four near-identical lists here;

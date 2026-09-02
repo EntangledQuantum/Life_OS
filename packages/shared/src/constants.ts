@@ -40,31 +40,56 @@ export const HABIT_GRAPHICS = [
 export type HabitGraphic = (typeof HABIT_GRAPHICS)[number];
 
 /**
- * Daily-progress visual styles ("Growth meter").
+ * How the day is drawn.
  *
- * Renamed from the old `nurtureStyle` (`plant` | `water` | `both`) because
- * "water" read as the drinking-water habit. The concept is nurturing growth
- * toward the daily XP target, not hydration.
+ * `sprout` grew a stem and `orb` filled a circle, and both had the same
+ * problem: the only thing they encoded was one number, the XP ratio. A bar
+ * would have said as much. Neither showed *which* things were done, and neither
+ * changed at all as weeks of consistency accumulated, so there was nothing to
+ * grow into.
+ *
+ * The three below all read the same data and differ only in shape, so switching
+ * is a preference rather than a different amount of information:
+ *
+ * - `bloom` — a petal per habit, filled when that habit closes today, around a
+ *   core showing today against target, with a ring added for each week of
+ *   consistency behind it. The petals make it personal: it is a picture of
+ *   *your* habits, not a progress bar.
+ * - `arc` — the day as a horizon, with the sun where the clock is and each
+ *   scheduled thing a mark along the path. Best for seeing shape-of-day.
+ * - `rings` — concentric rings, one per week, the outermost being today.
  */
-export const GROWTH_STYLES = ["sprout", "orb"] as const;
+export const GROWTH_STYLES = ["bloom", "arc", "rings"] as const;
 
 export type GrowthStyle = (typeof GROWTH_STYLES)[number];
 
-/** Legacy values still accepted from older agents / stored configs. */
-export const LEGACY_GROWTH_STYLES = ["plant", "water", "both"] as const;
+/** Values from older configs and older agents. Never re-emitted. */
+export const LEGACY_GROWTH_STYLES = [
+  "plant",
+  "water",
+  "both",
+  "sprout",
+  "orb",
+] as const;
 
 /** Map any historical or current value onto a supported GrowthStyle. */
 export function normalizeGrowthStyle(value: unknown): GrowthStyle {
   switch (value) {
-    case "orb":
-    case "water":
-      return "orb";
+    case "bloom":
     case "sprout":
     case "plant":
     case "both":
-      return "sprout";
+      return "bloom";
+    // The filled circle became the ring stack, which is the same idea with a
+    // history behind it.
+    case "rings":
+    case "orb":
+    case "water":
+      return "rings";
+    case "arc":
+      return "arc";
     default:
-      return "sprout";
+      return "bloom";
   }
 }
 

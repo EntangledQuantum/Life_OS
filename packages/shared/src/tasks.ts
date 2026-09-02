@@ -34,7 +34,16 @@ import type { CardControl } from "./webhooks.js";
 export const TASK_KINDS = ["task", "study", "review", "reminder"] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
-export const TASK_STATUSES = ["active", "done", "dismissed"] as const;
+/**
+ * `missed` is what a scheduled thing becomes when its life-day ends without it.
+ *
+ * It used to stay `active` forever, so yesterday's leftovers sat on today's
+ * list and completing one paid out today's XP for something that happened —
+ * or did not happen — yesterday. A day that is over is over; the row stays as
+ * a record of what was planned and not done, which is information, not a
+ * chore carried forward.
+ */
+export const TASK_STATUSES = ["active", "done", "dismissed", "missed"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export function isTaskKind(value: unknown): value is TaskKind {

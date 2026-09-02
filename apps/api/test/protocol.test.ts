@@ -69,7 +69,7 @@ describe("the growth meter, which is where this was found", () => {
   it("refuses a PATCH with no protocol header", async () => {
     const res = await call("/api/v1/gamification/config", {
       method: "PATCH",
-      body: { growthStyle: "sprout" },
+      body: { growthStyle: "bloom" },
       protocol: false,
     });
     assert.equal(res.status, 426);
@@ -78,19 +78,19 @@ describe("the growth meter, which is where this was found", () => {
   it("accepts the same PATCH through the client's headers", async () => {
     const res = await call("/api/v1/gamification/config", {
       method: "PATCH",
-      body: { growthStyle: "sprout" },
+      body: { growthStyle: "bloom" },
     });
     assert.equal(res.status, 200);
-    assert.equal(res.body.growthStyle, "sprout");
+    assert.equal(res.body.growthStyle, "bloom");
   });
 
   it("really changed it, rather than answering 200 and doing nothing", async () => {
     await call("/api/v1/gamification/config", {
       method: "PATCH",
-      body: { growthStyle: "orb" },
+      body: { growthStyle: "rings" },
     });
     const read = await call("/api/v1/gamification/config");
-    assert.equal(read.body.growthStyle, "orb");
+    assert.equal(read.body.growthStyle, "rings");
   });
 });
 

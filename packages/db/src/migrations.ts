@@ -784,6 +784,37 @@ const explicitTimezone: Migration = {
   },
 };
 
+
+/**
+ * v9 — a habit can have a time, and owns its own place on the timeline.
+ *
+ * A habit had no time on it, so an agent that wanted "meditate at 07:00" had to
+ * create the habit *and* a separate task to carry the time. Two rows, two
+ * places to tick, and the user could complete either one — awarding XP twice
+ * for the same act, or leaving one surface saying done and the other saying
+ * not. There was nothing linking them, so nothing could tell they were the same
+ * thing.
+ *
+ * The habit is the single row now. Give it `scheduled_time` and it appears on
+ * the timeline for that slot every day, automatically, with no task to keep in
+ * sync — a derived view of one record rather than a copy of it. Leave the time
+ * null and it behaves exactly as habits always have.
+ *
+ * Nothing is rewritten. Existing habits get a null time, which is the "no
+ * particular time" they already meant. The duplicate tasks an agent created
+ * before this stay where they are; `lifeos_bulk_dismiss_tasks` clears them when
+ * the user wants them cleared, rather than this migration deciding on their
+ * behalf which of two rows was the real one.
+ */
+const scheduledHabits: Migration = {
+  version: 9,
+  name: "habits carry their own time",
+  up(db) {
+    addColumn(db, "habits", "scheduled_time", "TEXT");
+    addColumn(db, "habits", "duration_minutes", "INTEGER");
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -794,6 +825,7 @@ export const MIGRATIONS: Migration[] = [
   unifiedTasks,
   changeHistory,
   explicitTimezone,
+  scheduledHabits,
 ];
 
 /** The version a database is brought to by `runMigrations`. */

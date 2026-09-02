@@ -35,6 +35,36 @@ export function getLocalDayBounds(db: LifeOsDb, date = new Date()) {
   return getDayBounds(reset, date);
 }
 
+/**
+ * "HH:mm", or null for anything that is not one.
+ *
+ * Agents send "7:00", "07:00:00" and "7am" for the same instant. Storing what
+ * arrives means every reader has to guess; normalising once here means a bad
+ * value becomes "no particular time" rather than a habit that lands at an hour
+ * nobody chose.
+ */
+export function normalizeClockTime(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const m = value.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+/**
+ * Minutes, or null. Bounded at a day so a typo cannot draw a block that wraps
+ * the ribbon several times.
+ */
+export function clampDuration(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(24 * 60, Math.round(n));
+}
+
 export function mapHabit(row: typeof schema.habits.$inferSelect) {
   const r = row as typeof row & { extraXp?: number; xpWeight?: number };
   return {
@@ -43,6 +73,11 @@ export function mapHabit(row: typeof schema.habits.$inferSelect) {
     emoji: row.emoji,
     category: row.category,
     frequencyRule: row.frequencyRule,
+    scheduledTime: normalizeClockTime(
+      (row as { scheduledTime?: string | null }).scheduledTime,
+    ),
+    durationMinutes:
+      (row as { durationMinutes?: number | null }).durationMinutes ?? null,
     preferredTimeWindow: row.preferredTimeWindow,
     anchor: row.anchor,
     linkedGoalId: row.linkedGoalId,

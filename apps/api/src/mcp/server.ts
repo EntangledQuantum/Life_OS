@@ -32,6 +32,7 @@ import {
   selectForCleanup,
   withVisibility,
 } from "../services/agent-view.js";
+import { getAgenda } from "../services/agenda.js";
 import { z } from "zod";
 
 /*
@@ -181,19 +182,44 @@ const tools = [
     },
   },
   {
+    name: "lifeos_get_agenda",
+    description:
+      "Today as one list — habits with a time and tasks with a time, in time order, then " +
+      "everything untimed. **This is what the user's screen shows**, so use it when you need to " +
+      "know what their day looks like or talk to them about it. Each item says whether it came " +
+      "from a habit or a task, which is what you complete. A habit with a scheduledTime appears " +
+      "here on its own; it needs no companion task, and creating one gives the user two rows to " +
+      "tick for one act.",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
     name: "lifeos_list_habits",
     description: "List all active habits with today status, streaks, and themes",
     inputSchema: { type: "object" as const, properties: {} },
   },
   {
     name: "lifeos_create_habit",
-    description: "Create a habit (encourage tiny + anchor). Optional emoji, color, graphic theme.",
+    description:
+      "Create a habit. Give it scheduledTime (HH:mm) and it appears on the timeline at that " +
+      "slot every day, automatically — **do not also create a task for it**. That was the old " +
+      "way and it produced two rows for one act: two things to tick, XP paid twice if the user " +
+      "ticked both, and the two surfaces disagreeing if they ticked one. Leave scheduledTime " +
+      "out for a habit with no particular time. Encourage tiny + anchor.",
     inputSchema: {
       type: "object" as const,
       properties: {
         name: { type: "string" },
         emoji: { type: "string" },
         category: { type: "string" },
+        scheduledTime: {
+          type: "string",
+          description:
+            "HH:mm, 24-hour. When in the day this happens. Setting it puts the habit on the timeline every day — no separate task needed. Omit for anytime.",
+        },
+        durationMinutes: {
+          type: "number",
+          description: "How long it takes. Only meaningful with scheduledTime.",
+        },
         isTiny: { type: "boolean" },
         baseXp: { type: "number" },
         anchor: { type: "string" },
@@ -208,13 +234,20 @@ const tools = [
   },
   {
     name: "lifeos_update_habit",
-    description: "Update habit fields by id",
+    description:
+      "Update habit fields by id. Setting scheduledTime puts it on the timeline; passing null " +
+      "takes it off again and it becomes an anytime habit.",
     inputSchema: {
       type: "object" as const,
       properties: {
         id: { type: "string" },
         name: { type: "string" },
         emoji: { type: "string" },
+        scheduledTime: {
+          type: ["string", "null"],
+          description: "HH:mm, or null to remove the time and take it off the timeline.",
+        },
+        durationMinutes: { type: ["number", "null"] },
         baseXp: { type: "number" },
         active: { type: "boolean" },
       },
@@ -963,6 +996,8 @@ async function handleTool(name: string, args: Record<string, unknown>) {
       };
     }
 
+    case "lifeos_get_agenda":
+      return getAgenda(db);
     case "lifeos_list_habits":
       return listHabits(db);
     case "lifeos_create_habit":
@@ -1273,6 +1308,7 @@ const READ_ONLY_TOOLS = new Set([
   "lifeos_get_range",
   "lifeos_search_history",
   "lifeos_get_workload",
+  "lifeos_get_agenda",
 ]);
 
 /**
