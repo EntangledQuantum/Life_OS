@@ -121,6 +121,7 @@ function fromHabit(
     done: habit.completedToday,
     xp: habit.baseXp + habit.extraXp,
     streak: habit.currentStreak,
+    habitId: habit.id,
     themeColor: habit.themeColor,
   };
 }
@@ -147,6 +148,7 @@ function fromTask(task: Task, day: LifeDay, now: Date, lead: number): AgendaItem
     done,
     xp: task.xpOnComplete,
     streak: null,
+    habitId: task.habitId,
     themeColor: task.themeColor,
   };
 }

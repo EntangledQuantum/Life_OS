@@ -1,7 +1,16 @@
 import { useMemo } from "react";
 import { View } from "react-native";
-import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
+import Svg, {
+  Circle,
+  Defs,
+  Line,
+  Path,
+  RadialGradient,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
 import { useTokens } from "@/lib/theme-provider";
+import { GrowthMeter } from "./growth-meter";
 import type { AgendaItem, GrowthStyle, HabitWithToday } from "@/lib/types";
 
 /**
@@ -151,6 +160,23 @@ export function DayGraphic({
     [efficiencyPct, habits, history, t.accent],
   );
 
+  /*
+   * The two originals, kept because people liked them. They encode one number
+   * where the rest encode three — a reason not to make them the default, not a
+   * reason to delete them.
+   */
+  if (style === "sprout" || style === "orb") {
+    return (
+      <GrowthMeter
+        efficiencyPct={efficiencyPct}
+        style={style}
+        size={size}
+        showReadout={false}
+        celebrationIntensity="minimal"
+      />
+    );
+  }
+
   if (style === "arc") {
     const radius = 88;
     const sun = dayArcPoint(dayProgress, radius);
@@ -228,6 +254,22 @@ export function DayGraphic({
   return (
     <View style={{ width: size, height: size }}>
       <Svg width={size} height={size} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+        {/*
+          A halo that brightens as the day fills, so the light *is* the
+          progress rather than decoration laid over it. No blur filter here —
+          react-native-svg's filter support is patchy across versions, and a
+          graphic that silently renders as a black square on one Android build
+          is worse than one without a bloom.
+        */}
+        <Defs>
+          <RadialGradient id="dg-halo" cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={t.accent} stopOpacity={0.16 + geo.fill * 0.2} />
+            <Stop offset="65%" stopColor={t.accent} stopOpacity={0.05} />
+            <Stop offset="100%" stopColor={t.accent} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx={CENTRE} cy={CENTRE} r={SIZE * 0.46} fill="url(#dg-halo)" />
+
         {geo.rings.map((ring, i) => (
           <Circle
             key={`ring-${i}`}

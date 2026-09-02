@@ -97,6 +97,17 @@ export interface Task {
   /** Links and references. What a "study block" always was underneath. */
   resources: TaskResource[];
 
+  /**
+   * The habit this task is *about*, if any.
+   *
+   * A pointer, not a coupling: completing the card does not complete the habit
+   * and the habit does not complete the card. An agent card explaining where
+   * the reading habit stands is not the reading habit. The link exists so a
+   * client can show the relationship instead of leaving the user to infer it
+   * from two similar titles sitting next to each other.
+   */
+  habitId: string | null;
+
   /** Pinned to a front-page card slot (0 or 1). Null = not pinned. */
   slot: 0 | 1 | null;
   emoji: string | null;

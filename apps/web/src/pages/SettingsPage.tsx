@@ -201,8 +201,10 @@ export function SettingsPage() {
         <div>
           <label className="label">How the day is drawn</label>
           <p className="mb-2 text-xs text-[var(--muted)]">
-            All three read the same day and differ only in shape, so this is a
-            preference rather than a choice about how much you see.
+            Bloom, Arc and Rings all read the same day and differ only in
+            shape. Sprout and Orb show today against target and nothing else —
+            simpler on purpose. This lives here rather than on the front page,
+            which is for the day, not for settings about the day.
           </p>
           <div className="flex flex-wrap gap-2">
             {(
@@ -218,6 +220,8 @@ export function SettingsPage() {
                   hint: "the day as a horizon, sun where the clock is",
                 },
                 { id: "rings", label: "Rings", hint: "one ring per week" },
+                { id: "sprout", label: "Sprout", hint: "a plant that grows" },
+                { id: "orb", label: "Orb", hint: "fills with light" },
               ] as const
             ).map((option) => (
               <button

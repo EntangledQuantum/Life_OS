@@ -56,6 +56,7 @@ function mapTask(row: typeof schema.tasks.$inferSelect): Task {
   return {
     id: row.id,
     kind: (isTaskKind(row.kind) ? row.kind : "task") as TaskKind,
+    habitId: (row as { habitId?: string | null }).habitId ?? null,
     title: row.title,
     subtitle: row.subtitle ?? null,
     body: row.body ?? null,
@@ -189,6 +190,7 @@ export interface CreateTaskInput {
   webhookOnComplete?: boolean;
   webhookOnInteract?: boolean;
   resources?: TaskResource[] | null;
+  habitId?: string | null;
   slot?: 0 | 1 | null;
   emoji?: string | null;
   themeColor?: string | null;
@@ -289,6 +291,7 @@ export function createTask(
       webhookOnComplete: input.webhookOnComplete ?? false,
       webhookOnInteract: input.webhookOnInteract ?? false,
       resourcesJson: input.resources?.length ? JSON.stringify(input.resources) : null,
+      habitId: input.habitId ?? null,
       slot: input.slot ?? null,
       emoji: input.emoji ?? defaultEmoji(input.kind ?? "task"),
       themeColor: input.themeColor ?? null,
@@ -411,6 +414,7 @@ export function updateTask(
               : null,
           }
         : {}),
+      ...(patch.habitId !== undefined ? { habitId: patch.habitId } : {}),
       ...(patch.slot !== undefined ? { slot: patch.slot } : {}),
       ...(patch.emoji !== undefined ? { emoji: patch.emoji } : {}),
       ...(patch.themeColor !== undefined ? { themeColor: patch.themeColor } : {}),

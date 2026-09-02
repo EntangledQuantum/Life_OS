@@ -224,8 +224,6 @@ export default function TodayScreen() {
    * it differently.
    */
   const agenda = data.agenda ?? [];
-  const timed = agenda.filter((i) => i.at !== null);
-  const anytime = agenda.filter((i) => i.at === null);
   const doneCount = agenda.filter((i) => i.done).length;
 
   const dayStart = Date.parse(data.lifeDay?.lifeDayStart ?? "");
@@ -308,9 +306,9 @@ export default function TodayScreen() {
                     style={{
                       borderWidth: 1,
                       borderColor: t.border,
-                      borderRadius: radius.pill,
-                      paddingHorizontal: 11,
-                      paddingVertical: 6,
+                      borderRadius: radius.lg,
+                      paddingHorizontal: 14,
+                      paddingVertical: 9,
                       alignItems: "flex-end",
                     }}
                   >
@@ -318,7 +316,7 @@ export default function TodayScreen() {
                       style={{
                         color: pulseColor(data.pulse, t),
                         fontFamily: font.bodySemi,
-                        fontSize: 12,
+                        fontSize: 13,
                       }}
                     >
                       {data.pulse}
@@ -363,57 +361,62 @@ export default function TodayScreen() {
                   onSelect={(a) => setActivity.mutate(a)}
                   onClear={() => clearActivity.mutate()}
                 />
-                      </>
-                    }
-                    right={
-                      <>
-                {/* ---------------------------------------------------- agent cards */}
+
+                {/*
+                  Cards sit with the graphic rather than above the list. On a
+                  tablet this column ran out of content halfway down while the
+                  cards pushed the day's work below them; on a phone they were
+                  the first thing you scrolled past to reach what you came for.
+                */}
                 {setupCard || contentCards.length > 0 ? (
                   <View style={{ gap: 12 }}>
                     <SectionHeader title="From your agent" />
                     {setupCard ? <AgentSetupStrip card={setupCard} /> : null}
                     {contentCards.map((c) => (
-                      <AgentCard key={c.id} card={c} onComplete={() => completeTask.mutate(c.id)} />
+                      <AgentCard
+                        key={c.id}
+                        card={c}
+                        habit={(data.habits ?? []).find((h) => h.id === c.habitId)}
+                        onComplete={() => completeTask.mutate(c.id)}
+                      />
                     ))}
                   </View>
                 ) : null}
-
+                      </>
+                    }
+                    right={
+                      <>
                 {/*
-                  One list. Habits and scheduled tasks used to render as two
-                  sections here, which is exactly what made it reasonable for an
-                  agent to create one of each for the same act — and gave two
-                  rows to tick, paying out twice if both were ticked.
+                  One list, one section.
+                  
+                  Habits and scheduled tasks were two sections, which is what
+                  made it reasonable for an agent to create one of each for the
+                  same act. Merging them was not enough on its own: split again
+                  into "Today" and "Anytime", a habit with no time sat below a
+                  task with a similar name and read as a duplicate of it.
+                  
+                  A row does not move when you tick it. It stays where it was
+                  and shows as done — a list that reorders under your thumb is a
+                  list you have to re-read.
                 */}
                 <View style={{ gap: 10 }}>
-                  {timed.length > 0 ? (
-                    <>
-                      <SectionHeader title="Today" />
-                      {timed.map((item) => (
-                        <AgendaRow
-                          key={item.id}
-                          item={item}
-                          busy={completeItem.isPending || undoItem.isPending}
-                          onComplete={(i) => completeItem.mutate(i)}
-                          onUndo={(i) => undoItem.mutate(i)}
-                        />
-                      ))}
-                    </>
-                  ) : null}
-
-                  {anytime.length > 0 ? (
-                    <>
-                      <SectionHeader title="Anytime" />
-                      {anytime.map((item) => (
-                        <AgendaRow
-                          key={item.id}
-                          item={item}
-                          busy={completeItem.isPending || undoItem.isPending}
-                          onComplete={(i) => completeItem.mutate(i)}
-                          onUndo={(i) => undoItem.mutate(i)}
-                        />
-                      ))}
-                    </>
-                  ) : null}
+                  <SectionHeader
+                    title="Today"
+                    right={
+                      <Text style={{ color: t.faint, fontFamily: font.mono, fontSize: 12 }}>
+                        {doneCount}/{agenda.length}
+                      </Text>
+                    }
+                  />
+                  {agenda.map((item) => (
+                    <AgendaRow
+                      key={item.id}
+                      item={item}
+                      busy={completeItem.isPending || undoItem.isPending}
+                      onComplete={(i) => completeItem.mutate(i)}
+                      onUndo={(i) => undoItem.mutate(i)}
+                    />
+                  ))}
 
                   {agenda.length === 0 ? (
                     <Body>Nothing on today. Ask your agent to set up some habits.</Body>

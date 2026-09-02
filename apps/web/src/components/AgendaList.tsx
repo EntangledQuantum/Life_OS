@@ -1,21 +1,24 @@
-import { useMemo } from "react";
 import { Check, Undo2 } from "lucide-react";
 import type { AgendaItem } from "@life-os/shared";
 import { cn } from "@/lib/utils";
 
 /**
- * Today, as one list.
+ * Today, as **one** list.
  *
- * Habits and scheduled tasks used to be rendered as two lists on this page,
- * which is what made it reasonable for an agent to create one of each for the
- * same act — and gave the user two rows to tick, paying out twice if they
- * ticked both. They are one list now, and an item says which record it belongs
- * to so the tick lands on the right one.
+ * Two things went wrong before this. Habits and scheduled tasks were rendered
+ * as separate lists, which is what made it reasonable for an agent to create
+ * one of each for the same act — two rows to tick, XP paid twice if you ticked
+ * both. And then, having merged them, the merged list was split again into
+ * "Today" and "Anytime", so a habit with no time sat in a second section
+ * underneath a task with a similar name and read as a duplicate of it.
  *
- * Timed things first, in time order, because that is the order they happen in.
- * Untimed work sits underneath in its own group: it is real, it is open, and it
- * is not part of today's shape — running the two together is how a front page
- * fills up with things nobody has to do now.
+ * There are no sections now. Everything that is on today is in one place, in
+ * the order it happens, with untimed work after the timed. A row does not move
+ * when you tick it — it stays where it was and shows as done, because a list
+ * that reorders under your finger is a list you have to re-read.
+ *
+ * At the reset the habits come back open on their own: a habit is not done
+ * until it is logged, and a log belongs to the life-day it was written in.
  */
 export function AgendaList({
   items,
@@ -28,13 +31,6 @@ export function AgendaList({
   onComplete: (item: AgendaItem) => void;
   onUndo: (item: AgendaItem) => void;
 }) {
-  const { timed, anytime } = useMemo(() => {
-    return {
-      timed: items.filter((i) => i.at !== null),
-      anytime: items.filter((i) => i.at === null),
-    };
-  }, [items]);
-
   if (items.length === 0) {
     return (
       <p className="rounded-xl border border-white/[0.06] px-4 py-8 text-center text-sm text-[var(--muted)]">
@@ -43,46 +39,29 @@ export function AgendaList({
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {timed.length > 0 && (
-        <Group label="Today">
-          {timed.map((item) => (
-            <Row
-              key={item.id}
-              item={item}
-              busy={busy}
-              onComplete={onComplete}
-              onUndo={onUndo}
-            />
-          ))}
-        </Group>
-      )}
+  const done = items.filter((i) => i.done).length;
 
-      {anytime.length > 0 && (
-        <Group label="Anytime">
-          {anytime.map((item) => (
-            <Row
-              key={item.id}
-              item={item}
-              busy={busy}
-              onComplete={onComplete}
-              onUndo={onUndo}
-            />
-          ))}
-        </Group>
-      )}
-    </div>
-  );
-}
-
-function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--faint)]">
-        {label}
-      </h2>
-      <ul className="space-y-1.5">{children}</ul>
+      <header className="mb-2.5 flex items-baseline justify-between">
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--faint)]">
+          Today
+        </h2>
+        <span className="font-mono text-[11px] text-[var(--faint)]">
+          {done}/{items.length}
+        </span>
+      </header>
+      <ul className="space-y-1.5">
+        {items.map((item) => (
+          <Row
+            key={item.id}
+            item={item}
+            busy={busy}
+            onComplete={onComplete}
+            onUndo={onUndo}
+          />
+        ))}
+      </ul>
     </section>
   );
 }
@@ -112,6 +91,8 @@ function Row({
       })
     : null;
 
+  const isHabit = item.source === "habit";
+
   return (
     <li
       className={cn(
@@ -125,17 +106,35 @@ function Row({
     >
       {/*
         A fixed-width time column, so the list reads as a schedule rather than
-        as ragged text. Untimed rows get a dash in the same column instead of
-        collapsing it, which would make the two groups look unrelated.
+        as ragged text. Untimed rows keep the column and leave it blank instead
+        of collapsing it, which would make them look like a different kind of
+        thing — they are not, they just have no hour.
       */}
       <span
         className={cn(
           "w-11 shrink-0 font-mono text-[11px] tabular-nums",
-          item.state === "overdue" ? "text-[#FBBF24]" : "text-[var(--faint)]",
+          item.state === "overdue" && !item.done
+            ? "text-[#FBBF24]"
+            : "text-[var(--faint)]",
         )}
       >
-        {time ?? "—"}
+        {time ?? ""}
       </span>
+
+      {/*
+        A habit is marked, because the two behave differently and the difference
+        matters when you look at the row: a habit comes back tomorrow and can be
+        un-ticked, a task is a one-off and cannot. The bar is quieter than a
+        label and survives being glanced at.
+      */}
+      <span
+        aria-hidden
+        className={cn(
+          "h-7 w-[3px] shrink-0 rounded-full",
+          isHabit ? "opacity-70" : "opacity-0",
+        )}
+        style={{ background: item.themeColor || "var(--accent)" }}
+      />
 
       {item.emoji && (
         <span className="shrink-0 text-base leading-none">{item.emoji}</span>
@@ -151,8 +150,11 @@ function Row({
           {item.title}
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[var(--faint)]">
-          {item.source === "habit" && item.streak !== null && item.streak > 0 && (
-            <span title="Current streak">{item.streak}d streak</span>
+          {isHabit && (
+            <span title="A habit — it comes back tomorrow">
+              habit
+              {item.streak !== null && item.streak > 0 ? ` · ${item.streak}d` : ""}
+            </span>
           )}
           {/*
             The kind is a tag rather than a tab. A study block is a task with
@@ -174,16 +176,16 @@ function Row({
       {item.done ? (
         <button
           type="button"
-          disabled={busy || item.source !== "habit"}
+          disabled={busy || !isHabit}
           onClick={() => onUndo(item)}
           className={cn(
             "shrink-0 rounded-lg p-2 text-[var(--faint)] transition-colors",
-            item.source === "habit"
+            isHabit
               ? "hover:bg-white/[0.06] hover:text-[var(--text)]"
               : "opacity-40",
           )}
           title={
-            item.source === "habit"
+            isHabit
               ? "Undo"
               : "Completed tasks are not undone — ask your agent to reschedule"
           }

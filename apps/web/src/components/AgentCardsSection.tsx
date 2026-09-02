@@ -14,13 +14,25 @@ const STORAGE_KEY = "lifeos.agentCards.collapsed";
  */
 export function AgentCardsSection({
   tasks,
+  habits,
   onComplete,
   busy,
+  stacked = false,
 }: {
   /** Every open task; the two pinned ones are drawn as cards. */
   tasks: Task[];
+  /** For naming the habit a card is about, when it names one. */
+  habits?: { id: string; name: string; emoji: string }[];
   onComplete: (id: string) => void;
   busy?: boolean;
+  /**
+   * One per row instead of two across.
+   *
+   * The cards sat full-width under the fold while the column beside the day
+   * graphic was empty. Stacked, they fill that column — which is also the only
+   * shape that works in it, since half a wide card is unreadable.
+   */
+  stacked?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -113,12 +125,18 @@ export function AgentCardsSection({
         aria-hidden={collapsed}
       >
         <div className="collapsible-inner">
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div
+            className={cn(
+              "mt-4 grid gap-4",
+              stacked ? "grid-cols-1" : "sm:grid-cols-2",
+            )}
+          >
             {contentCards.map((card) => (
               <AgentCard
                 key={card.id}
                 card={card}
                 busy={busy}
+                habit={habits?.find((h) => h.id === card.habitId)}
                 onComplete={() => onComplete(card.id)}
               />
             ))}

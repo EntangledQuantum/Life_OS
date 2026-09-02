@@ -235,6 +235,8 @@ export const createTaskSchema = z.object({
   webhookOnInteract: z.boolean().default(false),
   /** Links and references — what a "study block" always was underneath. */
   resources: z.array(taskResourceSchema).max(30).nullable().optional(),
+  /** The habit this task is about. A pointer only — neither completes the other. */
+  habitId: z.string().nullable().optional(),
   /** Pin to a front-page card slot. Null leaves it in the list. */
   slot: z.union([z.literal(0), z.literal(1)]).nullable().optional(),
   emoji: z.string().max(16).nullable().optional(),

@@ -429,6 +429,16 @@ export const tasks = sqliteTable("tasks", {
   flash: integer("flash", { mode: "boolean" }).notNull().default(true),
 
   source: text("source").notNull().default("agent"),
+  /**
+   * The habit this task is *about*, if any.
+   *
+   * A pointer and nothing else: completing one does not complete the other.
+   * They are different things concerning the same subject — an agent card
+   * explaining where the reading habit stands is not the reading habit — and
+   * the link exists so a client can show the relationship rather than leaving
+   * the user to infer it from the titles.
+   */
+  habitId: text("habit_id"),
   metaJson: text("meta_json"),
 
   completedAt: text("completed_at"),

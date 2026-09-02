@@ -39,7 +39,7 @@ export function AgendaRow({
       })
     : "—";
 
-  const canUndo = item.source === "habit";
+  const isHabit = item.source === "habit";
 
   return (
     <View
@@ -72,8 +72,24 @@ export function AgendaRow({
           color: item.state === "overdue" && !item.done ? t.warning : t.faint,
         }}
       >
-        {time}
+        {item.at ? time : ""}
       </Text>
+
+      {/*
+        A habit is marked, because the two behave differently and the difference
+        matters when you look at the row: a habit comes back tomorrow and can be
+        un-ticked, a task is a one-off and cannot. A bar rather than a label —
+        quieter, and it survives being glanced at.
+      */}
+      <View
+        style={{
+          width: 3,
+          height: 26,
+          borderRadius: 2,
+          backgroundColor: item.themeColor || t.accent,
+          opacity: isHabit ? 0.7 : 0,
+        }}
+      />
 
       {item.emoji ? <Text style={{ fontSize: 16 }}>{item.emoji}</Text> : null}
 
@@ -89,9 +105,9 @@ export function AgendaRow({
           {item.title}
         </Text>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 2 }}>
-          {item.source === "habit" && (item.streak ?? 0) > 0 ? (
+          {isHabit ? (
             <Text style={{ fontSize: 10, color: t.faint }}>
-              {item.streak}d streak
+              habit{(item.streak ?? 0) > 0 ? ` · ${item.streak}d` : ""}
             </Text>
           ) : null}
           {/*
@@ -116,7 +132,7 @@ export function AgendaRow({
       </View>
 
       <Pressable
-        disabled={busy || (item.done && !canUndo)}
+        disabled={busy || (item.done && !isHabit)}
         onPress={() => {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           if (item.done) onUndo(item);
@@ -131,7 +147,7 @@ export function AgendaRow({
           borderRadius: radius.md,
           borderWidth: item.done ? 0 : 1,
           borderColor: t.border,
-          opacity: item.done && !canUndo ? 0.35 : 1,
+          opacity: item.done && !isHabit ? 0.35 : 1,
         }}
         accessibilityRole="button"
         accessibilityLabel={item.done ? `Undo ${item.title}` : `Mark ${item.title} done`}

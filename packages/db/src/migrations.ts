@@ -815,6 +815,73 @@ const scheduledHabits: Migration = {
   },
 };
 
+
+/**
+ * v10 — a task can name the habit it is about.
+ *
+ * Agent cards are the app's one piece of prose: "GoT p.550, next rung p.600".
+ * They almost always concern a habit — the reading habit, the physics habit —
+ * and nothing recorded which, so the card and the habit sat next to each other
+ * on the same screen with no visible relationship. The user had to know.
+ *
+ * A nullable pointer, and nothing more: the card does not complete the habit
+ * and the habit does not complete the card. They are different things about the
+ * same subject, and the link exists so a client can say so.
+ */
+const taskHabitLink: Migration = {
+  version: 10,
+  name: "tasks can point at a habit",
+  up(db) {
+    addColumn(db, "tasks", "habit_id", "TEXT");
+  },
+};
+
+
+/**
+ * v11 — everyone lands on the new default graphic once.
+ *
+ * `sprout` and `orb` were briefly the only two styles, so every existing
+ * instance has one of those names stored. When they came back as *choices*
+ * alongside `bloom`, that stored name started resolving to the old drawing
+ * again — so someone who had been looking at the new one for a week would open
+ * the app and find it silently replaced, having chosen nothing.
+ *
+ * This rewrites the stored preference once, and only where it still holds a
+ * name from before the new styles existed. It is a preference, not history:
+ * the user can pick either of them straight back in Settings, and anyone who
+ * does keeps their choice, because a value written after this point is never
+ * touched again.
+ */
+const defaultToBloom: Migration = {
+  version: 11,
+  name: "existing instances default to the bloom graphic",
+  up(db) {
+    if (!hasTable(db, "gamification_config")) return;
+    const rows = db
+      .prepare("SELECT id, config_json FROM gamification_config")
+      .all() as { id: number; config_json: string }[];
+
+    for (const row of rows) {
+      try {
+        const cfg = JSON.parse(row.config_json) as Record<string, unknown>;
+        const current = cfg.growthStyle ?? cfg.nurtureStyle;
+        // Only pre-bloom names. Anything else is a deliberate choice.
+        if (!["sprout", "orb", "plant", "water", "both"].includes(String(current))) {
+          continue;
+        }
+        cfg.growthStyle = "bloom";
+        delete cfg.nurtureStyle;
+        db.prepare("UPDATE gamification_config SET config_json = ? WHERE id = ?").run(
+          JSON.stringify(cfg),
+          row.id,
+        );
+      } catch {
+        /* unparseable config is not this migration's problem to fix */
+      }
+    }
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -826,6 +893,8 @@ export const MIGRATIONS: Migration[] = [
   changeHistory,
   explicitTimezone,
   scheduledHabits,
+  taskHabitLink,
+  defaultToBloom,
 ];
 
 /** The version a database is brought to by `runMigrations`. */

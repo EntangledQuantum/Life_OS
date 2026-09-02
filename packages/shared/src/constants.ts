@@ -42,52 +42,46 @@ export type HabitGraphic = (typeof HABIT_GRAPHICS)[number];
 /**
  * How the day is drawn.
  *
- * `sprout` grew a stem and `orb` filled a circle, and both had the same
- * problem: the only thing they encoded was one number, the XP ratio. A bar
- * would have said as much. Neither showed *which* things were done, and neither
- * changed at all as weeks of consistency accumulated, so there was nothing to
- * grow into.
+ * Five shapes over the same three facts — what is done today, which of your
+ * habits did it, and how long you have kept it up — so switching is a matter of
+ * taste rather than of seeing less:
  *
- * The three below all read the same data and differ only in shape, so switching
- * is a preference rather than a different amount of information:
+ * - `bloom` — a petal per habit around a core showing today against target,
+ *   with a ring for each week behind. The default: it is a picture of *your*
+ *   habits rather than a generic meter.
+ * - `arc` — the day as a horizon, sun where the clock is, a mark per scheduled
+ *   thing. For thinking in shape-of-day.
+ * - `rings` — the week stack alone, outermost being today.
+ * - `sprout` — a plant that grows toward the target.
+ * - `orb` — a sphere that fills with light.
  *
- * - `bloom` — a petal per habit, filled when that habit closes today, around a
- *   core showing today against target, with a ring added for each week of
- *   consistency behind it. The petals make it personal: it is a picture of
- *   *your* habits, not a progress bar.
- * - `arc` — the day as a horizon, with the sun where the clock is and each
- *   scheduled thing a mark along the path. Best for seeing shape-of-day.
- * - `rings` — concentric rings, one per week, the outermost being today.
+ * `sprout` and `orb` were briefly dropped when the first three arrived, on the
+ * grounds that they encode one number where the others encode three. That was
+ * a fair criticism of them as the *only* option and a bad reason to delete
+ * something people liked looking at. They are back as choices, not defaults.
  */
-export const GROWTH_STYLES = ["bloom", "arc", "rings"] as const;
+export const GROWTH_STYLES = ["bloom", "arc", "rings", "sprout", "orb"] as const;
 
 export type GrowthStyle = (typeof GROWTH_STYLES)[number];
 
-/** Values from older configs and older agents. Never re-emitted. */
-export const LEGACY_GROWTH_STYLES = [
-  "plant",
-  "water",
-  "both",
-  "sprout",
-  "orb",
-] as const;
+/** Pre-rename names from older configs and agents. Never re-emitted. */
+export const LEGACY_GROWTH_STYLES = ["plant", "water", "both"] as const;
 
 /** Map any historical or current value onto a supported GrowthStyle. */
 export function normalizeGrowthStyle(value: unknown): GrowthStyle {
   switch (value) {
     case "bloom":
+    case "arc":
+    case "rings":
     case "sprout":
+    case "orb":
+      return value;
+    // The pre-rename trio, which only ever meant one of the two old drawings.
     case "plant":
     case "both":
-      return "bloom";
-    // The filled circle became the ring stack, which is the same idea with a
-    // history behind it.
-    case "rings":
-    case "orb":
+      return "sprout";
     case "water":
-      return "rings";
-    case "arc":
-      return "arc";
+      return "orb";
     default:
       return "bloom";
   }

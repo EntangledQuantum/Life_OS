@@ -55,6 +55,12 @@ export interface AgendaItem {
   xp: number;
   /** Habits only. */
   streak: number | null;
+  /**
+   * The habit this row concerns — itself for a habit row, the linked habit for
+   * a task that names one. Lets a client mark everything about the same habit
+   * without caring which table the row came from.
+   */
+  habitId: string | null;
   themeColor: string | null;
 }
 

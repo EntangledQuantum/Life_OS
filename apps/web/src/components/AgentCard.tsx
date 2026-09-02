@@ -10,10 +10,20 @@ export function AgentCard({
   card,
   onComplete,
   busy,
+  habit,
 }: {
   card: Task;
   onComplete: () => void;
   busy?: boolean;
+  /**
+   * The habit this card is about, when it names one.
+   *
+   * A card and a habit could sit on the same screen with no visible
+   * relationship — "GoT p.550, next rung p.600" next to a reading habit, and
+   * only the user knowing they were the same subject. Shown, not acted on:
+   * completing the card does not tick the habit.
+   */
+  habit?: { id: string; name: string; emoji: string };
 }) {
   const done = card.status === "done";
   const color = card.themeColor ?? "#5B8CFF";
@@ -59,6 +69,16 @@ export function AgentCard({
               <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--faint)]">
                 agent{card.slot !== null ? ` · slot ${card.slot}` : ""}
               </span>
+              {habit && (
+                <span
+                  className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-[var(--muted)]"
+                  style={{ borderColor: `${color}55` }}
+                  title={`About your "${habit.name}" habit`}
+                >
+                  <span aria-hidden>{habit.emoji}</span>
+                  {habit.name}
+                </span>
+              )}
             </div>
             {card.subtitle && (
               <p className="mt-0.5 text-sm text-[var(--muted)]">{card.subtitle}</p>

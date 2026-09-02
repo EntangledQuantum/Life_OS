@@ -16,9 +16,19 @@ import { useTokens } from "@/lib/theme-provider";
 export function AgentCard({
   card,
   onComplete,
+  habit,
 }: {
   card: Task;
   onComplete?: () => void;
+  /**
+   * The habit this card is about, when it names one.
+   *
+   * A card and a habit could sit on the same screen with no visible
+   * relationship — a note about where the reading habit stands, next to the
+   * reading habit, and only the user knowing they were the same subject. Shown,
+   * not acted on: completing the card does not tick the habit.
+   */
+  habit?: { id: string; name: string; emoji: string };
 }) {
   const t = useTokens();
   const tint = card.themeColor || activityColor(card.activityTag, t.accent);
@@ -62,6 +72,27 @@ export function AgentCard({
               <Text style={{ color: t.muted, fontFamily: font.body, fontSize: 13 }}>
                 {card.subtitle}
               </Text>
+            ) : null}
+            {habit ? (
+              <View
+                style={{
+                  alignSelf: "flex-start",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 2,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: radius.pill,
+                  borderWidth: 1,
+                  borderColor: rgba(tint, 0.35),
+                }}
+              >
+                <Text style={{ fontSize: 11 }}>{habit.emoji}</Text>
+                <Text style={{ color: t.muted, fontFamily: font.body, fontSize: 11 }}>
+                  {habit.name}
+                </Text>
+              </View>
             ) : null}
           </View>
 

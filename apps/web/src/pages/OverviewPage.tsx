@@ -120,16 +120,16 @@ export function OverviewPage() {
         */}
         <Link
           to="/app/analytics"
-          className="shrink-0 rounded-full border border-white/[0.07] px-3 py-1.5 text-right transition-colors hover:bg-white/[0.04]"
+          className="shrink-0 rounded-2xl border border-white/[0.09] px-4 py-2.5 text-right transition-colors hover:bg-white/[0.04]"
           title="See the full picture on Analytics"
         >
           <div
-            className="text-xs font-medium"
+            className="text-sm font-medium leading-tight"
             style={{ color: pulseColor(data.pulse) }}
           >
             {data.pulse}
           </div>
-          <div className="font-mono text-[11px] text-[var(--faint)]">
+          <div className="mt-0.5 font-mono text-[11px] leading-tight text-[var(--faint)]">
             {p.improvementPct > 0 ? "+" : ""}
             {Math.round(p.improvementPct)}%
           </div>
@@ -183,6 +183,24 @@ export function OverviewPage() {
               );
             })}
           </div>
+
+          {/*
+            Under the graphic rather than below the fold. This column ran out of
+            content halfway down while the cards sat full-width underneath, so
+            the page had a hole in it and its most-read prose was the last thing
+            you reached. Stacked, because half a wide card is unreadable.
+          */}
+          <div className="mt-8 w-full">
+            <AgentCardsSection
+              tasks={data.tasks}
+              habits={data.habits}
+              stacked
+              busy={complete.isPending}
+              onComplete={(id) =>
+                complete.mutate({ source: "task", refId: id } as AgendaItem)
+              }
+            />
+          </div>
         </section>
 
         <section className="min-w-0">
@@ -195,15 +213,7 @@ export function OverviewPage() {
         </section>
       </div>
 
-      <div className="mt-12">
-        <AgentCardsSection
-          tasks={data.tasks}
-          busy={complete.isPending}
-          onComplete={(id) =>
-            complete.mutate({ source: "task", refId: id } as AgendaItem)
-          }
-        />
-      </div>
+
     </motion.div>
   );
 }

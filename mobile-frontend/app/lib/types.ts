@@ -6,7 +6,7 @@
 
 export type Source = "user" | "agent";
 export type ImprovementPulse = "Improving" | "Stable" | "Recovering" | "Drifting";
-export type GrowthStyle = "bloom" | "arc" | "rings";
+export type GrowthStyle = "bloom" | "arc" | "rings" | "sprout" | "orb";
 export type AccentThemeId = "nebula" | "quantum" | "terminal" | "ember";
 export type NotificationSoundId =
   | "chime"
@@ -142,6 +142,8 @@ export interface Task {
   webhookOnComplete: boolean;
   webhookOnInteract: boolean;
 
+  /** The habit this task is about, if any. A pointer — neither completes the other. */
+  habitId: string | null;
   /** Links and references. What a "study block" always was underneath. */
   resources: TaskResource[];
 
@@ -349,6 +351,8 @@ export interface AgendaItem {
   done: boolean;
   xp: number;
   streak: number | null;
+  /** The habit this row concerns — itself for a habit, the link for a task. */
+  habitId: string | null;
   themeColor: string | null;
 }
 

@@ -768,6 +768,11 @@ const tools = [
             required: ["label", "url"],
           },
         },
+        habitId: {
+          type: "string",
+          description:
+            "The habit this task is *about*. A pointer only — completing the task does not tick the habit, and vice versa. Use it on a pinned card so the user can see which habit your note concerns instead of matching two similar titles by eye.",
+        },
         slot: { type: "number", enum: [0, 1] },
         emoji: { type: "string" },
         themeColor: { type: "string" },

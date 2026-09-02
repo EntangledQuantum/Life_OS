@@ -46,20 +46,26 @@ See CLIENT_GUIDE §4. Highlights: life-day ≠ calendar day; celebrations only a
 user dismiss; reminders POST `/notified` even under DND; no levels/leaderboards;
 no goal-creation UI; never colour a bad day red.
 
-## Growth meter / animations (likely touch points)
+## The day graphic (likely touch points)
 
 | File | Role |
 |------|------|
-| `components/growth-meter.tsx` | Sprout + orb visuals; **must** draw ghosted 100% state behind live state |
-| `components/growth-hero.tsx` | Centres the meter and hangs the day's four numbers in the corners |
-| Readout placement | Per style, not shared — `OrbReadout` centres, `SproutReadout` sits at the right edge |
+| `components/day-graphic.tsx` | The entry point every surface uses. `bloom` / `arc` / `rings` drawn here; `sprout` / `orb` delegate to the file below |
+| `components/growth-meter.tsx` | The two original visuals; **must** keep drawing the ghosted 100% state behind the live one |
+| `components/agenda-row.tsx` | One row of today, habit or task. The 3px bar marks a habit |
+| Geometry | Duplicated from `packages/shared/src/growth.ts` **on purpose** — this app must not import from the workspace. The constants at the top of `day-graphic.tsx` are the ones that must match |
 | Leaf thresholds | `0.16 0.32 0.46 0.62 0.78 0.90` then bloom at 1.0 (match web) |
-| Web reference | `apps/web/src/components/graphics/GrowthMeter.tsx` (read only — copy patterns, don't import) |
+| Web reference | `apps/web/src/components/graphics/DayGraphic.tsx` (read only — copy patterns, don't import) |
 | Settings | `reducedMotion`, `celebrationIntensity`, `progress.growthStyle` |
 | `components/celebration-modal.tsx` | Full-screen goal complete — never auto-dismiss |
 
 Prefer `react-native-reanimated` + `react-native-svg` already in the project.
 Honour `reducedMotion` from settings **and** the OS (`useTheme().osReducedMotion`).
+
+**No SVG filters.** `react-native-svg`'s filter support varies by version and a
+missing one does not degrade — it renders a black rectangle. The web's bloom
+uses `feGaussianBlur`; here the same brightening is a `RadialGradient` halo.
+Keep it that way.
 
 Two things in the orb are load-bearing and easy to undo by accident:
 
@@ -77,6 +83,17 @@ centred and large. The sprout has no empty middle — a centred number lands on
 the pot and the roots — so it goes to the right edge, vertically centred, where
 the viewBox is empty at every growth level (stem at x≈100/200, widest leaf tip
 x≈130/200). Do not re-merge them into one `Readout`.
+
+## Today is one list
+
+`data.agenda` arrives already merged and already ordered: habits with a time and
+tasks with a time in time order, then everything untimed. **Do not re-split it.**
+
+It has been split twice and both times it read as duplication. Habits and tasks
+as separate sections is what made it reasonable for an agent to create one of
+each for the same act; "Today" and "Anytime" as separate sections put a habit
+with no time underneath a task with a similar name, which looks like the same
+row twice. One section, no regrouping, and a row does not move when it is ticked.
 
 ## Screen sizes
 
@@ -152,6 +169,7 @@ below ~150dp tall it drops the ribbon and chips rather than clipping them.
 ## Dashboard
 
 - Single poll: `GET /api/v1/dashboard/today` (~8s on Today screen)
+- Render `data.agenda`, not `data.habits` + `data.tasks` — see "Today is one list"
 - After writes, invalidate/refetch — don't hand-patch state
 - `source: "user"` on human actions; habit complete `409` = success no-op
 

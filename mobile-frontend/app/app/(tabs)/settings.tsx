@@ -96,16 +96,18 @@ export default function SettingsScreen() {
                   <SectionHeader title="How the day is drawn" />
                   <Card style={{ gap: 14 }}>
                     <Body>
-                      All three read the same day and differ only in shape, so
-                      this is a preference rather than a choice about how much
-                      you see.
+                      Bloom, Arc and Rings read the same day and differ only in
+                      shape. Sprout and Orb show today against target and
+                      nothing else — simpler on purpose.
                     </Body>
-                    <View style={{ flexDirection: "row", gap: 12 }}>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
                       {(
                         [
                           ["bloom", "Bloom", "a petal per habit"],
                           ["arc", "Arc", "the day as a horizon"],
                           ["rings", "Rings", "one ring per week"],
+                          ["sprout", "Sprout", "a plant that grows"],
+                          ["orb", "Orb", "fills with light"],
                         ] as [GrowthStyle, string, string][]
                       ).map(([id, name, hint]) => (
                         <GrowthChoice

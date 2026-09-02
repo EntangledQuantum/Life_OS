@@ -9,6 +9,7 @@ import {
   type GrowthStyle,
   type HabitWithToday,
 } from "@life-os/shared";
+import { GrowthMeter } from "./GrowthMeter";
 
 /**
  * The day, drawn.
@@ -70,6 +71,19 @@ export function DayGraphic({
     [efficiencyPct, habits, history],
   );
 
+  /*
+   * The two originals, kept because people liked them. They encode one number
+   * where the rest encode three, which is a reason not to make them the
+   * default and not a reason to delete them.
+   */
+  if (style === "sprout" || style === "orb") {
+    return (
+      <div className={className}>
+        <GrowthMeter efficiencyPct={efficiencyPct} style={style} />
+      </div>
+    );
+  }
+
   if (style === "arc") {
     return (
       <ArcGraphic
@@ -89,6 +103,33 @@ export function DayGraphic({
       role="img"
       aria-label={`${geo.done} of ${geo.total} habits done, ${Math.round(efficiencyPct)}% of today's target`}
     >
+      <defs>
+        {/*
+          A soft halo under the whole figure and a bloom on the closed petals.
+          Both scale with how much of the day is done, so the drawing gets
+          brighter as the day fills rather than glowing the same amount at 0%
+          and 100% — the light *is* the progress, not decoration on top of it.
+        */}
+        <radialGradient id="dg-halo" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.16 + geo.fill * 0.2} />
+          <stop offset="65%" stopColor="var(--accent)" stopOpacity={0.05} />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+        </radialGradient>
+        <filter id="dg-bloom" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation={2.4} result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <circle
+        cx={geo.centre}
+        cy={geo.centre}
+        r={geo.size * 0.46}
+        fill="url(#dg-halo)"
+      />
       {/* The weeks already kept. Faint on purpose — history is context, not the subject. */}
       {geo.rings.map((ring, i) => (
         <circle
@@ -129,6 +170,7 @@ export function DayGraphic({
             stroke={petal.color}
             strokeWidth={1.4}
             strokeLinejoin="round"
+            filter={petal.done ? "url(#dg-bloom)" : undefined}
             opacity={petal.done ? 0.92 : 0.42}
             initial={reduce ? false : { scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: petal.done ? 0.92 : 0.42 }}
@@ -157,6 +199,7 @@ export function DayGraphic({
         stroke="var(--accent)"
         strokeWidth={5}
         strokeLinecap="round"
+        filter="url(#dg-bloom)"
         initial={reduce ? false : { pathLength: 0 }}
         animate={{ pathLength: 1 }}
         transition={reduce ? { duration: 0 } : { duration: 0.8, ease: "easeOut" }}
