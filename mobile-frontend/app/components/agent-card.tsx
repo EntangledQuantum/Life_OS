@@ -4,7 +4,7 @@ import * as Haptics from "expo-haptics";
 import { Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { resolveCardStyle } from "@/lib/card-style";
+import { cardImages, resolveCardStyle } from "@/lib/card-style";
 import type { Task } from "@/lib/types";
 import { api } from "@/lib/api";
 import { activityColor, font, radius, rgba } from "@/lib/theme";
@@ -44,9 +44,16 @@ export function AgentCard({
    * it into something react-native-svg will draw means parsing it here. An
    * image URL covers the same ground and is already sanitised.
    */
-  const media = card.imageData || card.imageUrl || null;
+  const { media, icon } = cardImages(card);
   const style = resolveCardStyle(card.cardStyle, Boolean(media));
   const gradient = card.cardStyle?.gradient;
+  /*
+   * The tile takes the card's own icon whatever the layout is, and falls back
+   * to the picture only when `side` puts the picture here. That independence is
+   * the point: with one image slot, `layout` had to decide whether the picture
+   * was the atmosphere or the icon, so a card could never have both.
+   */
+  const tile = icon ?? (style.layout === "side" ? media : null);
 
   return (
     <View
@@ -100,11 +107,16 @@ export function AgentCard({
               : { flexDirection: "row", gap: 12, alignItems: "flex-start" }
           }
         >
-          {/* `side` puts the picture where the emoji tile goes. */}
-          {style.layout === "side" && media ? (
+          {/* The icon if there is one, else the picture when `side` puts it here. */}
+          {tile ? (
             <Image
-              source={{ uri: media }}
-              style={{ width: 52, height: 52, borderRadius: radius.md }}
+              source={{ uri: tile }}
+              style={{
+                width: style.layout === "side" && !icon ? 52 : 44,
+                height: style.layout === "side" && !icon ? 52 : 44,
+                borderRadius: radius.md,
+                backgroundColor: rgba(tint, 0.18),
+              }}
               resizeMode="cover"
             />
           ) : (

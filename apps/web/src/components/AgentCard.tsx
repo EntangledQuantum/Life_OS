@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { resolveCardStyle, svgToDataUri, type Task } from "@life-os/shared";
+import {
+  cardImages,
+  resolveCardStyle,
+  svgToDataUri,
+  type Task,
+} from "@life-os/shared";
 import { Check } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -27,7 +32,7 @@ export function AgentCard({
 }) {
   const done = card.status === "done";
   const color = card.themeColor ?? "#5B8CFF";
-  const img = card.imageData || card.imageUrl;
+  const { media: img, icon } = cardImages(card);
   // Agent-supplied SVG is sanitized server-side and rendered via <img>,
   // so it is inert even if something slipped through.
   const svg = card.svg ? svgToDataUri(card.svg) : null;
@@ -41,6 +46,8 @@ export function AgentCard({
    */
   const style = resolveCardStyle(card.cardStyle, Boolean(media));
   const background = style.layout === "background" ? media : null;
+  /* The icon wins the tile whatever the layout is; `side` is the fallback. */
+  const tile = icon ?? (style.layout === "side" ? media : null);
 
   const wash = card.cardStyle?.gradient
     ? `linear-gradient(160deg, ${card.cardStyle.gradient.from}, ${card.cardStyle.gradient.to})`
@@ -109,14 +116,23 @@ export function AgentCard({
           )}
         >
           {/*
-            `side` puts the picture where the emoji tile goes — a book cover or
-            an avatar, which a banner crop would cut in half.
+            The tile, in order of preference: the card's own icon, then the
+            picture when `side` puts it here, then the emoji.
+
+            `icon` is checked first and independently of the layout, which is
+            the point of it existing. With a single image slot, `layout` had to
+            decide whether that picture was the atmosphere or the icon, so a
+            card could have a photograph behind its text or a cover beside its
+            title and never both.
           */}
-          {style.layout === "side" && media ? (
+          {tile ? (
             <img
-              src={media}
+              src={tile}
               alt=""
-              className="h-14 w-14 shrink-0 rounded-xl object-cover"
+              className={cn(
+                "shrink-0 rounded-xl object-cover",
+                style.layout === "side" && !icon ? "h-14 w-14" : "h-11 w-11",
+              )}
               style={{ background: `${color}22` }}
             />
           ) : (

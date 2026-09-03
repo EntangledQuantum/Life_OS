@@ -787,7 +787,7 @@ const tools = [
               type: "string",
               enum: ["banner", "background", "side", "plain"],
               description:
-                "Where imageUrl/imageData goes. banner = across the top (default). background = behind the text, with a scrim. side = a small square beside the title, for a book cover or an avatar. plain = no media even if an image is set.",
+                "Where the PICTURE (imageUrl/imageData) goes. banner = across the top (default). background = behind the text, with a scrim. side = a small square beside the title, for a book cover or an avatar. plain = no picture even if one is set. The ICON (iconImageUrl/iconImageData) is a separate slot and is drawn in the tile beside the title whatever this says — set both to get a wash and a custom icon on the same card.",
             },
             overlay: {
               type: "number",
@@ -807,7 +807,24 @@ const tools = [
         slot: { type: "number", enum: [0, 1] },
         emoji: { type: "string" },
         themeColor: { type: "string" },
-        imageUrl: { type: "string" },
+        imageUrl: {
+          type: "string",
+          description:
+            "The card's picture — what it is about. Placed by cardStyle.layout.",
+        },
+        imageData: {
+          type: "string",
+          description: "The same picture as a data: URI. Wins over imageUrl.",
+        },
+        iconImageUrl: {
+          type: "string",
+          description:
+            "The card's icon — the small tile beside the title, in place of the emoji. A second, independent slot: a card can have a background picture AND its own icon. Keep it small and roughly square.",
+        },
+        iconImageData: {
+          type: "string",
+          description: "The same icon as a data: URI. Wins over iconImageUrl.",
+        },
         svg: { type: "string" },
         ctaLabel: { type: "string" },
         ctaLink: { type: "string" },
@@ -833,6 +850,14 @@ const tools = [
         xpOnComplete: { type: "number" },
         resources: { type: "array", items: { type: "object" } },
         slot: { type: "number" },
+        emoji: { type: "string" },
+        themeColor: { type: "string" },
+        imageUrl: { type: "string" },
+        imageData: { type: "string" },
+        iconImageUrl: { type: "string" },
+        iconImageData: { type: "string" },
+        cardStyle: { type: "object" },
+        progress: { type: "number" },
       },
       required: ["id"],
     },

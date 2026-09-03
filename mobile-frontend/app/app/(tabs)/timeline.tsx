@@ -89,6 +89,9 @@ export default function TimelineScreen() {
     void now; // re-group as the clock moves
     const byDay = new Map<string, Task[]>();
     for (const task of open) {
+      // A pinned card is drawn as a card. Listing it here as well is the same
+      // thing twice on one screen, with two places to tick it.
+      if (isPinned(task) || isAgentStatus(task)) continue;
       const when = task.eventAt ?? task.remindAt;
       if (!when) continue;
       const key = dayKey(new Date(when));

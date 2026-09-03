@@ -203,6 +203,56 @@ describe("the agenda is one list", () => {
       false,
     );
   });
+
+  /*
+   * A pinned card is drawn as a card — picture, body, progress bar, Complete
+   * button. It was also being emitted as a row here, so the same thing appeared
+   * twice on one screen with two places to tick it. That is the duplication the
+   * whole one-list model exists to prevent, arriving through the other door.
+   */
+  it("leaves a pinned card out of the list, because it is already a card", () => {
+    const pinned = makeTask({
+      title: "A Game of Thrones",
+      slot: 0,
+      body: "p.550 of ~800",
+    });
+    const loose = makeTask({ title: "Book a dentist" });
+
+    const view = agenda.getAgenda(db);
+    assert.equal(
+      view.items.some((i) => i.refId === pinned.id),
+      false,
+      "the pinned card is also a row",
+    );
+    assert.ok(
+      view.items.some((i) => i.refId === loose.id),
+      "an unpinned task still belongs on the list",
+    );
+  });
+
+  it("puts a card back on the list when it is unpinned", () => {
+    // Pinning is a statement about where a thing is shown, and it is reversible.
+    const card = makeTask({ title: "Physics focus", slot: 1 });
+    assert.equal(
+      agenda.getAgenda(db).items.some((i) => i.refId === card.id),
+      false,
+    );
+
+    tasks.updateTask(db, card.id, { slot: null });
+    assert.ok(
+      agenda.getAgenda(db).items.some((i) => i.refId === card.id),
+      "unpinned, it should be an ordinary row again",
+    );
+  });
+
+  it("keeps the agent status strip off the list", () => {
+    // It renders as one ambient line, has no completion, and is not work.
+    makeTask({ title: "Hermes connected", meta: { connected: true } });
+    assert.equal(
+      agenda.getAgenda(db).items.some((i) => i.title === "Hermes connected"),
+      false,
+    );
+  });
 });
 
 describe("a day that has ended stays ended", () => {

@@ -128,8 +128,23 @@ export interface Task {
   slot: 0 | 1 | null;
   emoji: string | null;
   themeColor: string | null;
+  /**
+   * The card's picture: what it is *about*. Where it goes is
+   * `cardStyle.layout` — a banner, a wash behind the text, or the tile.
+   */
   imageUrl: string | null;
   imageData: string | null;
+  /**
+   * The card's icon: what marks it in a list of cards. Drawn in the small tile
+   * beside the title, in place of the emoji, whatever the layout is.
+   *
+   * A separate slot on purpose. With one image field, `layout` had to decide
+   * whether that picture was the atmosphere or the icon, so an agent could
+   * never have both — a photograph behind the text *and* a cover beside the
+   * title. Data URI or URL, same as the picture.
+   */
+  iconImageUrl: string | null;
+  iconImageData: string | null;
   svg: string | null;
   ctaLabel: string | null;
   ctaLink: string | null;
@@ -181,9 +196,41 @@ export function isAgentStatus(task: Pick<Task, "meta">): boolean {
  * control is a card.
  */
 export function hasCardPresentation(
-  task: Pick<Task, "body" | "imageUrl" | "imageData" | "svg" | "control">,
+  task: Pick<
+    Task,
+    | "body"
+    | "imageUrl"
+    | "imageData"
+    | "iconImageUrl"
+    | "iconImageData"
+    | "svg"
+    | "control"
+  >,
 ): boolean {
   return Boolean(
-    task.body || task.imageUrl || task.imageData || task.svg || task.control,
+    task.body ||
+      task.imageUrl ||
+      task.imageData ||
+      task.iconImageUrl ||
+      task.iconImageData ||
+      task.svg ||
+      task.control,
   );
+}
+
+/**
+ * The two pictures a card can carry, resolved to what a renderer should draw.
+ *
+ * Both clients call this rather than reading four fields and picking, so the
+ * phone and the dashboard cannot end up disagreeing about which image is the
+ * icon — which is exactly how the single-slot version drifted.
+ */
+export function cardImages(
+  task: Pick<Task, "imageUrl" | "imageData" | "iconImageUrl" | "iconImageData">,
+): { media: string | null; icon: string | null } {
+  return {
+    // Inline data wins: it is already on the device and cannot fail to load.
+    media: task.imageData || task.imageUrl || null,
+    icon: task.iconImageData || task.iconImageUrl || null,
+  };
 }

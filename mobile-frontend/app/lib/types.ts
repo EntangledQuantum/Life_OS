@@ -170,8 +170,15 @@ export interface Task {
   slot: 0 | 1 | null;
   emoji: string | null;
   themeColor: string | null;
+  /** The card's picture — what it is about. `cardStyle.layout` places it. */
   imageUrl: string | null;
   imageData: string | null;
+  /**
+   * The card's icon — the tile beside the title, in place of the emoji.
+   * A separate slot, so a card can have a background picture *and* an icon.
+   */
+  iconImageUrl: string | null;
+  iconImageData: string | null;
   svg: string | null;
   ctaLabel: string | null;
   ctaLink: string | null;

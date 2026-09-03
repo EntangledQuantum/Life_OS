@@ -417,8 +417,19 @@ export const tasks = sqliteTable("tasks", {
   slot: integer("slot"),
   emoji: text("emoji"),
   themeColor: text("theme_color"),
+  /** The card's picture: what it is about. `cardStyle.layout` places it. */
   imageUrl: text("image_url"),
   imageData: text("image_data"),
+  /**
+   * A *second* picture, for the small tile beside the title.
+   *
+   * Separate from `image_*` because the two answer different questions — what
+   * the card is about, and what marks it in a list of cards. With one slot,
+   * `cardStyle.layout` had to choose between them, so a card could have a
+   * photograph behind its text or a cover beside its title and never both.
+   */
+  iconImageUrl: text("icon_image_url"),
+  iconImageData: text("icon_image_data"),
   svg: text("svg"),
   ctaLabel: text("cta_label"),
   ctaLink: text("cta_link"),

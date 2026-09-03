@@ -19,6 +19,8 @@ import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
 import {
   compareAgenda,
+  isAgentStatus,
+  isPinned,
   lifeDayOf,
   resolveTimezone,
   type AgendaItem,
@@ -185,6 +187,17 @@ export function getAgenda(db: LifeOsDb, now = new Date()): Agenda {
   const taskItems: AgendaItem[] = [];
   for (const task of listTasks(db, {}, now)) {
     if (task.status === "dismissed" || task.status === "missed") continue;
+    /*
+     * A pinned card is not also a row.
+     *
+     * Slots 0 and 1 are drawn as cards — the picture, the body, the progress
+     * bar, the Complete button — and the agent-setup strip is drawn as a strip.
+     * Putting them in this list as well gave the user the same thing twice on
+     * the same screen, with two places to tick it, which is precisely the
+     * duplication merging habits and tasks was meant to end. Pinning a card is
+     * a statement about *where* it is shown; the list is everything else.
+     */
+    if (isPinned(task) || isAgentStatus(task)) continue;
     // A future showAt means no client is meant to display it yet.
     if (task.showAt && task.showAt > nowIsoString) continue;
 

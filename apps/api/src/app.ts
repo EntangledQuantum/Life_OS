@@ -650,11 +650,27 @@ export function createApp() {
   api.get("/agent/capabilities", (c) =>
     c.json({
       name: "Life OS",
-      version: "0.4.0",
+      version: "0.5.0",
       maxPinnedCards: 2,
       agentSetupCard: { slot: 2, kind: "agent-setup", singleton: true },
       taskKinds: TASK_KINDS,
-      cardGraphics: ["emoji", "imageUrl", "imageData", "svg"],
+      /*
+       * Two independent picture slots, not one. `image*` is what the card is
+       * about and `cardStyle.layout` places it; `iconImage*` is the tile beside
+       * the title and is drawn whatever the layout says. A card can have both.
+       */
+      cardGraphics: [
+        "emoji",
+        "imageUrl",
+        "imageData",
+        "iconImageUrl",
+        "iconImageData",
+        "svg",
+      ],
+      pinnedCards:
+        "A card in slot 0 or 1 is drawn as a card and left out of the agenda, " +
+        "the day list and the timeline. Do not create a companion task for one — " +
+        "that is two things to tick for one act.",
       /** The closed set of day buckets. Invent any content; map it onto one of these. */
       activityTags: ACTIVITIES,
       repeatRules: REPEAT_RULES,

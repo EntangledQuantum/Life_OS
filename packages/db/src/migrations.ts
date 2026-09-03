@@ -908,6 +908,29 @@ const cardStyling: Migration = {
   },
 };
 
+/**
+ * A card gets a second picture, because it always needed two.
+ *
+ * There was one image slot — `image_url`, `image_data` and `svg` all competing
+ * for it — and `cardStyle.layout` decided what that one picture was *for*:
+ * `side` made it the icon, `background` made it the wash. So an agent could
+ * have a photograph behind its text or a book cover beside the title, never
+ * both, and no amount of styling could get around it because there was nothing
+ * else to point at. The two are different jobs: one is what the card is about,
+ * the other is what marks it in a list of cards.
+ *
+ * `icon_image_*` is the second slot. Set it and it becomes the tile; leave it
+ * and everything renders exactly as before.
+ */
+const cardIconImage: Migration = {
+  version: 13,
+  name: "cards can carry an icon image as well as a picture",
+  up(db) {
+    addColumn(db, "tasks", "icon_image_url", "TEXT");
+    addColumn(db, "tasks", "icon_image_data", "TEXT");
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -922,6 +945,7 @@ export const MIGRATIONS: Migration[] = [
   taskHabitLink,
   defaultToBloom,
   cardStyling,
+  cardIconImage,
 ];
 
 /** The version a database is brought to by `runMigrations`. */

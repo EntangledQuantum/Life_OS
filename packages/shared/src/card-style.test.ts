@@ -5,6 +5,7 @@ import {
   normalizeCardStyle,
   resolveCardStyle,
 } from "./card-style.js";
+import { cardImages } from "./tasks.js";
 
 /**
  * Card styling, which is decoration written by an agent.
@@ -86,5 +87,60 @@ describe("resolving what to draw", () => {
 
   it("keeps the layout when there is something to show", () => {
     assert.equal(resolveCardStyle({ layout: "background" }, true).layout, "background");
+  });
+});
+
+/**
+ * Two picture slots, and which one is the icon.
+ *
+ * The card had one image field, and `layout` decided what it was for: `side`
+ * made it the icon, `background` made it the wash. So "a photograph behind the
+ * text *and* a cover beside the title" was unaskable — not refused, just
+ * impossible, with nothing in the API to point at. `iconImage*` is the second
+ * slot, and the rule is that it wins the tile whatever the layout says.
+ */
+describe("a card's two pictures", () => {
+  const blank = {
+    imageUrl: null,
+    imageData: null,
+    iconImageUrl: null,
+    iconImageData: null,
+  };
+
+  it("prefers inline data over a URL, for each slot independently", () => {
+    const both = cardImages({
+      imageUrl: "https://example.com/scene.jpg",
+      imageData: "data:image/png;base64,SCENE",
+      iconImageUrl: "https://example.com/icon.jpg",
+      iconImageData: "data:image/png;base64,ICON",
+    });
+    // Inline data is already on the device and cannot fail to load.
+    assert.equal(both.media, "data:image/png;base64,SCENE");
+    assert.equal(both.icon, "data:image/png;base64,ICON");
+  });
+
+  it("keeps the two apart — an icon is not a picture", () => {
+    const iconOnly = cardImages({ ...blank, iconImageUrl: "https://x/i.png" });
+    assert.equal(iconOnly.media, null, "an icon must not become the card's picture");
+    assert.equal(iconOnly.icon, "https://x/i.png");
+
+    const mediaOnly = cardImages({ ...blank, imageUrl: "https://x/m.png" });
+    assert.equal(mediaOnly.icon, null);
+    assert.equal(mediaOnly.media, "https://x/m.png");
+  });
+
+  it("leaves a card with no pictures with nothing to draw", () => {
+    assert.deepEqual(cardImages(blank), { media: null, icon: null });
+  });
+
+  it("still resolves a background layout when only the icon is set", () => {
+    /*
+     * `resolveCardStyle` asks about the *picture*, not the icon: a background
+     * layout with only an icon has no wash to draw, so it is a plain card with
+     * a custom tile — which is a perfectly reasonable thing to ask for.
+     */
+    const { media, icon } = cardImages({ ...blank, iconImageData: "data:,ICON" });
+    assert.equal(resolveCardStyle({ layout: "background" }, Boolean(media)).layout, "plain");
+    assert.ok(icon, "and the tile still has its picture");
   });
 });

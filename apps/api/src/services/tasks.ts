@@ -97,6 +97,8 @@ function mapTask(row: typeof schema.tasks.$inferSelect): Task {
     themeColor: row.themeColor ?? null,
     imageUrl: row.imageUrl ?? null,
     imageData: row.imageData ?? null,
+    iconImageUrl: row.iconImageUrl ?? null,
+    iconImageData: row.iconImageData ?? null,
     svg: row.svg ?? null,
     ctaLabel: row.ctaLabel ?? null,
     ctaLink: row.ctaLink ?? null,
@@ -215,6 +217,8 @@ export interface CreateTaskInput {
   themeColor?: string | null;
   imageUrl?: string | null;
   imageData?: string | null;
+  iconImageUrl?: string | null;
+  iconImageData?: string | null;
   svg?: string | null;
   ctaLabel?: string | null;
   ctaLink?: string | null;
@@ -318,6 +322,8 @@ export function createTask(
       themeColor: input.themeColor ?? null,
       imageUrl: input.imageUrl || null,
       imageData: input.imageData ?? null,
+      iconImageUrl: input.iconImageUrl || null,
+      iconImageData: input.iconImageData ?? null,
       svg: sanitized.svg,
       ctaLabel: input.ctaLabel ?? null,
       ctaLink: input.ctaLink ?? null,
@@ -447,6 +453,12 @@ export function updateTask(
       ...(patch.themeColor !== undefined ? { themeColor: patch.themeColor } : {}),
       ...(patch.imageUrl !== undefined ? { imageUrl: patch.imageUrl } : {}),
       ...(patch.imageData !== undefined ? { imageData: patch.imageData } : {}),
+      ...(patch.iconImageUrl !== undefined
+        ? { iconImageUrl: patch.iconImageUrl }
+        : {}),
+      ...(patch.iconImageData !== undefined
+        ? { iconImageData: patch.iconImageData }
+        : {}),
       ...svgPatch,
       ...(patch.ctaLabel !== undefined ? { ctaLabel: patch.ctaLabel } : {}),
       ...(patch.ctaLink !== undefined ? { ctaLink: patch.ctaLink } : {}),

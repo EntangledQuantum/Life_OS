@@ -36,3 +36,24 @@ export function resolveCardStyle(
     align: style?.align ?? "left",
   };
 }
+
+/**
+ * The two pictures a card can carry, resolved to what a renderer should draw.
+ *
+ * A copy of `cardImages` in `packages/shared/src/tasks.ts` — this app does not
+ * import from the workspace. Keep the two identical: the whole reason it is a
+ * function rather than four field reads at the call site is that the phone and
+ * the dashboard must not end up disagreeing about which image is the icon.
+ */
+export function cardImages(task: {
+  imageUrl: string | null;
+  imageData: string | null;
+  iconImageUrl: string | null;
+  iconImageData: string | null;
+}): { media: string | null; icon: string | null } {
+  return {
+    // Inline data wins: it is already on the device and cannot fail to load.
+    media: task.imageData || task.imageUrl || null,
+    icon: task.iconImageData || task.iconImageUrl || null,
+  };
+}

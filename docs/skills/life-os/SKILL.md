@@ -8,7 +8,7 @@ description: >
   long-running agent (Hermes, OpenClaw, Claude Code, cron) should read what
   actually happened, schedule what happens next, react to completions, or set
   Life OS up for a user who does not have it.
-version: 4.4.0
+version: 4.5.0
 license: MIT
 platforms: [macos, linux, windows]
 metadata:
@@ -193,9 +193,10 @@ Set any of these on a task with `slot: 0` or `slot: 1`:
 | Field | What it does |
 |---|---|
 | `title` · `subtitle` · `body` | The words. `body` keeps your line breaks. |
-| `emoji` | Shown in a tinted tile, unless a `side` image replaces it. |
+| `emoji` | The tile beside the title, when no icon image is set. |
 | `themeColor` | Tints the border, the tile and the default wash. |
-| `imageUrl` **or** `imageData` | A picture. `imageData` is a `data:` URI, so it needs no network and survives offline. |
+| `imageUrl` **or** `imageData` | **The picture** — what the card is about. `cardStyle.layout` decides where it goes. `imageData` is a `data:` URI, so it needs no network and survives offline. |
+| `iconImageUrl` **or** `iconImageData` | **The icon** — the small tile beside the title, in place of the emoji. A *separate* slot, so one card can have a photograph behind its text **and** its own icon. Drawn at about 50pt square; keep it small. |
 | `svg` | Inline SVG, sanitised server-side. Draw your own diagram. Web only — the phone skips it, so pair it with an image if the card matters there. |
 | `progress` | 0–100. Draws a bar. |
 | `ctaLabel` + `ctaLink` | A link out. |
@@ -226,8 +227,13 @@ Every field optional. Omit it and the card looks as cards always have.
   read is not a style choice.
 - **`side`** — a small square beside the title. A book cover, an album, a face —
   anything a banner crop would cut in half.
-- **`plain`** — no media even if an image is set. Turn a picture off without
-  deleting it.
+- **`plain`** — no picture even if one is set. Turn it off without deleting it.
+
+`layout` only ever moves **the picture**. The icon is its own slot and is drawn
+in the tile whatever the layout says, so `background` + `iconImageData` is a
+wash behind your text with your own icon on top — the combination that used to
+be impossible, because one image field had to be either the atmosphere or the
+icon and could not be both.
 
 A book you are tracking:
 
@@ -248,6 +254,7 @@ lifeos_create_task {
   "title": "Why tonight is Ch 5", "slot": 1,
   "linkedTaskId": "<the 19:00 study block>",
   "imageData": "data:image/png;base64,…",
+  "iconImageData": "data:image/png;base64,…",
   "cardStyle": { "layout": "background", "overlay": 0.72, "align": "center" },
   "control": { "kind": "slider", "label": "How hard did that feel?", "min": 1, "max": 5 }
 }
@@ -262,6 +269,18 @@ them together would recreate exactly the duplication the agenda model removed.
 
 If you want the *thing itself* on the timeline, that is a habit with a
 `scheduledTime` or a task with an `eventAt`. The card is commentary.
+
+### A pinned card is not also a row
+
+Pinning is a statement about **where** a task is shown. A task with `slot: 0` or
+`slot: 1` is drawn as a card and is deliberately left out of the day's list, the
+timeline and the agenda — it is already on the screen, in a richer form, with
+its own Complete button.
+
+So you do not need a companion task for a card, and you should not make one:
+that is the same duplication as a habit plus a matching task, and it gives the
+user two things to tick for one act. Unpin a card (`slot: null`) and it becomes
+an ordinary row again.
 
 ### Restraint
 

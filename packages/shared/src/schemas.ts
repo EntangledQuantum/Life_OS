@@ -250,8 +250,19 @@ export const createTaskSchema = z.object({
   slot: z.union([z.literal(0), z.literal(1)]).nullable().optional(),
   emoji: z.string().max(16).nullable().optional(),
   themeColor: z.string().max(32).nullable().optional(),
+  /** The card's picture — what it is about. `cardStyle.layout` places it. */
   imageUrl: z.string().max(2000).nullable().optional(),
   imageData: z.string().max(2_000_000).nullable().optional(),
+  /**
+   * The card's icon — the tile beside the title, in place of the emoji.
+   *
+   * A second, independent slot, so a card can have a picture *and* an icon.
+   * Capped an order of magnitude smaller than the picture: this is drawn at
+   * about 50pt square, and a two-megabyte payload for it is a mistake rather
+   * than a choice.
+   */
+  iconImageUrl: z.string().max(2000).nullable().optional(),
+  iconImageData: z.string().max(400_000).nullable().optional(),
   svg: z.string().max(MAX_SVG_LENGTH).nullable().optional(),
   ctaLabel: z.string().max(80).nullable().optional(),
   ctaLink: z.string().max(2000).nullable().optional(),

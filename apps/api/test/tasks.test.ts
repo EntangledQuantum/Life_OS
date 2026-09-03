@@ -248,3 +248,65 @@ describe("interacting", () => {
     assert.ok("error" in result);
   });
 });
+
+/**
+ * A card has two picture slots, and they are independent.
+ *
+ * There was one — `imageUrl`/`imageData`, with `cardStyle.layout` deciding
+ * whether that single picture was the atmosphere behind the text or the icon
+ * beside the title. An agent that wanted both was told, correctly, that the app
+ * could not do it. These pin the second slot down at the seam where the first
+ * one's absence was invisible: the row round-trip.
+ */
+describe("a card's picture and its icon", () => {
+  it("keeps both, so a card can have a wash and its own icon", () => {
+    const card = create({
+      title: "A Game of Thrones",
+      slot: 0,
+      imageUrl: "https://example.com/winterfell.jpg",
+      iconImageUrl: "https://example.com/cover.jpg",
+      cardStyle: { layout: "background", overlay: 0.7 },
+    });
+
+    const read = tasks.getTask(db, card.id)!;
+    assert.equal(read.imageUrl, "https://example.com/winterfell.jpg");
+    assert.equal(read.iconImageUrl, "https://example.com/cover.jpg");
+  });
+
+  it("carries an inline icon separately from an inline picture", () => {
+    const card = create({
+      title: "Two data URIs",
+      imageData: "data:image/png;base64,AAAA",
+      iconImageData: "data:image/png;base64,BBBB",
+    });
+    const read = tasks.getTask(db, card.id)!;
+    assert.equal(read.imageData, "data:image/png;base64,AAAA");
+    assert.equal(read.iconImageData, "data:image/png;base64,BBBB");
+  });
+
+  it("lets one be changed without disturbing the other", () => {
+    const card = create({
+      title: "Swap the icon",
+      imageUrl: "https://example.com/scene.jpg",
+      iconImageUrl: "https://example.com/old-icon.jpg",
+    });
+    tasks.updateTask(db, card.id, {
+      iconImageUrl: "https://example.com/new-icon.jpg",
+    });
+
+    const read = tasks.getTask(db, card.id)!;
+    assert.equal(read.iconImageUrl, "https://example.com/new-icon.jpg");
+    assert.equal(
+      read.imageUrl,
+      "https://example.com/scene.jpg",
+      "patching the icon moved the picture",
+    );
+  });
+
+  it("defaults both to null, so an old card is unchanged", () => {
+    const card = create({ title: "No pictures" });
+    const read = tasks.getTask(db, card.id)!;
+    assert.equal(read.iconImageUrl, null);
+    assert.equal(read.iconImageData, null);
+  });
+});
