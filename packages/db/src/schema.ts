@@ -31,6 +31,18 @@ export const habits = sqliteTable("habits", {
   notes: text("notes"),
   themeColor: text("theme_color").notNull().default("#5B8CFF"),
   themeGraphic: text("theme_graphic").notNull().default("ring"),
+  /**
+   * Optional art. Same two slots, meanings and dimensions as a card's, so one
+   * picture works on a habit, a goal or a tier. Null everywhere is the normal
+   * case and renders exactly as it did before art existed.
+   */
+  iconImageUrl: text("icon_image_url"),
+  iconImageData: text("icon_image_data"),
+  backgroundImageUrl: text("background_image_url"),
+  backgroundImageData: text("background_image_data"),
+  /** Scrim over the background, 0.35–0.92. Null uses the default. */
+  artOverlay: real("art_overlay"),
+
   iconKey: text("icon_key"),
   /** Tell the agent when this habit is completed. Off unless it asked. */
   webhookOnComplete: integer("webhook_on_complete", { mode: "boolean" })
@@ -187,6 +199,53 @@ export const goals = sqliteTable("goals", {
   conditionDetailJson: text("condition_detail_json"),
   emoji: text("emoji").notNull().default("🎯"),
   themeColor: text("theme_color").notNull().default("#A78BFA"),
+  /**
+   * Optional art. Same two slots, meanings and dimensions as a card's, so one
+   * picture works on a habit, a goal or a tier. Null everywhere is the normal
+   * case and renders exactly as it did before art existed.
+   */
+  iconImageUrl: text("icon_image_url"),
+  iconImageData: text("icon_image_data"),
+  backgroundImageUrl: text("background_image_url"),
+  backgroundImageData: text("background_image_data"),
+  /** Scrim over the background, 0.35–0.92. Null uses the default. */
+  artOverlay: real("art_overlay"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/**
+ * A goal's rarity ladder: one row per rung, ordered from the bottom up.
+ *
+ * A goal with no rows here is the ordinary kind — one condition, met or not.
+ * With rows, each rung carries its own condition, words, art and celebration,
+ * and reaching a higher rung implies every lower one.
+ */
+export const goalTiers = sqliteTable("goal_tiers", {
+  id: text("id").primaryKey(),
+  goalId: text("goal_id").notNull(),
+  /** 1 = the first rung reached. Contiguous and ascending within a goal. */
+  rank: integer("rank").notNull(),
+  /** The agent's word for this rarity: "Bronze", "Mythic", "Fifty". */
+  label: text("label").notNull(),
+  title: text("title"),
+  description: text("description"),
+  /** Serialized GoalCondition — the bar for this rung alone. */
+  conditionJson: text("condition_json"),
+  theme: text("theme").notNull().default("spark"),
+  themeColor: text("theme_color"),
+  emoji: text("emoji"),
+  iconImageUrl: text("icon_image_url"),
+  iconImageData: text("icon_image_data"),
+  backgroundImageUrl: text("background_image_url"),
+  backgroundImageData: text("background_image_data"),
+  artOverlay: real("art_overlay"),
+  progressPct: real("progress_pct").notNull().default(0),
+  /** First instant this rung's condition was true. */
+  metAt: text("met_at"),
+  /** When the user actually watched this rung's celebration. */
+  celebrationSeenAt: text("celebration_seen_at"),
+  conditionDetailJson: text("condition_detail_json"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

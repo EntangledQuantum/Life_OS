@@ -16,6 +16,9 @@ import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 import type { Goal } from "@/lib/types";
 import { font, radius, rgba, type Tokens } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-provider";
+import { resolveArt, themePalette } from "@/lib/art";
+import { ArtIcon } from "@/components/art";
+import { Image } from "expo-image";
 
 /**
  * Full-screen and unmissable. `celebration-seen` fires ONLY when the user taps
@@ -77,6 +80,22 @@ export function CelebrationModal({
   if (!goal || intensity === "off") return null;
   const loud = intensity === "full";
 
+  /*
+   * On a tiered goal this is about one rung, and the rung decides how it looks
+   * and how loud it is. A five-rung goal plays five of these on the way up,
+   * each in its own theme — that is the whole point of a rarity.
+   */
+  const tier = goal.pendingTier ?? null;
+  const palette = themePalette(tier?.theme);
+  const tint = tier ? tier.themeColor || palette.primary : t.accent;
+  const art = resolveArt(tier ?? goal);
+  /*
+   * The theme's intensity multiplies the user's setting rather than replacing
+   * it: someone who turned celebrations down did not ask for the top rung to be
+   * exempt.
+   */
+  const pieces = Math.max(6, Math.round(PIECES * (tier ? palette.intensity : 1)));
+
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent>
       <View
@@ -88,6 +107,28 @@ export function CelebrationModal({
           padding: 28,
         }}
       >
+        {/*
+          The tier's own picture, full-bleed and heavily darkened. This is the
+          one place the art gets the stage it was made for.
+        */}
+        {art.background ? (
+          <View pointerEvents="none" style={{ position: "absolute", inset: 0 }}>
+            <Image
+              source={{ uri: art.background }}
+              style={{ width: "100%", height: "100%" }}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={220}
+            />
+            <View
+              style={{
+                position: "absolute",
+                inset: 0,
+                backgroundColor: `rgba(7,8,12,${Math.min(0.94, art.overlay + 0.24)})`,
+              }}
+            />
+          </View>
+        ) : null}
         {/* halo */}
         <Animated.View
           pointerEvents="none"
@@ -96,36 +137,69 @@ export function CelebrationModal({
           <Svg width={width} height={width}>
             <Defs>
               <RadialGradient id="cel-halo" cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={t.accent} stopOpacity="0.4" />
-                <Stop offset="55%" stopColor={t.accent2} stopOpacity="0.14" />
-                <Stop offset="100%" stopColor={t.accent2} stopOpacity="0" />
+                <Stop offset="0%" stopColor={tint} stopOpacity="0.42" />
+                <Stop
+                  offset="55%"
+                  stopColor={tier ? palette.secondary : t.accent2}
+                  stopOpacity="0.16"
+                />
+                <Stop
+                  offset="100%"
+                  stopColor={tier ? palette.secondary : t.accent2}
+                  stopOpacity="0"
+                />
               </RadialGradient>
             </Defs>
             <Circle cx={width / 2} cy={width / 2} r={width / 2} fill="url(#cel-halo)" />
           </Svg>
         </Animated.View>
 
-        {loud && !reduce ? <Confetti width={width} height={height} t={t} /> : null}
+        {loud && !reduce ? (
+          <Confetti
+            width={width}
+            height={height}
+            t={t}
+            colors={tier ? palette.particles : undefined}
+            pieces={pieces}
+          />
+        ) : null}
 
-        <Animated.Text style={[{ fontSize: loud ? 92 : 56 }, emojiStyle]}>
-          {goal.emoji || "🎯"}
-        </Animated.Text>
+        {art.icon ? (
+          <Animated.View style={emojiStyle}>
+            <ArtIcon
+              art={tier ?? goal}
+              emoji={tier?.emoji || goal.emoji}
+              color={tint}
+              size={loud ? 132 : 92}
+              style={{ borderRadius: loud ? 66 : 46 }}
+            />
+          </Animated.View>
+        ) : (
+          <Animated.Text style={[{ fontSize: loud ? 92 : 56 }, emojiStyle]}>
+            {tier?.emoji || goal.emoji || "🎯"}
+          </Animated.Text>
+        )}
 
         <Animated.View
           entering={reduce ? undefined : FadeIn.delay(220).duration(400)}
           style={{ alignItems: "center" }}
         >
+          {/*
+            The rarity is the headline on a tiered goal. "Goal complete" would
+            be a lie on four rungs out of five, and the rung's name is the thing
+            the user is meant to remember.
+          */}
           <Text
             style={{
               marginTop: 20,
-              color: t.accent,
+              color: tint,
               fontFamily: font.bodySemi,
               fontSize: 12,
               letterSpacing: 3,
               textTransform: "uppercase",
             }}
           >
-            Goal complete
+            {tier ? tier.label : "Goal complete"}
           </Text>
           <Text
             style={{
@@ -138,9 +212,24 @@ export function CelebrationModal({
               letterSpacing: -0.5,
             }}
           >
-            {goal.title}
+            {tier?.title || goal.title}
           </Text>
-          {goal.whyItMatters ? (
+          {tier ? (
+            <Text
+              style={{
+                marginTop: 8,
+                color: t.faint,
+                fontFamily: font.mono,
+                fontSize: 11,
+                letterSpacing: 1.6,
+                textTransform: "uppercase",
+              }}
+            >
+              {palette.word} · tier {tier.rank} of {goal.tiers.length}
+              {tier.rank === goal.tiers.length ? " · the last one" : ""}
+            </Text>
+          ) : null}
+          {tier?.description || goal.whyItMatters ? (
             <Text
               style={{
                 marginTop: 14,
@@ -152,7 +241,7 @@ export function CelebrationModal({
                 maxWidth: 320,
               }}
             >
-              {goal.whyItMatters}
+              {tier?.description || goal.whyItMatters}
             </Text>
           ) : null}
         </Animated.View>
@@ -165,7 +254,7 @@ export function CelebrationModal({
             }}
             style={({ pressed }) => ({
               marginTop: 40,
-              backgroundColor: t.accent,
+              backgroundColor: tint,
               paddingHorizontal: 34,
               paddingVertical: 15,
               borderRadius: radius.md,
@@ -179,6 +268,25 @@ export function CelebrationModal({
               I saw it
             </Text>
           </Pressable>
+
+          {/*
+            That the ladder continues is part of the reward. Without it, a rung
+            in the middle reads exactly like the end of the goal.
+          */}
+          {tier && tier.rank < goal.tiers.length ? (
+            <Text
+              style={{
+                marginTop: 14,
+                textAlign: "center",
+                color: t.faint,
+                fontFamily: font.body,
+                fontSize: 12,
+              }}
+            >
+              {goal.tiers.length - tier.rank} more tier
+              {goal.tiers.length - tier.rank === 1 ? "" : "s"} above this one
+            </Text>
+          ) : null}
         </Animated.View>
       </View>
     </Modal>
@@ -193,18 +301,23 @@ function Confetti({
   width,
   height,
   t,
+  colors,
+  pieces = PIECES,
 }: {
   width: number;
   height: number;
   t: Tokens;
+  /** A tier's theme palette. Falls back to the user's own accents. */
+  colors?: string[];
+  pieces?: number;
 }) {
   const palette = useMemo(
-    () => [t.accent, t.accent2, t.positive, t.warning, t.text],
-    [t],
+    () => (colors?.length ? colors : [t.accent, t.accent2, t.positive, t.warning, t.text]),
+    [t, colors],
   );
   return (
     <View pointerEvents="none" style={{ position: "absolute", inset: 0 }}>
-      {Array.from({ length: PIECES }, (_, i) => (
+      {Array.from({ length: pieces }, (_, i) => (
         <Piece
           key={i}
           index={i}

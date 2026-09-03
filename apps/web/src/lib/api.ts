@@ -114,9 +114,14 @@ export const api = {
    * Mark a goal's celebration as watched. This is the only path to `achieved` —
    * a goal whose condition is met but whose animation nobody saw stays open.
    */
-  markCelebrationSeen: (id: string) =>
+  /**
+   * Witness a celebration. `tierId` names one rung of a rarity ladder; omitting
+   * it claims the lowest rung still owed, which is what a client that predates
+   * tiers does.
+   */
+  markCelebrationSeen: (id: string, tierId?: string) =>
     request<import("@life-os/shared").Goal>(
-      `/api/v1/goals/${id}/celebration-seen`,
+      `/api/v1/goals/${id}/celebration-seen${tierId ? `?tier=${encodeURIComponent(tierId)}` : ""}`,
       { method: "POST" },
     ),
   properties: () =>

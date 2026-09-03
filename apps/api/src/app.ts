@@ -2,6 +2,9 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { ensureSchema, getDb } from "@life-os/db";
 import {
+  CELEBRATION_THEMES,
+  MAX_GOAL_TIERS,
+  MIN_ART_OVERLAY,
   completeHabitSchema,
   completeCardSchema,
   createAchievementSchema,
@@ -413,7 +416,13 @@ export function createApp() {
    * A met-but-unwitnessed goal stays active on purpose.
    */
   api.post("/goals/:id/celebration-seen", (c) => {
-    const result = goals.markCelebrationSeen(getDb(), c.req.param("id"));
+    /*
+     * `tier` is optional and a client that predates the ladder omits it, which
+     * claims the lowest rung still owed — so an old build walks the ladder one
+     * celebration at a time instead of skipping to the top.
+     */
+    const tier = c.req.query("tier") || undefined;
+    const result = goals.markCelebrationSeen(getDb(), c.req.param("id"), tier);
     if (!result) return c.json({ error: "Not found" }, 404);
     if ("error" in result) return c.json(result, 409);
     return c.json(result.goal);
@@ -650,7 +659,7 @@ export function createApp() {
   api.get("/agent/capabilities", (c) =>
     c.json({
       name: "Life OS",
-      version: "0.5.0",
+      version: "0.6.0",
       maxPinnedCards: 2,
       agentSetupCard: { slot: 2, kind: "agent-setup", singleton: true },
       taskKinds: TASK_KINDS,
@@ -671,6 +680,48 @@ export function createApp() {
         "A card in slot 0 or 1 is drawn as a card and left out of the agenda, " +
         "the day list and the timeline. Do not create a companion task for one — " +
         "that is two things to tick for one act.",
+      /*
+       * Habits, goals and tiers all take the same two slots, with the same
+       * dimensions, so one picture works in any of them. Everything optional.
+       */
+      art: {
+        fields: [
+          "iconImageUrl",
+          "iconImageData",
+          "backgroundImageUrl",
+          "backgroundImageData",
+          "artOverlay",
+        ],
+        on: ["habit", "goal", "goalTier", "card (as imageUrl/iconImageUrl)"],
+        background: {
+          aspect: "3:2 landscape",
+          recommended: "1200x800",
+          minimum: "600x400",
+          note: "Cover-cropped from the centre — keep the subject away from the edges.",
+        },
+        icon: {
+          aspect: "1:1 square",
+          recommended: "256x256",
+          minimum: "96x96",
+          note: "Drawn at about 44pt. Fine detail reads as mud at that size.",
+        },
+        overlay: `${MIN_ART_OVERLAY}-0.92 scrim over a background, clamped. It cannot be turned off: a name that cannot be read over its own photograph is a broken row.`,
+        caching:
+          "Both clients cache what they fetch (Cache Storage on the web, disk via expo-image on the phone). Send a picture once; re-sending the same art is churn on every device watching.",
+        optional:
+          "Always. A habit or goal with no art renders exactly as it did before art existed, and most should.",
+      },
+      goalTiers: {
+        max: MAX_GOAL_TIERS,
+        themes: CELEBRATION_THEMES,
+        rules: [
+          "Bottom rung first — array order is the ladder.",
+          "A higher rung implies every lower one, so write increasing bars rather than unrelated tests.",
+          "One celebration per rung, lowest first.",
+          "The goal only becomes 'achieved' when the top rung is witnessed; lower rungs fire goal.tier.",
+          "Sending tiers replaces the whole ladder. A rung keeping its rank and label keeps the date it was earned.",
+        ],
+      },
       /** The closed set of day buckets. Invent any content; map it onto one of these. */
       activityTags: ACTIVITIES,
       repeatRules: REPEAT_RULES,

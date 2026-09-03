@@ -228,6 +228,29 @@ const tools = [
           type: "string",
           enum: ["ring", "liquid", "tree", "flame", "none"],
         },
+        iconImageUrl: {
+          type: "string",
+          description:
+            "Icon picture — the small square in place of the emoji. Square, 256×256 recommended, drawn at about 44pt. Optional: no picture is the normal case and looks fine.",
+        },
+        iconImageData: {
+          type: "string",
+          description: "The same icon as a data: URI. Wins over iconImageUrl. Keep it under ~400KB.",
+        },
+        backgroundImageUrl: {
+          type: "string",
+          description:
+            "Background picture — fills the card behind the text, under a scrim. Landscape 3:2, 1200×800 recommended, cover-cropped from the centre so keep the subject away from the edges.",
+        },
+        backgroundImageData: {
+          type: "string",
+          description: "The same background as a data: URI. Wins over backgroundImageUrl.",
+        },
+        artOverlay: {
+          type: "number",
+          description:
+            "0.35–0.92. How dark the scrim over the background is. Floored at 0.35 and cannot be turned off — a name you cannot read over its own photograph is a broken row, not a style.",
+        },
       },
       required: ["name"],
     },
@@ -250,6 +273,30 @@ const tools = [
         durationMinutes: { type: ["number", "null"] },
         baseXp: { type: "number" },
         active: { type: "boolean" },
+        themeColor: { type: "string" },
+        iconImageUrl: {
+          type: "string",
+          description:
+            "Icon picture — the small square in place of the emoji. Square, 256×256 recommended, drawn at about 44pt. Optional: no picture is the normal case and looks fine.",
+        },
+        iconImageData: {
+          type: "string",
+          description: "The same icon as a data: URI. Wins over iconImageUrl. Keep it under ~400KB.",
+        },
+        backgroundImageUrl: {
+          type: "string",
+          description:
+            "Background picture — fills the card behind the text, under a scrim. Landscape 3:2, 1200×800 recommended, cover-cropped from the centre so keep the subject away from the edges.",
+        },
+        backgroundImageData: {
+          type: "string",
+          description: "The same background as a data: URI. Wins over backgroundImageUrl.",
+        },
+        artOverlay: {
+          type: "number",
+          description:
+            "0.35–0.92. How dark the scrim over the background is. Floored at 0.35 and cannot be turned off — a name you cannot read over its own photograph is a broken row, not a style.",
+        },
       },
       required: ["id"],
     },
@@ -594,7 +641,10 @@ const tools = [
       "Give it a machine-checkable condition reading a property you push to, or a built-in " +
       `metric (${GOAL_METRICS.join(" | ")}). The condition is re-checked after every database ` +
       "change. When it comes true the goal is MET but not finished: it only becomes 'achieved' " +
-      "after the user has watched the celebration on screen.",
+      "after the user has watched the celebration on screen. " +
+      "For something with degrees rather than a single bar, give it `tiers`: up to five rungs, " +
+      "bottom first, each with its own condition, words, art and celebration. The user then " +
+      "gets a celebration at every rung instead of one at the end.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -609,7 +659,47 @@ const tools = [
           type: "object",
           description:
             "e.g. {type:'property', key:'books_read', op:'>=', value:10} or " +
-            "{type:'all', of:[...]} — see lifeos_get_goal_syntax",
+            "{type:'all', of:[...]} — see lifeos_get_goal_syntax. Leave it out if you are using `tiers`: the ladder carries the conditions then.",
+        },
+        iconImageUrl: { type: "string", description: "Icon picture, square, 256×256 recommended. Optional." },
+        iconImageData: { type: "string", description: "The icon as a data: URI. Wins over the URL." },
+        backgroundImageUrl: { type: "string", description: "Background picture, 3:2 landscape, 1200×800 recommended, cover-cropped from the centre." },
+        backgroundImageData: { type: "string", description: "The background as a data: URI. Wins over the URL." },
+        artOverlay: { type: "number", description: "0.35–0.92 scrim over the background. Cannot be turned off." },
+        tiers: {
+          type: "array",
+          description:
+            "The rarity ladder, BOTTOM RUNG FIRST — array order is the order they are reached. At most 5. Each rung is a complete goal of its own: its own condition, its own words, its own art, its own celebration. Reaching a higher rung implies every rung below it, so write them as increasing bars (12 books, then 25, then 50) rather than as unrelated tests. Sent whole: this REPLACES the ladder, and a rung that keeps its rank and label keeps the date the user earned it. Omit `tiers` entirely for an ordinary goal — most goals should be ordinary.",
+          maxItems: 5,
+          items: {
+            type: "object",
+            properties: {
+              label: {
+                type: "string",
+                description: "Your word for this rarity: Bronze, Mythic, Fifty. Shown on the card and the celebration.",
+              },
+              title: { type: "string", description: "Overrides the goal's title on this rung." },
+              description: { type: "string" },
+              condition: {
+                type: "object",
+                description: "The bar for THIS rung — same syntax as a goal condition. See lifeos_get_goal_syntax.",
+              },
+              theme: {
+                type: "string",
+                enum: ["spark", "ember", "gold", "frost", "aurora", "void"],
+                description:
+                  "Which celebration plays. They get louder in roughly this order: spark, ember, frost, gold, aurora, void. Give the top rung the loudest one — that is what makes a rarity feel rare. You choose the feeling, not the colours: hard-coding a hue against the user's own accent looks like a bug.",
+              },
+              themeColor: { type: "string" },
+              emoji: { type: "string" },
+              iconImageUrl: { type: "string", description: "This rung's own icon. Square, 256×256." },
+              iconImageData: { type: "string" },
+              backgroundImageUrl: { type: "string", description: "This rung's own background. 3:2, 1200×800. Shown on the card once reached, and behind the celebration." },
+              backgroundImageData: { type: "string" },
+              artOverlay: { type: "number" },
+            },
+            required: ["label"],
+          },
         },
       },
       required: ["title"],
@@ -627,6 +717,49 @@ const tools = [
         status: { type: "string", enum: ["active", "paused", "abandoned"] },
         condition: { type: "object" },
         autoCheck: { type: "boolean" },
+        whyItMatters: { type: "string" },
+        emoji: { type: "string" },
+        themeColor: { type: "string" },
+        iconImageUrl: { type: "string", description: "Icon picture, square, 256×256 recommended. Optional." },
+        iconImageData: { type: "string", description: "The icon as a data: URI. Wins over the URL." },
+        backgroundImageUrl: { type: "string", description: "Background picture, 3:2 landscape, 1200×800 recommended, cover-cropped from the centre." },
+        backgroundImageData: { type: "string", description: "The background as a data: URI. Wins over the URL." },
+        artOverlay: { type: "number", description: "0.35–0.92 scrim over the background. Cannot be turned off." },
+        tiers: {
+          type: "array",
+          description:
+            "The rarity ladder, BOTTOM RUNG FIRST — array order is the order they are reached. At most 5. Each rung is a complete goal of its own: its own condition, its own words, its own art, its own celebration. Reaching a higher rung implies every rung below it, so write them as increasing bars (12 books, then 25, then 50) rather than as unrelated tests. Sent whole: this REPLACES the ladder, and a rung that keeps its rank and label keeps the date the user earned it. Omit `tiers` entirely for an ordinary goal — most goals should be ordinary.",
+          maxItems: 5,
+          items: {
+            type: "object",
+            properties: {
+              label: {
+                type: "string",
+                description: "Your word for this rarity: Bronze, Mythic, Fifty. Shown on the card and the celebration.",
+              },
+              title: { type: "string", description: "Overrides the goal's title on this rung." },
+              description: { type: "string" },
+              condition: {
+                type: "object",
+                description: "The bar for THIS rung — same syntax as a goal condition. See lifeos_get_goal_syntax.",
+              },
+              theme: {
+                type: "string",
+                enum: ["spark", "ember", "gold", "frost", "aurora", "void"],
+                description:
+                  "Which celebration plays. They get louder in roughly this order: spark, ember, frost, gold, aurora, void. Give the top rung the loudest one — that is what makes a rarity feel rare. You choose the feeling, not the colours: hard-coding a hue against the user's own accent looks like a bug.",
+              },
+              themeColor: { type: "string" },
+              emoji: { type: "string" },
+              iconImageUrl: { type: "string", description: "This rung's own icon. Square, 256×256." },
+              iconImageData: { type: "string" },
+              backgroundImageUrl: { type: "string", description: "This rung's own background. 3:2, 1200×800. Shown on the card once reached, and behind the celebration." },
+              backgroundImageData: { type: "string" },
+              artOverlay: { type: "number" },
+            },
+            required: ["label"],
+          },
+        },
       },
       required: ["id"],
     },

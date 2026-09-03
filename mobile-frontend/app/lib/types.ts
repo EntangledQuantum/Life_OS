@@ -103,6 +103,16 @@ export interface HabitWithToday {
   active: boolean;
   notes: string | null;
   themeColor: string;
+  /**
+   * Optional art. Both slots empty is the normal case and renders as it always
+   * has. Background 3:2 (1200x800), icon square (256x256) — see lib/art.ts.
+   */
+  iconImageUrl: string | null;
+  iconImageData: string | null;
+  backgroundImageUrl: string | null;
+  backgroundImageData: string | null;
+  /** Scrim over the background, 0.35-0.92. Null uses the default. */
+  artOverlay: number | null;
   completedToday: boolean;
   todayLogId: string | null;
   currentStreak: number;
@@ -209,6 +219,41 @@ export function isAgentStatus(task: Pick<Task, "meta">): boolean {
   return Boolean(task.meta && "connected" in task.meta);
 }
 
+/**
+ * One rung of a goal's rarity ladder.
+ *
+ * A goal used to be one condition: met or not. A tier is the same goal at a
+ * different height — its own condition, words, art and celebration. `rank`
+ * orders them from the bottom up, and reaching a higher rung implies every
+ * lower one.
+ */
+export interface GoalTier {
+  id: string;
+  goalId: string;
+  /** 1 = the first rung reached. */
+  rank: number;
+  /** The agent's word for this rarity: "Bronze", "Mythic", "Fifty". */
+  label: string;
+  title: string | null;
+  description: string | null;
+  /** Which celebration plays — see CELEBRATION_THEMES in lib/art.ts. */
+  theme: string;
+  themeColor: string | null;
+  emoji: string | null;
+  iconImageUrl: string | null;
+  iconImageData: string | null;
+  backgroundImageUrl: string | null;
+  backgroundImageData: string | null;
+  artOverlay: number | null;
+  progressPct: number;
+  metAt: string | null;
+  celebrationSeenAt: string | null;
+  celebrationPending: boolean;
+  conditionDetail: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Goal {
   id: string;
   title: string;
@@ -224,6 +269,24 @@ export interface Goal {
   conditionDetail: string[];
   emoji: string;
   themeColor: string;
+  /**
+   * Optional art. Both slots empty is the normal case and renders as it always
+   * has. Background 3:2 (1200x800), icon square (256x256) — see lib/art.ts.
+   */
+  iconImageUrl: string | null;
+  iconImageData: string | null;
+  backgroundImageUrl: string | null;
+  backgroundImageData: string | null;
+  /** Scrim over the background, 0.35-0.92. Null uses the default. */
+  artOverlay: number | null;
+  /** The rarity ladder, lowest rung first. Empty on an ordinary goal. */
+  tiers: GoalTier[];
+  /** The highest rung already reached. */
+  currentTier: GoalTier | null;
+  /** The rung being worked toward. */
+  nextTier: GoalTier | null;
+  /** The lowest rung reached but not yet witnessed — what to celebrate. */
+  pendingTier: GoalTier | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -380,6 +443,8 @@ export interface AgendaItem {
   /** The habit this row concerns — itself for a habit, the link for a task. */
   habitId: string | null;
   themeColor: string | null;
+  /** The row's icon picture, already resolved, or null for the usual emoji. */
+  iconImage: string | null;
 }
 
 /** The exact stretch a life-day covers, and the zone it is in. */

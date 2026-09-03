@@ -48,6 +48,17 @@ export function rebalanceHabitXp(db: LifeOsDb) {
   return Object.fromEntries(shares);
 }
 
+/**
+ * A scrim you cannot read the habit's name through is not a style choice.
+ * Same floor as cards and goals — see `MIN_ART_OVERLAY`.
+ */
+function clampArtOverlay(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(0.92, Math.max(0.35, n));
+}
+
 export function listHabits(db: LifeOsDb) {
   const rows = db
     .select()
@@ -108,6 +119,11 @@ export function createHabit(
     themeColor?: string;
     themeGraphic?: HabitGraphic;
     iconKey?: string | null;
+    iconImageUrl?: string | null;
+    iconImageData?: string | null;
+    backgroundImageUrl?: string | null;
+    backgroundImageData?: string | null;
+    artOverlay?: number | null;
   },
 ) {
   const existing = db
@@ -146,6 +162,11 @@ export function createHabit(
       themeColor: color,
       themeGraphic: input.themeGraphic ?? "ring",
       iconKey: input.iconKey ?? null,
+      iconImageUrl: input.iconImageUrl ?? null,
+      iconImageData: input.iconImageData ?? null,
+      backgroundImageUrl: input.backgroundImageUrl ?? null,
+      backgroundImageData: input.backgroundImageData ?? null,
+      artOverlay: clampArtOverlay(input.artOverlay),
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -180,6 +201,11 @@ export function updateHabit(
     themeColor: string;
     themeGraphic: HabitGraphic;
     iconKey: string | null;
+    iconImageUrl: string | null;
+    iconImageData: string | null;
+    backgroundImageUrl: string | null;
+    backgroundImageData: string | null;
+    artOverlay: number | null;
     active: boolean;
   }>,
 ) {
@@ -196,6 +222,9 @@ export function updateHabit(
   }
   if (rest.durationMinutes !== undefined) {
     rest.durationMinutes = clampDuration(rest.durationMinutes);
+  }
+  if (rest.artOverlay !== undefined) {
+    rest.artOverlay = clampArtOverlay(rest.artOverlay);
   }
   db.update(schema.habits)
     .set({
@@ -341,6 +370,11 @@ export function setHabitTheme(
     themeColor?: string;
     themeGraphic?: HabitGraphic;
     iconKey?: string | null;
+    iconImageUrl?: string | null;
+    iconImageData?: string | null;
+    backgroundImageUrl?: string | null;
+    backgroundImageData?: string | null;
+    artOverlay?: number | null;
   },
 ) {
   return updateHabit(db, id, theme);

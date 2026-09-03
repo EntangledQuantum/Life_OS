@@ -136,9 +136,20 @@ function Row({
         style={{ background: item.themeColor || "var(--accent)" }}
       />
 
-      {item.emoji && (
+      {/*
+        A habit with its own icon shows it here instead of the emoji. Only the
+        icon: a row is not a card, and a photograph behind 40pt of text is
+        unreadable at any scrim.
+      */}
+      {item.iconImage ? (
+        <img
+          src={item.iconImage}
+          alt=""
+          className="h-5 w-5 shrink-0 rounded-md object-cover"
+        />
+      ) : item.emoji ? (
         <span className="shrink-0 text-base leading-none">{item.emoji}</span>
-      )}
+      ) : null}
 
       <div className="min-w-0 flex-1">
         <div

@@ -8,7 +8,7 @@ description: >
   long-running agent (Hermes, OpenClaw, Claude Code, cron) should read what
   actually happened, schedule what happens next, react to completions, or set
   Life OS up for a user who does not have it.
-version: 4.5.0
+version: 4.6.0
 license: MIT
 platforms: [macos, linux, windows]
 metadata:
@@ -363,6 +363,152 @@ never touch a config outside Life OS without saying what you are about to do.
 
 ---
 
+## Pictures: habits, goals, tiers
+
+Habits and goals take the same two picture slots a card takes, with the same
+meanings. Every one of them is optional, and **most things should have none** —
+a picture earns its place when it says something the emoji cannot.
+
+| Field | What it is |
+|---|---|
+| `iconImageUrl` / `iconImageData` | **The icon.** The small square, in place of the emoji. |
+| `backgroundImageUrl` / `backgroundImageData` | **The background.** Fills the card behind the text, under a scrim. |
+| `artOverlay` | How dark that scrim is, `0.35`–`0.92`. |
+
+`…Data` is a `data:` URI and wins over `…Url` when both are set. Inline art
+needs no network and survives the phone being offline, which is the case this
+app is built for; a URL is better for anything large, because every inline byte
+rides on every dashboard poll.
+
+### The dimensions, exactly
+
+A habit card and a goal card are deliberately **the same shape**, so one picture
+works in either place and there is one set of numbers to remember.
+
+**Background — 3:2 landscape. 1200 × 800 recommended, 600 × 400 minimum.**
+
+It is drawn `cover`: scaled to fill the box and cropped equally from both sides
+of whichever dimension is too long. So the subject belongs in the **middle** —
+anything near an edge is the first thing to go. 3:2 is what the box is on both
+clients; hand us 16:9 and the sides get cut, hand us a square and the top and
+bottom do. More pixels than the box because a phone draws it at 3× density; not
+many more, because this is JSON on a wire.
+
+**Icon — square. 256 × 256 recommended, 96 × 96 minimum.**
+
+Drawn at about **44pt** — roughly a thumbnail. Anything with fine detail, thin
+lines or small text reads as mud at that size. One shape, one subject, high
+contrast. 256 is 44pt at 3× with room to spare.
+
+**Where each one shows up**
+
+| | icon | background |
+|---|---|---|
+| Habit card (dashboard) | in place of the emoji | behind the card |
+| Habit row (phone, day list) | in place of the emoji | not shown — a row is not a card |
+| Goal card | in place of the emoji | behind the card |
+| Celebration | the medallion | full-screen behind everything |
+
+Both clients cache what they fetch — the dashboard in Cache Storage, the phone
+on disk via `expo-image` — so a picture is pulled once and then survives
+reloads, restarts and flight mode. You do not need to re-send it, and you should
+not: setting the same art repeatedly is churn on every device that is watching.
+
+### The scrim is not optional
+
+`artOverlay` is clamped to `0.35`–`0.92` and cannot be turned off. A habit whose
+name cannot be read over its own photograph is a broken row, not a style choice.
+If your picture is busy or bright, raise it rather than fighting it.
+
+---
+
+## Rarity: one goal, five heights
+
+A goal is normally one condition: met or not. That is a switch, and a switch
+cannot describe "read 12 books" versus "read 50" — those had to be two unrelated
+goals with two unrelated celebrations, and nothing said the second was the
+harder version of the first.
+
+`tiers` is a ladder on one goal. **Up to five rungs, defined bottom first**, each
+with its own condition, words, art and celebration.
+
+```json
+lifeos_create_goal {
+  "title": "Books this year",
+  "emoji": "📚",
+  "tiers": [
+    { "label": "Bronze", "condition": { "type": "property", "key": "books_read", "op": ">=", "value": 12 },
+      "theme": "spark",  "description": "One a month. The habit exists." },
+    { "label": "Silver", "condition": { "type": "property", "key": "books_read", "op": ">=", "value": 25 },
+      "theme": "ember",  "description": "Two a month. It is not an accident any more." },
+    { "label": "Gold",   "condition": { "type": "property", "key": "books_read", "op": ">=", "value": 50 },
+      "theme": "gold",   "description": "A book a week.",
+      "backgroundImageUrl": "https://…/shelf.jpg",
+      "iconImageUrl": "https://…/gold-spine.png" },
+    { "label": "Mythic", "condition": { "type": "property", "key": "books_read", "op": ">=", "value": 100 },
+      "theme": "void",   "description": "A hundred. Nobody does this." }
+  ]
+}
+```
+
+**The rules, and why they are what they are.**
+
+- **Array order is the ladder.** `rank` is optional; the order you write them in
+  is the order they are reached, and the ranks stored are always `1..n`.
+- **A higher rung implies every lower one.** Clear rung 3 and rungs 1 and 2 are
+  marked too, because "50 books" cannot be true while "12 books" is false.
+  Write your rungs as increasing bars, not as unrelated tests — a ladder whose
+  rungs can be true in any order is not a ladder, and this rule will surprise
+  you.
+- **One celebration per rung, lowest first.** A user who crosses three rungs in
+  one write sees three celebrations, in order. That is the point.
+- **The goal finishes at the top rung.** `status: "achieved"` and
+  `goal.achieved` fire when the last rung is witnessed; every rung below fires
+  `goal.tier` instead, so you can react to "they hit Gold" without treating it
+  as the end.
+- **Sending `tiers` replaces the whole ladder.** Rungs are defined relative to
+  each other, so a partial update is how Gold ends up below Bronze. A rung that
+  keeps its **rank and label** keeps the date the user earned it and does not
+  replay its celebration — so rewording is safe, renaming is not.
+- **`[]` removes the ladder.** The goal goes back to being ordinary.
+- **Five is the limit and it is the point.** More rungs is a progress bar with
+  extra steps, and the value of the top rung is that reaching it is rare.
+
+### Themes
+
+`theme` picks the *feeling* of the celebration — the halo, the confetti, how
+loud it is. You choose from a closed set; you do not choose hex codes, because
+you do not know what accent the user is running and a rung hard-coding purple
+against a gold theme reads as a bug rather than as a rarity.
+
+| theme | reads as | loudness |
+|---|---|---|
+| `spark` | quiet, cool, a first step | ▁ |
+| `ember` | warm, forged, effort | ▃ |
+| `frost` | sharp, crystalline | ▄ |
+| `gold` | the obvious achievement | ▆ |
+| `aurora` | rare, many-coloured | ▇ |
+| `void` | the top of a ladder nobody climbs | █ |
+
+Give the top rung the loudest one. A ladder where every rung celebrates
+identically has rarities in the data and none on the screen.
+
+The user's own celebration setting still wins: a theme's loudness multiplies it
+rather than replacing it, so someone who set celebrations to minimal keeps
+minimal.
+
+### Tier art
+
+A tier's own `iconImage*` / `backgroundImage*` — same dimensions as everything
+else — replaces the goal's once that rung is reached. The card *becomes* the
+tier: its colour, its name, its picture. And the background is the one place the
+art gets the stage it was made for, full-screen behind the celebration.
+
+Art on the top rung or two is usually the right amount. A picture on every rung
+of every goal is wallpaper.
+
+---
+
 ## Goals are machine-checkable
 
 A goal is a condition, not a title. Every write in the app re-evaluates every
@@ -381,6 +527,9 @@ If a goal cannot be written as a condition, you need a counter for it — invent
 one with `lifeos_set_property` and push to it when something happens on your
 side. Nothing in the app needs to be taught what a book is.
 
+A goal with degrees rather than a single bar wants `tiers` instead of one
+`condition` — see **Rarity** above.
+
 ---
 
 ## Webhooks: be told, don't poll
@@ -396,6 +545,11 @@ bearer token. Deliveries carry `X-Request-ID` and are retried three times —
 
 If a task carries a slider, `webhookOnInteract` tells you the answer without the
 card disappearing.
+
+A tiered goal fires `goal.tier` on every rung the user witnesses — with
+`tierLabel`, `tierRank` and `isTopTier` — and `goal.achieved` only on the last
+one. Congratulating someone for finishing a goal they are three rungs into is
+worse than saying nothing.
 
 ---
 

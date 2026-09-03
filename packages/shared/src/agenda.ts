@@ -62,6 +62,16 @@ export interface AgendaItem {
    */
   habitId: string | null;
   themeColor: string | null;
+  /**
+   * The row's icon picture, already resolved, or null for the usual emoji.
+   *
+   * One field rather than the four an icon is stored in: a list row wants the
+   * picture or it wants the emoji, and making every client re-derive that from
+   * `iconImageData ?? iconImageUrl` is how two clients end up disagreeing.
+   * A background never appears here — a row is not a card, and a photograph
+   * behind 40pt of text is unreadable at any scrim.
+   */
+  iconImage: string | null;
 }
 
 /** Sort: timed things in time order, then untimed, then done last. */

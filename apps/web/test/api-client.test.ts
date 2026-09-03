@@ -126,10 +126,21 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+/**
+ * Files allowed to call `fetch` without going through the API client.
+ *
+ * Exactly one, and it is not talking to Life OS: `image-cache.ts` fetches
+ * agent-supplied pictures from whatever host they live on, to put them in Cache
+ * Storage. Sending our `Authorization` and `X-LifeOS-Protocol` headers to a
+ * stranger's image host would leak the token and trip CORS, so it must not use
+ * the client. The rule below still holds it to that.
+ */
+const FETCH_EXEMPT = new Set(["lib/image-cache.ts"]);
+
 describe("nothing bypasses the client", () => {
   it("has no hand-built fetch outside lib/api.ts", () => {
     /*
-     * This is the test that would have caught the bug. The behavioural ones
+     * This is the test that would have caught the 426 bug. The behavioural ones
      * above pass whether or not a component quietly calls fetch itself — that
      * request simply never reaches them.
      *
@@ -138,13 +149,33 @@ describe("nothing bypasses the client", () => {
      */
     const offenders = sourceFiles(SRC)
       .filter((file) => path.resolve(file) !== path.resolve(SRC, "lib/api.ts"))
-      .filter((file) => /(?<![.\w])fetch\s*\(/.test(fs.readFileSync(file, "utf8")))
-      .map((file) => path.relative(SRC, file).replace(/\\/g, "/"));
+      .map((file) => ({
+        rel: path.relative(SRC, file).replace(/\\/g, "/"),
+        source: fs.readFileSync(file, "utf8"),
+      }))
+      .filter(({ rel }) => !FETCH_EXEMPT.has(rel))
+      .filter(({ source }) => /(?<![.\w])fetch\s*\(/.test(source))
+      .map(({ rel }) => rel);
 
     assert.deepEqual(
       offenders,
       [],
       `these build their own request and will miss any header added to api.ts:\n  ${offenders.join("\n  ")}`,
     );
+  });
+
+  it("keeps the exempt file out of the API", () => {
+    /*
+     * The exemption is for third-party images, not a way around the client. If
+     * this file ever calls a Life OS endpoint it is doing so without the
+     * protocol header, which is precisely the bug the rule above exists for.
+     */
+    for (const rel of FETCH_EXEMPT) {
+      const source = fs.readFileSync(path.join(SRC, rel), "utf8");
+      assert.ok(
+        !source.includes("/api/v1"),
+        `${rel} is exempt from the fetch rule but is calling the Life OS API`,
+      );
+    }
   });
 });

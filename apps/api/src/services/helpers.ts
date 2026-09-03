@@ -90,6 +90,12 @@ export function mapHabit(row: typeof schema.habits.$inferSelect) {
     themeColor: row.themeColor,
     themeGraphic: row.themeGraphic as HabitGraphic,
     iconKey: row.iconKey,
+    /* Optional art, same slots and dimensions as a goal's or a card's. */
+    iconImageUrl: row.iconImageUrl ?? null,
+    iconImageData: row.iconImageData ?? null,
+    backgroundImageUrl: row.backgroundImageUrl ?? null,
+    backgroundImageData: row.backgroundImageData ?? null,
+    artOverlay: row.artOverlay ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,

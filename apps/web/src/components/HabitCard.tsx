@@ -3,6 +3,7 @@ import { Check, Undo2 } from "lucide-react";
 import type { HabitWithToday } from "@life-os/shared";
 import { cn } from "@/lib/utils";
 import { LiquidFill } from "./graphics/LiquidFill";
+import { ArtBackground, ArtIcon, hasArt } from "./Art";
 
 export function HabitCard({
   habit,
@@ -28,31 +29,33 @@ export function HabitCard({
     }
   };
 
+  const art = hasArt(habit);
+
   return (
     <div
-      className={cn("card flex flex-col gap-3 p-4 transition-colors")}
+      className={cn(
+        "card relative isolate flex flex-col gap-3 overflow-hidden p-4 transition-colors",
+        // A card with a photograph behind it needs its own contrast, not the
+        // sheet's translucent grey.
+        art && "bg-transparent",
+      )}
       style={
         habit.completedToday
           ? { borderColor: `${habit.themeColor}66` }
           : undefined
       }
     >
+      <ArtBackground art={habit} className="-z-10" />
+
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "flex h-11 w-11 items-center justify-center rounded-[13px] text-xl",
-              pop && "pop",
-            )}
-            style={{
-              background: `${habit.themeColor}22`,
-              boxShadow: habit.completedToday
-                ? `0 0 20px ${habit.themeColor}44`
-                : undefined,
-            }}
-          >
-            {habit.emoji}
-          </div>
+          <ArtIcon
+            art={habit}
+            emoji={habit.emoji}
+            color={habit.themeColor}
+            className={cn("h-11 w-11", pop && "pop")}
+            emojiClassName="text-xl"
+          />
           <div>
             <div className="font-medium leading-tight">{habit.name}</div>
             <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">

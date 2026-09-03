@@ -49,6 +49,16 @@ export interface Habit {
   themeColor: string;
   themeGraphic: HabitGraphic;
   iconKey: string | null;
+  /**
+   * Optional art. Both slots empty is the normal case and renders as it always
+   * has — the emoji in a tinted square. See `ART_SPEC` for the dimensions.
+   */
+  iconImageUrl: string | null;
+  iconImageData: string | null;
+  backgroundImageUrl: string | null;
+  backgroundImageData: string | null;
+  /** Scrim over the background, 0.35–0.92. Null uses the default. */
+  artOverlay: number | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -89,6 +99,52 @@ export interface StudySession {
   blockId?: string | null;
 }
 
+/**
+ * One rung of a goal's rarity ladder.
+ *
+ * A goal used to be a single line: one condition, met or not. That describes a
+ * switch, not an achievement — "read 12 books" and "read 50 books" had to be
+ * two unrelated goals with two unrelated celebrations, and nothing in the data
+ * said the second was the harder version of the first.
+ *
+ * A tier is the same goal at a different height. Its own condition, its own
+ * words, its own art, its own celebration. `rank` orders them from the bottom
+ * up: 1 is the one you reach first, and the agent defines them in that order.
+ */
+export interface GoalTier {
+  id: string;
+  goalId: string;
+  /** 1 = the first rung. Contiguous, ascending, at most `MAX_GOAL_TIERS`. */
+  rank: number;
+  /** What this rarity is called. The agent's word: "Bronze", "Mythic", "Ten". */
+  label: string;
+  /** Overrides the goal's title on this rung's card and celebration. */
+  title: string | null;
+  description: string | null;
+  /** The bar for *this* rung. Each rung is a complete condition of its own. */
+  condition: GoalCondition | null;
+  /** Which celebration plays. See `CELEBRATION_THEMES`. */
+  theme: string;
+  themeColor: string | null;
+  emoji: string | null;
+  iconImageUrl: string | null;
+  iconImageData: string | null;
+  backgroundImageUrl: string | null;
+  backgroundImageData: string | null;
+  artOverlay: number | null;
+  /** Progress toward this rung specifically, 0–100. */
+  progressPct: number;
+  /** First instant this rung's condition was true. */
+  metAt: string | null;
+  /** When the user actually watched this rung's celebration. */
+  celebrationSeenAt: string | null;
+  /** Met but unwitnessed — this rung still owes the user an animation. */
+  celebrationPending: boolean;
+  conditionDetail: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Goal {
   id: string;
   title: string;
@@ -118,6 +174,30 @@ export interface Goal {
   conditionDetail: string[];
   emoji: string;
   themeColor: string;
+  /**
+   * Optional art, same two slots and the same dimensions as a habit — one
+   * picture works in either place.
+   */
+  iconImageUrl: string | null;
+  iconImageData: string | null;
+  backgroundImageUrl: string | null;
+  backgroundImageData: string | null;
+  artOverlay: number | null;
+  /**
+   * The rarity ladder, lowest rung first. Empty for a goal that is simply done
+   * or not done, which stays the normal case.
+   */
+  tiers: GoalTier[];
+  /** The highest rung already reached, or null. */
+  currentTier: GoalTier | null;
+  /** The rung being worked toward, or null once the top one is reached. */
+  nextTier: GoalTier | null;
+  /**
+   * The lowest rung that has been reached but not yet witnessed — what the
+   * celebration should be about. Null when there is nothing to play, and on
+   * goals with no ladder, where the goal itself is the celebration.
+   */
+  pendingTier: GoalTier | null;
   createdAt: string;
   updatedAt: string;
 }

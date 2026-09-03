@@ -421,8 +421,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  markCelebrationSeen: (id: string) =>
-    request<Goal>(`/api/v1/goals/${id}/celebration-seen`, { method: "POST" }),
+  /**
+   * Witness a celebration. `tierId` names one rung of a rarity ladder; omitting
+   * it claims the lowest rung still owed, which is what a build that predates
+   * tiers does — so an old APK still walks the ladder one rung per tap.
+   */
+  markCelebrationSeen: (id: string, tierId?: string) =>
+    request<Goal>(
+      `/api/v1/goals/${id}/celebration-seen${
+        tierId ? `?tier=${encodeURIComponent(tierId)}` : ""
+      }`,
+      { method: "POST" },
+    ),
 
   setActiveSession: (activity: string, blockId?: string | null) =>
     request("/api/v1/session/active", {

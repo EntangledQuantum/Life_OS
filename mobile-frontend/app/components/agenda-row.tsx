@@ -1,4 +1,5 @@
 import { Pressable, Text, View } from "react-native";
+import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { font, radius, rgba } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
@@ -91,7 +92,20 @@ export function AgendaRow({
         }}
       />
 
-      {item.emoji ? <Text style={{ fontSize: 16 }}>{item.emoji}</Text> : null}
+      {/*
+        A habit with its own icon shows it here instead of the emoji. Only the
+        icon — a row is not a card.
+      */}
+      {item.iconImage ? (
+        <Image
+          source={{ uri: item.iconImage }}
+          style={{ width: 22, height: 22, borderRadius: 6 }}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+        />
+      ) : item.emoji ? (
+        <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
+      ) : null}
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text

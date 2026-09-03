@@ -13,6 +13,7 @@ import {
   type GrowthStyle,
 } from "./constants.js";
 import { MAX_SVG_LENGTH } from "./svg.js";
+import { CELEBRATION_THEMES, MAX_GOAL_TIERS } from "./art.js";
 import { WEBHOOK_EVENTS, WEBHOOK_PRESETS } from "./webhooks.js";
 import { TASK_KINDS, TASK_STATUSES } from "./tasks.js";
 import { parseGoalCondition, type GoalCondition } from "./conditions.js";
@@ -70,6 +71,21 @@ export const createHabitSchema = z.object({
   themeColor: z.string().optional(),
   themeGraphic: z.enum(HABIT_GRAPHICS).optional(),
   iconKey: z.string().nullable().optional(),
+  /**
+   * Optional art. See `ART_SPEC` for dimensions: background 3:2 (1200×800
+   * recommended), icon square (256×256). Both may be a URL or a `data:` URI;
+   * inline data wins, needs no network, and survives offline.
+   *
+   * The inline caps are deliberate. A background is a photograph and gets room
+   * for one; an icon is drawn at 44pt and a megabyte of it is a mistake, not a
+   * choice — and every one of these rides on every dashboard poll.
+   */
+  iconImageUrl: z.string().max(2000).nullable().optional(),
+  iconImageData: z.string().max(400_000).nullable().optional(),
+  backgroundImageUrl: z.string().max(2000).nullable().optional(),
+  backgroundImageData: z.string().max(2_000_000).nullable().optional(),
+  /** Scrim over the background, 0.35–0.92. Clamped, never off. */
+  artOverlay: z.number().min(0).max(1).nullable().optional(),
 });
 
 export const updateHabitSchema = createHabitSchema.partial();
@@ -131,6 +147,33 @@ export const createStudySessionSchema = z.object({
   blockId: z.string().nullable().optional(),
 });
 
+/**
+ * One rung of a rarity ladder.
+ *
+ * `rank` is optional because the array order is the ladder — bottom first,
+ * which is the thing an agent gets right without being told. Everything else
+ * except `label` is optional: a rung with a label and a condition is a complete
+ * rung, and art is never required.
+ */
+export const goalTierSchema = z.object({
+  rank: z.number().int().min(1).max(MAX_GOAL_TIERS).optional(),
+  /** The word for this rarity: "Bronze", "Mythic", "Fifty". */
+  label: z.string().min(1).max(40),
+  title: z.string().max(200).nullable().optional(),
+  description: z.string().max(2000).nullable().optional(),
+  /** The bar for this rung alone. */
+  condition: goalConditionSchema.nullable().optional(),
+  /** Which celebration plays. Higher rungs deserve louder ones. */
+  theme: z.enum(CELEBRATION_THEMES).optional(),
+  themeColor: z.string().max(32).nullable().optional(),
+  emoji: z.string().max(16).nullable().optional(),
+  iconImageUrl: z.string().max(2000).nullable().optional(),
+  iconImageData: z.string().max(400_000).nullable().optional(),
+  backgroundImageUrl: z.string().max(2000).nullable().optional(),
+  backgroundImageData: z.string().max(2_000_000).nullable().optional(),
+  artOverlay: z.number().min(0).max(1).nullable().optional(),
+});
+
 export const createGoalSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().nullable().optional(),
@@ -149,6 +192,30 @@ export const createGoalSchema = z.object({
   autoCheck: z.boolean().default(true),
   emoji: z.string().max(16).default("🎯"),
   themeColor: z.string().max(32).default("#A78BFA"),
+  /**
+   * Optional art. See `ART_SPEC` for dimensions: background 3:2 (1200×800
+   * recommended), icon square (256×256). Both may be a URL or a `data:` URI;
+   * inline data wins, needs no network, and survives offline.
+   *
+   * The inline caps are deliberate. A background is a photograph and gets room
+   * for one; an icon is drawn at 44pt and a megabyte of it is a mistake, not a
+   * choice — and every one of these rides on every dashboard poll.
+   */
+  iconImageUrl: z.string().max(2000).nullable().optional(),
+  iconImageData: z.string().max(400_000).nullable().optional(),
+  backgroundImageUrl: z.string().max(2000).nullable().optional(),
+  backgroundImageData: z.string().max(2_000_000).nullable().optional(),
+  /** Scrim over the background, 0.35–0.92. Clamped, never off. */
+  artOverlay: z.number().min(0).max(1).nullable().optional(),
+  /**
+   * The rarity ladder, bottom rung first. Optional — most goals have none, and
+   * a goal with none behaves exactly as goals always have.
+   *
+   * Sent whole, never patched: rungs are defined relative to each other, so a
+   * partial update is how "Gold" ends up below "Bronze". `[]` removes the
+   * ladder.
+   */
+  tiers: z.array(goalTierSchema).max(MAX_GOAL_TIERS).optional(),
 });
 
 export const updateGoalSchema = createGoalSchema.partial();

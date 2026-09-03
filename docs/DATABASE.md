@@ -76,6 +76,7 @@ what it does. Each runs in its own transaction and rolls back on failure.
 | `quests` | Daily challenge counters |
 | `webhook_targets`, `webhook_deliveries` | Where completions are pushed, and every attempt with its response |
 | `goals`, `goal_habit_links` | Agent-set goals: the serialized condition, when it was met, and whether the user has seen the celebration |
+| `goal_tiers` | A goal's rarity ladder — up to five rungs, each with its own condition, wording, art and celebration theme, and its own record of when it was reached and witnessed |
 | `agent_properties` | Counters the agent invented and maintains (`books_read`, …), each with a stable uid that goal conditions read |
 | `daily_snapshots` | Per-day aggregates that power "you vs yesterday" |
 | `property_history`, `goal_progress_history` | Every value an agent counter and each goal has held. Written only on an actual change — the current number alone cannot answer "is this moving" |

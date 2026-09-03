@@ -125,6 +125,7 @@ function fromHabit(
     streak: habit.currentStreak,
     habitId: habit.id,
     themeColor: habit.themeColor,
+    iconImage: habit.iconImageData || habit.iconImageUrl || null,
   };
 }
 
@@ -152,6 +153,7 @@ function fromTask(task: Task, day: LifeDay, now: Date, lead: number): AgendaItem
     streak: null,
     habitId: task.habitId,
     themeColor: task.themeColor,
+    iconImage: task.iconImageData || task.iconImageUrl || null,
   };
 }
 

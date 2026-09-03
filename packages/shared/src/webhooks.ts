@@ -29,6 +29,15 @@ export const WEBHOOK_EVENTS = [
   "review.complete",
   "event.complete",
   "goal.achieved",
+  /**
+   * One rung of a rarity ladder was reached and witnessed.
+   *
+   * Separate from `goal.achieved`, which stays what it always was: the whole
+   * goal is finished. A five-tier goal fires this four times on the way up and
+   * both on the last rung, so an agent can react to "they hit Gold" without
+   * having to treat it as the end of the story.
+   */
+  "goal.tier",
   "property.changed",
 ] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];

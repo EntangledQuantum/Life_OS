@@ -931,6 +931,79 @@ const cardIconImage: Migration = {
   },
 };
 
+/**
+ * Habits and goals get pictures, and a goal gets rungs.
+ *
+ * Two things, and they are the same thing twice.
+ *
+ * Only cards could carry art, so a habit and a goal were an emoji in a tinted
+ * square whatever they were about — the app could show you a photograph of the
+ * book you are reading but not of the mountain you are training for. Habits,
+ * goals and tiers now take the same two slots a card takes, with the same
+ * meanings and the same dimensions, so one picture works in any of them.
+ *
+ * And a goal was one condition: met or not. That is a switch, not an
+ * achievement. "Read 12 books" and "read 50 books" had to be two unrelated
+ * goals, with nothing in the data saying the second was the harder version of
+ * the first, and no way to make reaching it *feel* different. `goal_tiers` is
+ * the ladder — each rung its own condition, words, art and celebration, ordered
+ * from the bottom up.
+ *
+ * Every column is nullable and every goal starts with zero tiers, so nothing
+ * that exists today changes shape or behaviour.
+ */
+const habitGoalArtAndTiers: Migration = {
+  version: 14,
+  name: "habits and goals carry art; goals carry a rarity ladder",
+  up(db) {
+    for (const table of ["habits", "goals"]) {
+      addColumn(db, table, "icon_image_url", "TEXT");
+      addColumn(db, table, "icon_image_data", "TEXT");
+      addColumn(db, table, "background_image_url", "TEXT");
+      addColumn(db, table, "background_image_data", "TEXT");
+      addColumn(db, table, "art_overlay", "REAL");
+    }
+
+    if (!hasTable(db, "goal_tiers")) {
+      db.exec(`
+        CREATE TABLE goal_tiers (
+          id TEXT PRIMARY KEY,
+          goal_id TEXT NOT NULL,
+          rank INTEGER NOT NULL,
+          label TEXT NOT NULL,
+          title TEXT,
+          description TEXT,
+          condition_json TEXT,
+          theme TEXT NOT NULL DEFAULT 'spark',
+          theme_color TEXT,
+          emoji TEXT,
+          icon_image_url TEXT,
+          icon_image_data TEXT,
+          background_image_url TEXT,
+          background_image_data TEXT,
+          art_overlay REAL,
+          progress_pct REAL NOT NULL DEFAULT 0,
+          met_at TEXT,
+          celebration_seen_at TEXT,
+          condition_detail_json TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      /*
+       * One row per rung per goal. The unique index is what makes "replace the
+       * ladder" safe to run twice and stops two rungs claiming rank 2.
+       */
+      db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS goal_tiers_goal_rank ON goal_tiers (goal_id, rank)",
+      );
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS goal_tiers_goal ON goal_tiers (goal_id)",
+      );
+    }
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -946,6 +1019,7 @@ export const MIGRATIONS: Migration[] = [
   defaultToBloom,
   cardStyling,
   cardIconImage,
+  habitGoalArtAndTiers,
 ];
 
 /** The version a database is brought to by `runMigrations`. */

@@ -295,6 +295,13 @@ export function describe(payload: WebhookPayload): string {
       return `Life OS: finished study block "${what}"`;
     case "goal.achieved":
       return `Life OS: goal "${what}" achieved`;
+    case "goal.tier": {
+      // The rung is the news here; the goal is the context.
+      const rung = (payload.data as { tierLabel?: string }).tierLabel;
+      return rung
+        ? `Life OS: reached ${rung} on "${what}"`
+        : `Life OS: reached a new tier on "${what}"`;
+    }
     case "property.changed":
       return `Life OS: counter "${what}" changed`;
     case "card.interaction":

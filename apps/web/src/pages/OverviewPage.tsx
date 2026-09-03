@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { ACTIVITIES, type AgendaItem } from "@life-os/shared";
 import { api } from "@/lib/api";
 import { celebrate } from "@/lib/celebrate";
+import { prefetchImages } from "@/lib/image-cache";
 import { useUiStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { DayGraphic } from "@/components/graphics/DayGraphic";
@@ -44,6 +45,28 @@ export function OverviewPage() {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
+
+  /*
+   * Pull every picture onto the device once the day loads.
+   *
+   * The one that matters is a goal tier's: it is not on screen until the
+   * condition comes true, and at that moment it is wanted full-screen and
+   * immediately. Fetching it then means the celebration opens on an empty
+   * medallion and fills in a beat later, which is exactly the beat that was
+   * supposed to feel like an arrival. Everything else here is just warm.
+   */
+  useEffect(() => {
+    if (!data) return;
+    prefetchImages([
+      ...(data.habits ?? []).flatMap((h) => [h.iconImageUrl, h.backgroundImageUrl]),
+      ...(data.goals ?? []).flatMap((g) => [
+        g.iconImageUrl,
+        g.backgroundImageUrl,
+        ...g.tiers.flatMap((t) => [t.iconImageUrl, t.backgroundImageUrl]),
+      ]),
+      ...(data.tasks ?? []).flatMap((t) => [t.imageUrl, t.iconImageUrl]),
+    ]);
+  }, [data]);
 
   /**
    * One handler for both kinds, because the list is one list. `source` is the

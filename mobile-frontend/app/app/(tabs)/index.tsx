@@ -31,6 +31,7 @@ import {
 import { DayGraphic } from "@/components/day-graphic";
 import { AgendaRow } from "@/components/agenda-row";
 import { AgentCard, AgentSetupStrip } from "@/components/agent-card";
+import { prefetchArt } from "@/components/art";
 import { ActivitySession } from "@/components/activity-session";
 import { CelebrationModal } from "@/components/celebration-modal";
 import { UpdateRequired } from "@/components/update-required";
@@ -97,6 +98,30 @@ export default function TodayScreen() {
     return () => clearTimeout(id);
   }, [toast]);
 
+  /*
+   * Pull every picture onto the device once the day loads.
+   *
+   * The one that matters is a goal tier's: it is not on screen until the
+   * condition comes true, and at that moment it is wanted full-screen and
+   * immediately. Fetching it then means the celebration opens on an empty
+   * medallion and fills in a beat later — exactly the beat that was meant to
+   * feel like an arrival.
+   */
+  useEffect(() => {
+    if (!dashQ.data) return;
+    prefetchArt([
+      ...(dashQ.data.habits ?? []).flatMap((h) => [
+        h.iconImageUrl,
+        h.backgroundImageUrl,
+      ]),
+      ...(dashQ.data.goals ?? []).flatMap((g) => [
+        g.iconImageUrl,
+        g.backgroundImageUrl,
+        ...(g.tiers ?? []).flatMap((t) => [t.iconImageUrl, t.backgroundImageUrl]),
+      ]),
+    ]);
+  }, [dashQ.data]);
+
   const data = dashQ.data ?? cached;
   const settings = settingsQ.data;
   const reduce = Boolean(settings?.reducedMotion) || osReducedMotion;
@@ -158,7 +183,8 @@ export default function TodayScreen() {
   });
 
   const celebrate = useMutation({
-    mutationFn: (id: string) => api.markCelebrationSeen(id),
+    mutationFn: ({ id, tierId }: { id: string; tierId?: string }) =>
+      api.markCelebrationSeen(id, tierId),
     onSuccess: invalidate,
   });
 
@@ -251,7 +277,13 @@ export default function TodayScreen() {
         intensity={settings?.celebrationIntensity ?? "full"}
         reducedMotion={reduce}
         onDismiss={() => {
-          if (celebration) celebrate.mutate(celebration.id);
+          // One rung per tap: the modal is showing `pendingTier`, not the goal.
+          if (celebration) {
+            celebrate.mutate({
+              id: celebration.id,
+              tierId: celebration.pendingTier?.id,
+            });
+          }
         }}
       />
 

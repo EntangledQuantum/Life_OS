@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { Bot, Check, CircleDot, Sparkles } from "lucide-react";
-import type { AgentProperty, Goal } from "@life-os/shared";
+import { themePalette, type AgentProperty, type Goal, type GoalTier } from "@life-os/shared";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { ArtBackground, ArtIcon, hasArt } from "@/components/Art";
 
 /**
  * Goals are read-only here on purpose.
@@ -103,27 +104,50 @@ function GoalGroup({
 }
 
 function GoalCard({ goal }: { goal: Goal }) {
-  const color = goal.themeColor || "#A78BFA";
+  /*
+   * On a tiered goal the rung you are standing on owns the look: its colour,
+   * its art, its name. That is what makes a rarity worth having — the card
+   * itself changes when you reach it, rather than a label appearing on the same
+   * card it always was.
+   */
+  const tier = goal.currentTier;
+  /*
+   * A tier that named no colour takes its *theme's*, not the goal's. Falling
+   * back to the goal made an ember card draw a lavender progress bar — the
+   * rarity was in the pips and nowhere else, which is the opposite of the
+   * point. The celebration has always resolved it this way; the card now agrees.
+   */
+  const color = tier
+    ? tier.themeColor || themePalette(tier.theme).primary
+    : goal.themeColor || "#A78BFA";
   const achieved = goal.status === "achieved";
   const pct = Math.max(0, Math.min(100, Math.round(goal.progressPct)));
+  /* The tier's art if it has any, else the goal's. */
+  const art = tier && hasArt(tier) ? tier : goal;
 
   return (
     <article
       className={cn(
-        "flex flex-col rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5",
+        "relative isolate flex flex-col overflow-hidden rounded-2xl border border-white/[0.08] p-5",
+        hasArt(art) ? "bg-transparent" : "bg-white/[0.03]",
         goal.celebrationPending && "reminder-due",
       )}
       style={!goal.celebrationPending ? { borderColor: `${color}33` } : undefined}
     >
+      <ArtBackground art={art} className="-z-10" />
+
       <div className="flex items-start gap-3">
-        <span
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl"
-          style={{ background: `${color}22` }}
-        >
-          {goal.emoji || "🎯"}
-        </span>
+        <ArtIcon
+          art={art}
+          emoji={tier?.emoji || goal.emoji || "🎯"}
+          color={color}
+          className="h-10 w-10"
+          emojiClassName="text-xl"
+        />
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-tight">{goal.title}</h3>
+          <h3 className="font-semibold leading-tight">
+            {tier?.title || goal.title}
+          </h3>
           <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[var(--faint)]">
             <span>{goal.ownerKind === "agent" ? "agent-set" : "manual"}</span>
             {goal.condition && <span>auto-checked</span>}
@@ -164,11 +188,14 @@ function GoalCard({ goal }: { goal: Goal }) {
         </ul>
       )}
 
+      {goal.tiers.length > 0 && <TierLadder goal={goal} />}
+
       <div className="mt-auto pt-4">
         <div className="mb-1 flex justify-between font-mono text-[11px] text-[var(--faint)]">
           <span>{pct}%</span>
           {goal.celebrationPending && (
-            <span className="text-[var(--accent)]">claim on the dashboard</span>
+            // The tier's colour, like everything else on a card it owns.
+            <span style={{ color }}>claim on the dashboard</span>
           )}
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-white/5">
@@ -179,6 +206,67 @@ function GoalCard({ goal }: { goal: Goal }) {
         </div>
       </div>
     </article>
+  );
+}
+
+/**
+ * The rungs, as one row.
+ *
+ * Reached rungs are lit in their own theme colour; the one you are climbing is
+ * outlined; the rest are dim. Showing the whole ladder rather than only the
+ * next rung is the point — a rarity you cannot see coming is not something to
+ * aim at, and one you cannot see behind you is not something you earned.
+ */
+function TierLadder({ goal }: { goal: Goal }) {
+  return (
+    <ol className="mt-4 flex flex-wrap gap-1.5" aria-label="Tiers">
+      {goal.tiers.map((tier) => (
+        <TierPip
+          key={tier.id}
+          tier={tier}
+          reached={Boolean(tier.metAt)}
+          current={goal.nextTier?.id === tier.id}
+        />
+      ))}
+    </ol>
+  );
+}
+
+function TierPip({
+  tier,
+  reached,
+  current,
+}: {
+  tier: GoalTier;
+  reached: boolean;
+  current: boolean;
+}) {
+  const palette = themePalette(tier.theme);
+  const color = tier.themeColor || palette.primary;
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors",
+        reached ? "text-[var(--text)]" : "text-[var(--faint)]",
+      )}
+      style={{
+        borderColor: reached ? `${color}88` : current ? `${color}55` : "rgba(255,255,255,0.08)",
+        background: reached ? `${color}1f` : "transparent",
+      }}
+      title={
+        reached
+          ? `${tier.label} — reached${tier.metAt ? ` ${new Date(tier.metAt).toLocaleDateString()}` : ""}`
+          : `${tier.label} — ${Math.round(tier.progressPct)}%`
+      }
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ background: reached ? color : "rgba(255,255,255,0.18)" }}
+        aria-hidden
+      />
+      {tier.label}
+      {!reached && current && <span className="opacity-70">{Math.round(tier.progressPct)}%</span>}
+    </li>
   );
 }
 

@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { Sparkles } from "lucide-react";
-import type { Goal } from "@life-os/shared";
+import { resolveArt, themePalette, type Goal, type GoalTier } from "@life-os/shared";
 import { api } from "@/lib/api";
 import { celebrate } from "@/lib/celebrate";
 import { useUiStore } from "@/lib/store";
 import { playChime } from "@/lib/notify";
+import { useCachedImage } from "@/lib/image-cache";
 
 /**
  * Full-screen goal celebration.
@@ -25,26 +26,47 @@ export function GoalCelebration({ goals }: { goals: Goal[] }) {
   const goal = goals[0] ?? null;
   const firedRef = useRef<string | null>(null);
 
+  /*
+   * On a tiered goal this is about one rung, and the rung decides how loud it
+   * is. A five-rung goal plays five of these on the way up, each in its own
+   * theme, which is the whole point of a rarity.
+   */
+  const tier = goal?.pendingTier ?? null;
+
   const claim = useMutation({
-    mutationFn: (id: string) => api.markCelebrationSeen(id),
+    mutationFn: ({ id, tierId }: { id: string; tierId?: string }) =>
+      api.markCelebrationSeen(id, tierId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
   });
 
   useEffect(() => {
-    if (!goal || firedRef.current === goal.id) return;
-    firedRef.current = goal.id;
-    celebrate(intensity, "levelup");
+    if (!goal) return;
+    // Keyed on the rung: two rungs of one goal are two celebrations.
+    const key = tier ? `${goal.id}:${tier.id}` : goal.id;
+    if (firedRef.current === key) return;
+    firedRef.current = key;
+    const palette = themePalette(tier?.theme);
+    /*
+     * The theme's intensity multiplies the user's setting rather than replacing
+     * it. Someone who turned celebrations down did not ask for the top rung to
+     * be exempt.
+     */
+    celebrate(intensity, "levelup", {
+      colors: tier ? palette.particles : undefined,
+      scale: tier ? palette.intensity : 1,
+    });
     playChime(0.22);
-  }, [goal, intensity]);
+  }, [goal, tier, intensity]);
 
   if (!goal || typeof document === "undefined") return null;
 
   return createPortal(
     <GoalCelebrationOverlay
       goal={goal}
+      tier={tier}
       queued={goals.length - 1}
       busy={claim.isPending}
-      onClaim={() => claim.mutate(goal.id)}
+      onClaim={() => claim.mutate({ id: goal.id, tierId: tier?.id })}
     />,
     document.body,
   );
@@ -52,16 +74,30 @@ export function GoalCelebration({ goals }: { goals: Goal[] }) {
 
 function GoalCelebrationOverlay({
   goal,
+  tier,
   queued,
   onClaim,
   busy,
 }: {
   goal: Goal;
+  /** The rung being celebrated, or null on a goal with no ladder. */
+  tier: GoalTier | null;
   queued: number;
   onClaim: () => void;
   busy: boolean;
 }) {
-  const color = goal.themeColor || "#A78BFA";
+  const palette = themePalette(tier?.theme);
+  /*
+   * The tier's own colour if it named one, otherwise the theme's. The agent
+   * picks the feeling and the palette supplies the hues — a rung hard-coding
+   * purple against a gold theme reads as a bug, not as a rarity.
+   */
+  const color = tier
+    ? tier.themeColor || palette.primary
+    : goal.themeColor || "#A78BFA";
+  const art = resolveArt(tier ?? goal);
+  const backdrop = useCachedImage(art.background);
+  const medallion = useCachedImage(art.icon);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [reduced] = useState(
     () =>
@@ -79,8 +115,9 @@ function GoalCelebrationOverlay({
     [],
   );
 
-  const metOn = goal.conditionMetAt
-    ? new Date(goal.conditionMetAt).toLocaleString([], {
+  const metAt = tier?.metAt ?? goal.conditionMetAt;
+  const metOn = metAt
+    ? new Date(metAt).toLocaleString([], {
         dateStyle: "medium",
         timeStyle: "short",
       })
@@ -93,11 +130,26 @@ function GoalCelebrationOverlay({
       aria-labelledby="goal-celebration-title"
       className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto p-6"
       style={{
-        background:
-          "radial-gradient(ellipse at center, oklch(14% 0.03 290 / 0.94), oklch(7% 0.012 260 / 0.98))",
+        background: `radial-gradient(ellipse at center, ${palette.secondary}cc, oklch(7% 0.012 260 / 0.985))`,
         backdropFilter: "blur(8px)",
       }}
     >
+      {/*
+        The tier's own picture, full-bleed behind everything and heavily
+        darkened. This is the one place the art gets the stage it was made for:
+        a 3:2 background on a 3:2 screen.
+      */}
+      {backdrop && (
+        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
+          <img src={backdrop} alt="" className="h-full w-full object-cover" />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `radial-gradient(ellipse at center, rgba(7,8,12,${art.overlay * 0.9}), rgba(7,8,12,0.97))`,
+            }}
+          />
+        </div>
+      )}
       <div className="goal-burst relative w-full max-w-lg text-center">
         {/* Radiating light behind the medallion */}
         <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
@@ -160,32 +212,52 @@ function GoalCelebrationOverlay({
 
         <div className="relative">
           <div
-            className="mx-auto flex h-28 w-28 items-center justify-center rounded-full text-6xl"
+            className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-full text-6xl"
             style={{
               background: `radial-gradient(circle at 50% 35%, ${color}44, ${color}12)`,
               boxShadow: `0 0 60px -10px ${color}`,
               border: `1px solid ${color}66`,
             }}
           >
-            {goal.emoji || "🎯"}
+            {medallion ? (
+              <img src={medallion} alt="" className="h-full w-full object-cover" />
+            ) : (
+              tier?.emoji || goal.emoji || "🎯"
+            )}
           </div>
 
+          {/*
+            The rarity is the headline on a tiered goal. "Goal complete" would
+            be a lie on four rungs out of five, and the rung's name is the thing
+            the user is meant to remember.
+          */}
           <p
             className="mt-6 font-mono text-[11px] uppercase tracking-[0.32em]"
             style={{ color }}
           >
-            Goal complete
+            {tier ? tier.label : "Goal complete"}
           </p>
           <h2
             id="goal-celebration-title"
             className="mt-3 text-balance text-3xl font-bold tracking-tight sm:text-4xl"
           >
-            {goal.title}
+            {tier?.title || goal.title}
           </h2>
+          {tier && (
+            <p
+              className="mt-2 font-mono text-[11px] uppercase tracking-[0.22em]"
+              // The faint token disappears against a darkened photograph; this
+              // line is how you know which rung of how many you just cleared.
+              style={{ color: `${color}cc` }}
+            >
+              {palette.word} · tier {tier.rank} of {goal.tiers.length}
+              {tier.rank === goal.tiers.length ? " · the last one" : ""}
+            </p>
+          )}
 
-          {goal.description && (
+          {(tier?.description || goal.description) && (
             <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-[var(--muted)]">
-              {goal.description}
+              {tier?.description || goal.description}
             </p>
           )}
           {goal.whyItMatters && (
@@ -194,9 +266,9 @@ function GoalCelebrationOverlay({
             </p>
           )}
 
-          {goal.conditionDetail.length > 0 && (
+          {(tier?.conditionDetail ?? goal.conditionDetail).length > 0 && (
             <ul className="mx-auto mt-6 inline-flex flex-col gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-3 text-left">
-              {goal.conditionDetail.map((line) => (
+              {(tier?.conditionDetail ?? goal.conditionDetail).map((line) => (
                 <li
                   key={line}
                   className="flex items-start gap-2 font-mono text-[11px] text-[var(--muted)]"
@@ -223,7 +295,10 @@ function GoalCelebrationOverlay({
             type="button"
             onClick={onClaim}
             disabled={busy}
-            className="btn btn-primary mx-auto mt-7 px-7 py-3 text-base"
+            className="btn mx-auto mt-7 px-7 py-3 text-base font-semibold"
+            // The rung owns the colour here too — a lavender button under a
+            // gold celebration is the app talking over the moment.
+            style={{ background: color, color: "#0a0b10", borderColor: color }}
           >
             {busy ? "Saving…" : "Claim it"}
           </button>
@@ -231,7 +306,11 @@ function GoalCelebrationOverlay({
           <p className="mt-3 text-[11px] text-[var(--faint)]">
             {queued > 0
               ? `${queued} more goal${queued === 1 ? "" : "s"} waiting behind this one`
-              : "Not marked finished until you've seen this"}
+              : tier && tier.rank < goal.tiers.length
+                ? `${goal.tiers.length - tier.rank} more tier${
+                    goal.tiers.length - tier.rank === 1 ? "" : "s"
+                  } above this one`
+                : "Not marked finished until you've seen this"}
           </p>
         </div>
       </div>
