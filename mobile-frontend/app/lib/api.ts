@@ -48,6 +48,60 @@ export class ProtocolError extends ApiError {
   }
 }
 
+/**
+ * Every request gets a deadline, because React Native's `fetch` does not have
+ * one. Android's networking stack is configured with all three OkHttp timeouts
+ * at zero, so a connection to an address that silently drops packets — the
+ * laptop asleep, the wrong LAN IP, a VPN in the way — never rejects and never
+ * resolves. The promise simply stays pending, `isError` never becomes true, and
+ * every screen sits on its spinner for the rest of the session with nothing to
+ * retry and nothing to read. That is not a hypothetical: it is what "it just
+ * keeps loading" was.
+ *
+ * A timeout turns that into an ordinary error the UI can show.
+ */
+const REQUEST_TIMEOUT_MS = 12_000;
+/** Setup and health probes answer instantly or not at all — no reason to wait. */
+const PROBE_TIMEOUT_MS = 8_000;
+
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  ms: number = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** An aborted fetch reads as a DOMException named AbortError on this platform. */
+function timedOut(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    "name" in e &&
+    (e as { name?: string }).name === "AbortError"
+  );
+}
+
+/**
+ * The two ways a request fails before it ever gets a status, said apart. They
+ * need different fixes — "nothing is listening" vs "something is listening and
+ * not answering" — and the second one used to be invisible.
+ */
+function unreachable(e: unknown, base: string, ms: number): ApiError {
+  return timedOut(e)
+    ? new ApiError(
+        0,
+        `No answer from ${base} within ${Math.round(ms / 1000)}s. Something is at that address but it is not replying — check the server is awake and on this network.`,
+      )
+    : new ApiError(0, `Can't reach ${base} — is Life OS running?`);
+}
+
 /** Called once on 401 — clear token and return to connect. Never log the token. */
 let onUnauthorized: (() => void) | null = null;
 
@@ -86,12 +140,13 @@ async function request<T>(path: string, options: RequestOpts = {}): Promise<T> {
 
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, {
-      ...fetchOpts,
-      headers,
-    });
-  } catch {
-    throw new ApiError(0, "Life OS isn't running — can't reach the server");
+    res = await fetchWithTimeout(
+      `${base}${path}`,
+      { ...fetchOpts, headers },
+      REQUEST_TIMEOUT_MS,
+    );
+  } catch (e) {
+    throw unreachable(e, base, REQUEST_TIMEOUT_MS);
   }
 
   if (res.status === 401) {
@@ -144,11 +199,13 @@ export async function checkHealth(baseUrl: string): Promise<HealthResponse> {
   const base = normalizeBaseUrl(baseUrl);
   let res: Response;
   try {
-    res = await fetch(`${base}/health`, {
-      headers: { Accept: "application/json" },
-    });
-  } catch {
-    throw new ApiError(0, "Life OS isn't running — can't reach the server");
+    res = await fetchWithTimeout(
+      `${base}/health`,
+      { headers: { Accept: "application/json" } },
+      PROBE_TIMEOUT_MS,
+    );
+  } catch (e) {
+    throw unreachable(e, base, PROBE_TIMEOUT_MS);
   }
   if (!res.ok) {
     throw new ApiError(
@@ -183,15 +240,19 @@ export async function validateToken(
   const base = normalizeBaseUrl(baseUrl);
   let res: Response;
   try {
-    res = await fetch(`${base}/api/v1/auth/me`, {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token.trim()}`,
-        [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
+    res = await fetchWithTimeout(
+      `${base}/api/v1/auth/me`,
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token.trim()}`,
+          [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
+        },
       },
-    });
-  } catch {
-    throw new ApiError(0, "Life OS isn't running — can't reach the server");
+      PROBE_TIMEOUT_MS,
+    );
+  } catch (e) {
+    throw unreachable(e, base, PROBE_TIMEOUT_MS);
   }
   if (res.status === 401) return { ok: false, status: 401 };
   /*
@@ -237,17 +298,23 @@ export async function claimPairingCode(
   const base = normalizeBaseUrl(baseUrl);
   let res: Response;
   try {
-    res = await fetch(`${base}/api/v1/pair/claim`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
+    res = await fetchWithTimeout(
+      `${base}/api/v1/pair/claim`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
+        },
+        body: JSON.stringify({ code: code.trim() }),
       },
-      body: JSON.stringify({ code: code.trim() }),
-    });
-  } catch {
-    throw new ApiError(0, "Could not reach that server — are you on the same Wi-Fi?");
+      PROBE_TIMEOUT_MS,
+    );
+  } catch (e) {
+    throw timedOut(e)
+      ? new ApiError(0, "That server did not answer — are you on the same Wi-Fi?")
+      : new ApiError(0, "Could not reach that server — are you on the same Wi-Fi?");
   }
 
   if (!res.ok) {

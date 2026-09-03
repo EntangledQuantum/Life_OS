@@ -54,43 +54,54 @@ export function ActivitySession({
 
   return (
     <>
+      {/*
+        Deliberately smaller than a habit row is tall.
+
+        This is one fact about the day — what you are doing — and it was built
+        at card scale: a 44pt tile, an 18pt title and a button the size of the
+        tick on a habit. That put the least actionable thing on the screen at
+        the top of the visual order, and made "Change" look like a completion
+        control, which it is not. It is a strip now, and its button is a
+        secondary one.
+      */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: 12,
+          gap: 10,
           backgroundColor: t.surface,
-          borderRadius: radius.lg,
+          borderRadius: radius.md,
           borderWidth: 1,
           borderColor: active ? rgba(tint, 0.35) : t.border,
-          padding: 14,
+          paddingVertical: 9,
+          paddingHorizontal: 11,
           borderCurve: "continuous",
         }}
       >
         <View
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: radius.md,
+            width: 30,
+            height: 30,
+            borderRadius: radius.sm,
             backgroundColor: rgba(tint, 0.16),
             alignItems: "center",
             justifyContent: "center",
             borderCurve: "continuous",
           }}
         >
-          <Text style={{ fontSize: 20 }}>
+          <Text style={{ fontSize: 15 }}>
             {active ? (ICONS[active.activity as Activity] ?? "◎") : "○"}
           </Text>
         </View>
 
-        <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text
-            style={{ color: t.faint, fontFamily: font.bodySemi, fontSize: 10, letterSpacing: 1.1 }}
+            style={{ color: t.faint, fontFamily: font.bodySemi, fontSize: 9, letterSpacing: 1.1 }}
           >
             RIGHT NOW
           </Text>
           <Text
-            style={{ color: t.text, fontFamily: font.title, fontSize: 18 }}
+            style={{ color: t.text, fontFamily: font.bodySemi, fontSize: 14 }}
             numberOfLines={1}
           >
             {active?.activity ?? "Nothing running"}
@@ -101,8 +112,8 @@ export function ActivitySession({
           <Text
             style={{
               color: tint,
-              fontFamily: font.monoBold,
-              fontSize: 17,
+              fontFamily: font.mono,
+              fontSize: 13,
               fontVariant: ["tabular-nums"],
             }}
           >
@@ -115,15 +126,16 @@ export function ActivitySession({
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setOpen(true);
           }}
+          hitSlop={10}
           style={({ pressed }) => ({
-            paddingHorizontal: 14,
-            paddingVertical: 9,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
             borderRadius: radius.pill,
-            backgroundColor: pressed ? t.accent : rgba(t.accent, 0.16),
+            backgroundColor: pressed ? t.accent : rgba(t.accent, 0.14),
             borderCurve: "continuous",
           })}
         >
-          <Text style={{ color: t.accent, fontFamily: font.bodySemi, fontSize: 13 }}>
+          <Text style={{ color: t.accent, fontFamily: font.bodySemi, fontSize: 11 }}>
             {active ? "Change" : "Start"}
           </Text>
         </Pressable>

@@ -75,3 +75,9 @@ jobs:
       - name: Typecheck
         working-directory: mobile-frontend/app
         run: npx tsc --noEmit
+
+      # A bare `fetch` on this platform has no timeout, so a sleeping server
+      # leaves the app on a spinner forever. Typecheck cannot see that.
+      - name: Every request is timed
+        working-directory: mobile-frontend/app
+        run: node scripts/check-requests.mjs

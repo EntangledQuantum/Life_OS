@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, ProtocolError } from "@/lib/api";
+import { api, ProtocolError } from "@/lib/api";
 import { useConnection } from "@/lib/connection";
 import { font, pulseColor, radius, rgba } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-provider";
@@ -22,7 +22,6 @@ import { isAgentStatus, isPinned } from "@/lib/types";
 import type { DashboardToday, Activity, AgendaItem } from "@/lib/types";
 import {
   Body,
-  Button,
   Chip,
   Loading,
   PageBody,
@@ -43,8 +42,8 @@ export default function TodayScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t, osReducedMotion } = useTheme();
-  const { gutter, wide } = useLayout();
-  const { authenticated, refreshHealth } = useConnection();
+  const { gutter, wide, twoPane } = useLayout();
+  const { authenticated, ready, refreshHealth } = useConnection();
   const [stale, setStale] = useState(false);
   const [cached, setCached] = useState<DashboardToday | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -178,8 +177,6 @@ export default function TodayScreen() {
     ).length;
   }, [data]);
 
-  if (dashQ.isLoading && !data) return <Loading />;
-
   /*
    * A server that has outgrown this build is its own screen. It is not a
    * connection problem and there is nothing to retry — see update-required.tsx.
@@ -188,33 +185,21 @@ export default function TodayScreen() {
     return <UpdateRequired error={dashQ.error} />;
   }
 
-  if (dashQ.isError && !data) {
-    const msg =
-      dashQ.error instanceof ApiError ? dashQ.error.message : "Life OS isn't running";
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: t.bg,
-          padding: 24,
-          justifyContent: "center",
-          gap: 12,
-        }}
-      >
-        <Text style={{ color: t.text, fontFamily: font.display, fontSize: 24 }}>
-          Life OS isn&apos;t running
-        </Text>
-        <Body>{msg}</Body>
-        <Button
-          title="Retry"
-          onPress={() => void dashQ.refetch()}
-          style={{ marginTop: 8 }}
-        />
-      </View>
-    );
+  /*
+   * One exit for every way of having nothing to draw, and it always carries the
+   * reason and a way out. Written as three separate branches it managed to have
+   * a hole in the middle: a query that had finished, failed, and left no cache
+   * satisfied neither `isLoading` nor `isError` on the next render pass, fell
+   * through to a bare spinner, and stayed there.
+   */
+  if (!data) {
+    const why = !ready
+      ? undefined // still reading the stored session: a spinner is honest here
+      : !authenticated
+        ? "Not connected to a Life OS server."
+        : (dashQ.error ?? undefined);
+    return <Loading error={why} onRetry={() => void dashQ.refetch()} />;
   }
-
-  if (!data) return <Loading />;
 
   const celebration = data.pendingCelebrations?.[0] ?? null;
 
@@ -237,6 +222,27 @@ export default function TodayScreen() {
   /* Already filtered by the server: inside the lead window, not past its end. */
   const current = data.current;
   const laterCount = agentCount;
+
+  /*
+   * Built once and placed by the layout, because the two placements are the
+   * same content — a second copy in the other branch is a second thing to
+   * forget to change.
+   */
+  const agentCards =
+    setupCard || contentCards.length > 0 ? (
+      <View style={{ gap: 12 }}>
+        <SectionHeader title="From your agent" />
+        {setupCard ? <AgentSetupStrip card={setupCard} /> : null}
+        {contentCards.map((c) => (
+          <AgentCard
+            key={c.id}
+            card={c}
+            habit={(data.habits ?? []).find((h) => h.id === c.habitId)}
+            onComplete={() => completeTask.mutate(c.id)}
+          />
+        ))}
+      </View>
+    ) : null;
 
   return (
     <SwipeTabs index={0}>
@@ -363,25 +369,13 @@ export default function TodayScreen() {
                 />
 
                 {/*
-                  Cards sit with the graphic rather than above the list. On a
-                  tablet this column ran out of content halfway down while the
-                  cards pushed the day's work below them; on a phone they were
-                  the first thing you scrolled past to reach what you came for.
+                  On a tablet the cards fill the space beside the day — this
+                  column otherwise ran out of content halfway down. On a phone
+                  there is no "beside", so the same cards would sit between you
+                  and the list you opened the app for: everything the agent had
+                  to say, first, before a single habit. There they go last.
                 */}
-                {setupCard || contentCards.length > 0 ? (
-                  <View style={{ gap: 12 }}>
-                    <SectionHeader title="From your agent" />
-                    {setupCard ? <AgentSetupStrip card={setupCard} /> : null}
-                    {contentCards.map((c) => (
-                      <AgentCard
-                        key={c.id}
-                        card={c}
-                        habit={(data.habits ?? []).find((h) => h.id === c.habitId)}
-                        onComplete={() => completeTask.mutate(c.id)}
-                      />
-                    ))}
-                  </View>
-                ) : null}
+                {twoPane ? agentCards : null}
                       </>
                     }
                     right={
@@ -453,6 +447,9 @@ export default function TodayScreen() {
                     </Text>
                   </Pressable>
                 ) : null}
+
+                {/* Phone: after the day, not before it. */}
+                {twoPane ? null : agentCards}
               </>
             }
           />

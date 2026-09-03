@@ -58,6 +58,20 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [forceLogout]);
 
+  /*
+   * Boot has a deadline of its own.
+   *
+   * Nothing below is unbounded any more — every request carries a timeout — but
+   * `ready` gates the whole navigator, so if it ever failed to flip the app
+   * would sit on a blank screen with no route to anywhere, including the
+   * connect screen. A cheap cap costs nothing and removes the whole class of
+   * failure: worst case the app opens on its cached day a moment early.
+   */
+  useEffect(() => {
+    const cap = setTimeout(() => setReady(true), 15_000);
+    return () => clearTimeout(cap);
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -78,9 +92,11 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
           } catch {
             setHealth(null);
           }
-        } catch {
-          // Server down — keep token, show app with offline cache if possible
+        } catch (e) {
+          // Server down — keep token, show app with offline cache if possible.
+          // Keep the reason: it is the only explanation the screens can show.
           setAuthenticated(true);
+          setError(e instanceof Error ? e.message : "Unreachable");
         }
       } finally {
         setReady(true);

@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
   Pressable,
@@ -264,8 +265,48 @@ export function Chip({
   );
 }
 
-export function Loading() {
+/** How long a spinner is allowed to be the whole screen before it owes you a way out. */
+const SLOW_AFTER_MS = 6_000;
+
+/**
+ * A spinner that gives up on being only a spinner.
+ *
+ * The old one was an `ActivityIndicator` and nothing else, which was fine right
+ * up until a request never came back — and on this platform requests never
+ * coming back is a real state, not a bug in the abstract (see the timeout note
+ * in `lib/api.ts`). The app then showed a spinning circle forever: no error, no
+ * retry, no clue which address it was even trying.
+ *
+ * So: spinner first, and after six seconds the screen says what it is waiting
+ * for and offers a way out. If the request has actually failed, that panel
+ * appears immediately with the real message — including the server address,
+ * which is nearly always the thing that is wrong.
+ */
+export function Loading({
+  error,
+  onRetry,
+}: {
+  /** A failed request. Shows the panel at once, with this message. */
+  error?: unknown;
+  onRetry?: () => void;
+} = {}) {
   const t = useTokens();
+  const router = useRouter();
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    const id = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
+    return () => clearTimeout(id);
+  }, []);
+
+  const failed = Boolean(error);
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : null;
+
   return (
     <View
       style={{
@@ -273,9 +314,53 @@ export function Loading() {
         backgroundColor: t.bg,
         alignItems: "center",
         justifyContent: "center",
+        padding: 28,
+        gap: 14,
       }}
     >
-      <ActivityIndicator color={t.accent} />
+      {failed ? (
+        <Text style={{ fontSize: 30 }}>⚠</Text>
+      ) : (
+        <ActivityIndicator color={t.accent} />
+      )}
+
+      {failed || slow ? (
+        <>
+          <Text
+            style={{
+              color: t.text,
+              fontFamily: font.display,
+              fontSize: 21,
+              textAlign: "center",
+            }}
+          >
+            {failed ? "Life OS isn't answering" : "Still trying to reach Life OS"}
+          </Text>
+          <Text
+            style={{
+              color: t.muted,
+              fontFamily: font.body,
+              fontSize: 14,
+              lineHeight: 21,
+              textAlign: "center",
+            }}
+          >
+            {message ??
+              "No reply from the server yet. It may be asleep, or the phone may be on a different network than the machine running it."}
+          </Text>
+
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+            {onRetry ? (
+              <Button title="Try again" onPress={onRetry} style={{ minWidth: 128 }} />
+            ) : null}
+            <Button
+              title="Change server"
+              variant="ghost"
+              onPress={() => router.replace("/connect")}
+            />
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }

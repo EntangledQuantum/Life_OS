@@ -62,8 +62,18 @@ export function TabBar({ state, navigation }: TabBarProps) {
   );
 
   const slot = span / TABS.length;
+  /*
+   * Critically damped, on purpose.
+   *
+   * At `damping: 18, stiffness: 190` the ratio is about 0.65, so the pill
+   * overshot the tab you picked, came back past it, and took the better part of
+   * a second to settle — a five-tab bar makes that a long slide with a wobble
+   * on the end. Here `2·√(stiffness·mass) ≈ damping`, which is the boundary
+   * where a spring stops oscillating: it arrives fast, once, and stops. Keep
+   * the three numbers in that relationship if you retune it.
+   */
   const offset = useDerivedValue(() =>
-    withSpring(active * slot, { damping: 18, stiffness: 190 }),
+    withSpring(active * slot, { mass: 0.55, damping: 30, stiffness: 420 }),
   );
   const pill = useAnimatedStyle(() =>
     wide

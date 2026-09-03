@@ -58,6 +58,7 @@ no goal-creation UI; never colour a bad day red.
 | Leaf thresholds | `0.16 0.32 0.46 0.62 0.78 0.90` then bloom at 1.0 (match web) |
 | Web reference | `apps/web/src/components/graphics/DayGraphic.tsx` (read only — copy patterns, don't import) |
 | Settings | `reducedMotion`, `celebrationIntensity`, `progress.growthStyle` |
+| Style picker | Settings only, never Today. A **measured** grid — `flex: 1` inside `flexWrap` never wraps, so all five squeezed onto one line with each preview drawn over its neighbours. Tiles are sized from the container: two per row on a phone, three from 420pt up |
 | `components/celebration-modal.tsx` | Full-screen goal complete — never auto-dismiss |
 
 Prefer `react-native-reanimated` + `react-native-svg` already in the project.
@@ -101,6 +102,16 @@ as separate sections is what made it reasonable for an agent to create one of
 each for the same act; "Today" and "Anytime" as separate sections put a habit
 with no time underneath a task with a similar name, which looks like the same
 row twice. One section, no regrouping, and a row does not move when it is ticked.
+
+**The list comes before the agent's cards on a phone.** `TwoPane` emits `left`
+then `right` when there is only one column, so anything parked in the left
+column lands *above* the day. The cards are built once as `agentCards` and
+placed by `twoPane`: beside the day on a tablet, after it on a phone. Your own
+habits are what the screen is for; the agent's reading of them is commentary.
+
+The "Right Now" strip is deliberately smaller than a habit row, and its button
+is smaller than a habit's tick. It is the one thing on Today that is not a
+thing to do.
 
 ## Screen sizes
 
@@ -153,6 +164,11 @@ horizontal as it is vertical — that is what leaves vertical scrolling intact.
 structurally rather than importing `@react-navigation/bottom-tabs`, which this
 app does not declare as a dependency.
 
+Its pill is **critically damped** — `mass 0.55, damping 30, stiffness 420`, where
+`damping ≈ 2·√(stiffness·mass)`. Below that boundary the pill overshoots the tab
+you picked and swings back through it, which across five tabs is a long slide
+with a wobble on the end. Retune the three together or not at all.
+
 ## Widget
 
 - `widgets/status-widget.tsx` + `task-handler.tsx` + `update.tsx`
@@ -188,6 +204,33 @@ happened here, with six habits invisible behind eight pending events. Agent
 events and light reviews live under "Needs you" on **Timeline**; Today only
 shows a count that links across. Do not move them back. (The web client now
 does the same thing, for the same reason.)
+
+## A request must be able to fail
+
+Three rules, and the app was stuck on a spinner forever without any one of them.
+
+**Every fetch carries a deadline.** React Native configures OkHttp with all
+three timeouts at zero, so a request to an address that drops packets — laptop
+asleep, stale LAN IP, VPN in the way — neither resolves nor rejects. `lib/api.ts`
+wraps every call in `fetchWithTimeout` (12s, 8s for probes, 6s in the widget's
+headless task) and turns an abort into an `ApiError` that names the address.
+Use it for any new call; a bare `fetch` is the bug coming back.
+
+**`networkMode: "always"`** in the QueryClient (`app/_layout.tsx`). React
+Query's default *pauses* a query when its `onlineManager` believes the device is
+offline — `status: "pending"`, `fetchStatus: "paused"`, `error: null`, forever,
+with nothing on screen but a spinner. That manager is a browser feature, is not
+wired to NetInfo here, and would be answering the wrong question anyway: Life OS
+is on the LAN, so a phone with no internet can reach it and a phone with perfect
+internet cannot if the machine is asleep. Always attempt; let failure be an
+error. (Retries also pause while the app is unfocused — that one is correct.)
+
+**A screen with no data always offers a way out.** `Loading` in `ui.tsx` is a
+spinner for six seconds and then a panel: what it is waiting for, the real error
+message when there is one, Try again, and Change server. Every screen's gate is
+`if (!data) return <Loading error={q.error} onRetry={...} />` — never
+`isLoading && !data`, which leaves a hole for the query that has failed with
+nothing cached, and drops straight through to a spinner that never resolves.
 
 ## Scheduled things never start
 

@@ -36,6 +36,27 @@ import {
 } from "@/components/ui";
 import { SwipeTabs } from "@/components/swipe-tabs";
 
+const GROWTH_GAP = 10;
+
+/**
+ * How many previews fit before they stop being previews.
+ *
+ * Two on a phone: a tile there is about 140pt, which is enough for the picture
+ * to read as a picture. Three once there is room — a tablet card is wide enough
+ * that two would just be two enormous thumbnails.
+ */
+function growthColumns(width: number): number {
+  return width >= 420 ? 3 : 2;
+}
+
+const GROWTH_CHOICES: [GrowthStyle, string, string][] = [
+  ["bloom", "Bloom", "a petal per habit"],
+  ["constellation", "Constellation", "a star per habit"],
+  ["ascent", "Ascent", "a trail up a ridge"],
+  ["sprout", "Sprout", "a plant that grows"],
+  ["orb", "Orb", "fills with light"],
+];
+
 export default function SettingsScreen() {
   const qc = useQueryClient();
   const router = useRouter();
@@ -43,6 +64,13 @@ export default function SettingsScreen() {
   const { gutter } = useLayout();
   const { baseUrl, health, disconnect, refreshHealth } = useConnection();
   const [msg, setMsg] = useState<string | null>(null);
+  /** Measured, so the five previews can be a real grid — see the picker below. */
+  const [pickerWidth, setPickerWidth] = useState(0);
+  const columns = growthColumns(pickerWidth);
+  const tile =
+    pickerWidth > 0
+      ? Math.floor((pickerWidth - GROWTH_GAP * (columns - 1)) / columns)
+      : 0;
 
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: api.settings });
 
@@ -76,7 +104,10 @@ export default function SettingsScreen() {
     onError: (e: Error) => setMsg(e.message),
   });
 
-  if (settingsQ.isLoading || !settingsQ.data) return <Loading />;
+  if (!settingsQ.data)
+    return (
+      <Loading error={settingsQ.error} onRetry={() => void settingsQ.refetch()} />
+    );
   const s = settingsQ.data;
 
   return (
@@ -101,31 +132,46 @@ export default function SettingsScreen() {
                       today against target and nothing else, simpler on purpose.
                       All five finish differently at 100% than at 99%.
                     </Body>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-                      {(
-                        [
-                          ["bloom", "Bloom", "a petal per habit"],
-                          ["constellation", "Constellation", "a star per habit"],
-                          ["ascent", "Ascent", "a trail up a ridge"],
-                          ["sprout", "Sprout", "a plant that grows"],
-                          ["orb", "Orb", "fills with light"],
-                        ] as [GrowthStyle, string, string][]
-                      ).map(([id, name, hint]) => (
-                        <GrowthChoice
-                          key={id}
-                          id={id}
-                          name={name}
-                          hint={hint}
-                          selected={configQ.data?.growthStyle === id}
-                          busy={patchConfig.isPending}
-                          reducedMotion={s.reducedMotion}
-                          onPress={() => {
-                            if (configQ.data?.growthStyle === id) return;
-                            void Haptics.selectionAsync();
-                            patchConfig.mutate({ growthStyle: id });
-                          }}
-                        />
-                      ))}
+                    {/*
+                      A measured grid, not a wrapping row of flex children.
+
+                      `flex: 1` with `flexWrap` never wraps: a zero basis lets
+                      all five shrink onto one line however narrow it gets, so
+                      each tile came out around 55pt on a phone with a 98pt
+                      graphic drawn over its neighbours. Telling the five apart
+                      is the only job this control has.
+
+                      Tiles are sized from the measured width instead, two or
+                      three to a row, and short rows centre under full ones.
+                    */}
+                    <View
+                      onLayout={(e) => setPickerWidth(e.nativeEvent.layout.width)}
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        justifyContent: "center",
+                        gap: GROWTH_GAP,
+                      }}
+                    >
+                      {tile > 0
+                        ? GROWTH_CHOICES.map(([id, name, hint]) => (
+                            <GrowthChoice
+                              key={id}
+                              id={id}
+                              name={name}
+                              hint={hint}
+                              width={tile}
+                              selected={configQ.data?.growthStyle === id}
+                              busy={patchConfig.isPending}
+                              reducedMotion={s.reducedMotion}
+                              onPress={() => {
+                                if (configQ.data?.growthStyle === id) return;
+                                void Haptics.selectionAsync();
+                                patchConfig.mutate({ growthStyle: id });
+                              }}
+                            />
+                          ))
+                        : null}
                     </View>
                   </Card>
                 </View>
@@ -457,6 +503,7 @@ function GrowthChoice({
   id,
   name,
   hint,
+  width,
   selected,
   busy,
   reducedMotion,
@@ -465,6 +512,8 @@ function GrowthChoice({
   id: GrowthStyle;
   name: string;
   hint: string;
+  /** Measured by the grid. Every tile is the same size, whatever row it lands on. */
+  width: number;
   selected: boolean;
   busy: boolean;
   reducedMotion: boolean;
@@ -478,10 +527,11 @@ function GrowthChoice({
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       style={({ pressed }) => ({
-        flex: 1,
+        width,
         alignItems: "center",
-        gap: 8,
-        paddingVertical: 14,
+        gap: 6,
+        paddingVertical: 12,
+        paddingHorizontal: 6,
         borderRadius: radius.md,
         backgroundColor: selected ? rgba(t.accent, 0.12) : t.surface2,
         borderWidth: 1.5,
@@ -501,18 +551,30 @@ function GrowthChoice({
         agenda={[]}
         history={PREVIEW_HISTORY}
         dayProgress={0.62}
-        size={98}
+        size={Math.max(64, width - 24)}
       />
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
         style={{
           color: selected ? t.accent : t.text,
           fontFamily: font.bodySemi,
-          fontSize: 14,
+          fontSize: 13,
         }}
       >
         {name}
       </Text>
-      <Text style={{ color: t.faint, fontFamily: font.body, fontSize: 11 }}>
+      <Text
+        numberOfLines={2}
+        style={{
+          color: t.faint,
+          fontFamily: font.body,
+          fontSize: 10.5,
+          textAlign: "center",
+          lineHeight: 14,
+        }}
+      >
         {hint}
       </Text>
     </Pressable>

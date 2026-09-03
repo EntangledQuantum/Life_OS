@@ -113,7 +113,8 @@ export default function TimelineScreen() {
     );
   }, [doneQ.data]);
 
-  if (dashQ.isLoading && !dashQ.data) return <Loading />;
+  if (!dashQ.data)
+    return <Loading error={dashQ.error} onRetry={() => void dashQ.refetch()} />;
 
   return (
     <SwipeTabs index={1}>

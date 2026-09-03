@@ -27,11 +27,38 @@ export { ErrorBoundary } from "expo-router";
 
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * `networkMode: "always"` is the important line here.
+ *
+ * React Query's default is `"online"`: if its `onlineManager` believes the
+ * device is offline it does not run the query at all — it *pauses* it, leaving
+ * `status: "pending"`, `fetchStatus: "paused"` and `error: null` for as long as
+ * that lasts. Every screen then shows its spinner with nothing to report and
+ * nothing to retry, which is exactly the "it just keeps loading forever" this
+ * app could get stuck in.
+ *
+ * Two reasons that default is wrong for Life OS specifically:
+ *
+ * - `onlineManager` is a browser thing. In React Native it is not wired to
+ *   NetInfo unless you do it yourself, so what it believes about the network is
+ *   not a measurement of anything.
+ * - Even a correct answer would be the wrong question. Life OS lives on your
+ *   own machine, usually over the LAN. A phone with no internet at all can
+ *   reach it perfectly well, and a phone with excellent internet cannot reach it
+ *   if the laptop is asleep. "Online" does not predict either case.
+ *
+ * So: always attempt, and let a real failure be a real error. That is what the
+ * timeouts in `lib/api.ts` and the panel in `Loading` are for.
+ */
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
+      networkMode: "always",
       refetchOnWindowFocus: true,
+    },
+    mutations: {
+      networkMode: "always",
     },
   },
 });

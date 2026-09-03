@@ -19,7 +19,8 @@ export default function GoalsScreen() {
     refetchInterval: 20_000,
   });
 
-  if (dashQ.isLoading && !dashQ.data) return <Loading />;
+  if (!dashQ.data)
+    return <Loading error={dashQ.error} onRetry={() => void dashQ.refetch()} />;
 
   const goals = dashQ.data?.goals ?? [];
   const props = dashQ.data?.properties ?? [];

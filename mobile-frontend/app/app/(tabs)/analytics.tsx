@@ -34,7 +34,7 @@ export default function AnalyticsScreen() {
     refetchInterval: 60_000,
   });
 
-  if (q.isLoading && !q.data) return <Loading />;
+  if (!q.data) return <Loading error={q.error} onRetry={() => void q.refetch()} />;
   const d = q.data;
 
   return (
