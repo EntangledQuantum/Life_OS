@@ -21,9 +21,9 @@ Your agent designs the system and keeps it up to date. You just tap to complete.
 ![The Life OS dashboard](docs/screenshots/dashboard.png?v=2)
 
 <p align="center">
-  <img src="docs/screenshots/mobile-1.jpeg" alt="Life OS mobile — overview" width="270" />
+  <img src="docs/screenshots/mobile-1.png" alt="Life OS on Android — today's list, with the day drawn as a bloom" width="270" />
   &nbsp;&nbsp;
-  <img src="docs/screenshots/mobile-2.jpeg" alt="Life OS mobile — day and habits" width="270" />
+  <img src="docs/screenshots/mobile-2.png" alt="Life OS on Android — the timeline, today against yesterday, and seven days of XP" width="270" />
 </p>
 
 <br />

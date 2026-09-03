@@ -34,8 +34,8 @@ WEB_URL=http://localhost:5174 pnpm screenshots
 | File | Section | Used in the root README |
 |------|---------|:--:|
 | `dashboard.png` | The Overview dashboard, down to the growth meter and Quick log | ✅ |
-| `mobile-1.jpeg` | Android / mobile beta — overview | ✅ |
-| `mobile-2.jpeg` | Android / mobile beta — day ribbon and habits | ✅ |
+| `mobile-1.png` | Android — today's one list, with the day drawn above it | ✅ |
+| `mobile-2.png` | Android — the timeline, today vs yesterday, seven days of XP | ✅ |
 | `layers.png` | "Two layers, one job each" | ✅ |
 | `growth-meter.png` | The growth meter, with the 100% state ghosted behind | ✅ |
 | `agents.png` | The agent integration diagram | ✅ |
