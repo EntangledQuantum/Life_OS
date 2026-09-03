@@ -3,7 +3,7 @@ import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
 import {
   efficiencyPct,
-  improvementPct,
+  paceAdjustedImprovementPct,
   type DashboardToday,
 } from "@life-os/shared";
 import {
@@ -141,9 +141,22 @@ export function getDashboard(db: LifeOsDb): DashboardToday {
   const dailyXpTarget = config.dailyXpTarget;
   const eff = efficiencyPct(dailyXp, dailyXpTarget);
   const yEff = vsYesterday.efficiency.yesterday;
-  const imp = improvementPct(eff, yEff);
-
   const agenda = getAgenda(db);
+
+  /*
+   * Against where yesterday had got to by this hour, not against its total.
+   * The raw delta compares a day in progress with a day that finished, so it
+   * greeted the user with roughly -100% every morning — an artefact of the
+   * clock presented as a verdict.
+   */
+  const nowMs = Date.now();
+  const dayStart = Date.parse(agenda.lifeDay.lifeDayStart);
+  const dayEnd = Date.parse(agenda.lifeDay.lifeDayEnd);
+  const dayFraction =
+    dayEnd > dayStart
+      ? Math.max(0, Math.min(1, (nowMs - dayStart) / (dayEnd - dayStart)))
+      : 1;
+  const imp = paceAdjustedImprovementPct(eff, yEff, dayFraction);
 
   /**
    * The planned shape of the day, from the agenda rather than from tasks alone.

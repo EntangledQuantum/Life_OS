@@ -134,6 +134,36 @@ export function improvementPct(
   return Math.round((todayEfficiency - yesterdayEfficiency) * 10) / 10;
 }
 
+/**
+ * The same comparison, but against where yesterday *had got to* by this hour.
+ *
+ * The raw delta compares a day in progress with a day that finished, so at
+ * breakfast it reports something near -100% every single morning — you have
+ * done almost nothing yet, and yesterday's total is whole. That is not a
+ * measurement, it is an artefact of the clock, and it broke the one rule this
+ * app is built around: never tell someone they are failing at a thing they
+ * have not had the chance to do.
+ *
+ * Yesterday is prorated by how far through the life-day it is, so the question
+ * becomes "am I ahead of where I was at this time yesterday" — which is what
+ * the number on the front page has always implied. At the end of the day the
+ * fraction reaches 1 and it converges on the honest total-vs-total delta.
+ *
+ * The first slice of the day is reported flat. A tenth of the way in, both
+ * sides are small enough that the difference is noise, and dressing noise up
+ * as a verdict is the same mistake in a smaller font.
+ */
+export function paceAdjustedImprovementPct(
+  todayEfficiency: number,
+  yesterdayEfficiency: number,
+  dayFraction: number,
+): number {
+  const f = Math.max(0, Math.min(1, dayFraction));
+  if (f < 0.1) return 0;
+  const yesterdaySoFar = yesterdayEfficiency * f;
+  return Math.round((todayEfficiency - yesterdaySoFar) * 10) / 10;
+}
+
 export function computeImprovementPulse(
   recentConsistency: number[],
   recentXp: number[],
