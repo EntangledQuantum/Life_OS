@@ -42,37 +42,53 @@ export type HabitGraphic = (typeof HABIT_GRAPHICS)[number];
 /**
  * How the day is drawn.
  *
- * Five shapes over the same three facts — what is done today, which of your
- * habits did it, and how long you have kept it up — so switching is a matter of
- * taste rather than of seeing less:
+ * Five, and each one has to be worth choosing. `arc` and `rings` were not —
+ * a line with dots on it and some concentric circles, which is the same idea
+ * drawn twice, and neither had a shape of its own or did anything at the end of
+ * a day. They are gone.
  *
  * - `bloom` — a petal per habit around a core showing today against target,
- *   with a ring for each week behind. The default: it is a picture of *your*
- *   habits rather than a generic meter.
- * - `arc` — the day as a horizon, sun where the clock is, a mark per scheduled
- *   thing. For thinking in shape-of-day.
- * - `rings` — the week stack alone, outermost being today.
+ *   rings behind for the weeks kept. The default: a picture of *your* habits
+ *   rather than a generic meter.
+ * - `constellation` — a star per habit on a golden-angle spiral. Closing one
+ *   lights its star and draws a line to the last, so the figure assembles
+ *   itself over the day; finish and it closes into a completed shape. The dust
+ *   behind it deepens with every week you keep.
+ * - `ascent` — a ridge, a trail, and a marker at how far up you are. Scheduled
+ *   things are waypoints you pass. The sky moves with the clock while the
+ *   marker moves with the score, so the two readings stay separate.
  * - `sprout` — a plant that grows toward the target.
  * - `orb` — a sphere that fills with light.
  *
- * `sprout` and `orb` were briefly dropped when the first three arrived, on the
- * grounds that they encode one number where the others encode three. That was
- * a fair criticism of them as the *only* option and a bad reason to delete
- * something people liked looking at. They are back as choices, not defaults.
+ * All five read `journeyFeel`, so "nearly there" and "there" look different in
+ * every one of them. A finished day used to be a slightly brighter unfinished
+ * one, which is the least interesting possible way to end.
  */
-export const GROWTH_STYLES = ["bloom", "arc", "rings", "sprout", "orb"] as const;
+export const GROWTH_STYLES = [
+  "bloom",
+  "constellation",
+  "ascent",
+  "sprout",
+  "orb",
+] as const;
 
 export type GrowthStyle = (typeof GROWTH_STYLES)[number];
 
-/** Pre-rename names from older configs and agents. Never re-emitted. */
-export const LEGACY_GROWTH_STYLES = ["plant", "water", "both"] as const;
+/** Pre-rename and retired names. Never re-emitted. */
+export const LEGACY_GROWTH_STYLES = [
+  "plant",
+  "water",
+  "both",
+  "arc",
+  "rings",
+] as const;
 
 /** Map any historical or current value onto a supported GrowthStyle. */
 export function normalizeGrowthStyle(value: unknown): GrowthStyle {
   switch (value) {
     case "bloom":
-    case "arc":
-    case "rings":
+    case "constellation":
+    case "ascent":
     case "sprout":
     case "orb":
       return value;
@@ -82,6 +98,15 @@ export function normalizeGrowthStyle(value: unknown): GrowthStyle {
       return "sprout";
     case "water":
       return "orb";
+    /*
+     * The two that were retired. `arc` was a day read left-to-right, which is
+     * what `ascent` does with somewhere to go; `rings` was a stack of weeks,
+     * which is the dust behind `constellation`.
+     */
+    case "arc":
+      return "ascent";
+    case "rings":
+      return "constellation";
     default:
       return "bloom";
   }

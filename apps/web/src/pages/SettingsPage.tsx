@@ -201,10 +201,11 @@ export function SettingsPage() {
         <div>
           <label className="label">How the day is drawn</label>
           <p className="mb-2 text-xs text-[var(--muted)]">
-            Bloom, Arc and Rings all read the same day and differ only in
-            shape. Sprout and Orb show today against target and nothing else —
-            simpler on purpose. This lives here rather than on the front page,
-            which is for the day, not for settings about the day.
+            Five readings of the same day. Bloom, Constellation and Ascent each
+            show which of your habits did it and how the day is going; Sprout
+            and Orb show today against target and nothing else, simpler on
+            purpose. All five finish differently at 100% than at 99%. This lives
+            here rather than on the front page, which is for the day itself.
           </p>
           <div className="flex flex-wrap gap-2">
             {(
@@ -215,11 +216,15 @@ export function SettingsPage() {
                   hint: "a petal per habit, rings for the weeks behind",
                 },
                 {
-                  id: "arc",
-                  label: "Arc",
-                  hint: "the day as a horizon, sun where the clock is",
+                  id: "constellation",
+                  label: "Constellation",
+                  hint: "a star per habit; the figure closes when the day does",
                 },
-                { id: "rings", label: "Rings", hint: "one ring per week" },
+                {
+                  id: "ascent",
+                  label: "Ascent",
+                  hint: "a trail up a ridge — the sky is the clock, you are the marker",
+                },
                 { id: "sprout", label: "Sprout", hint: "a plant that grows" },
                 { id: "orb", label: "Orb", hint: "fills with light" },
               ] as const

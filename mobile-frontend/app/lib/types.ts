@@ -6,7 +6,20 @@
 
 export type Source = "user" | "agent";
 export type ImprovementPulse = "Improving" | "Stable" | "Recovering" | "Drifting";
-export type GrowthStyle = "bloom" | "arc" | "rings" | "sprout" | "orb";
+/**
+ * Must match `GROWTH_STYLES` in `packages/shared/src/constants.ts`.
+ *
+ * `arc` and `rings` were retired — a line with dots on it and some concentric
+ * circles, the same idea drawn twice, and neither did anything at the end of a
+ * day. The server maps the old names onto the new ones, so an older stored
+ * preference still resolves.
+ */
+export type GrowthStyle =
+  | "bloom"
+  | "constellation"
+  | "ascent"
+  | "sprout"
+  | "orb";
 export type AccentThemeId = "nebula" | "quantum" | "terminal" | "ember";
 export type NotificationSoundId =
   | "chime"

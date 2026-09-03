@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import { improvementPct, paceAdjustedImprovementPct } from "./xp.js";
+import { normalizeGrowthStyle } from "./constants.js";
 
 /**
  * Comparing today with yesterday, without lying about it in either direction.
@@ -58,5 +59,35 @@ describe("pace-adjusted improvement", () => {
     // No yesterday means no baseline. Zero is the honest answer, not a triumph.
     assert.equal(paceAdjustedImprovementPct(40, 0, 0.5), 40);
     assert.equal(paceAdjustedImprovementPct(0, 0, 0.5), 0);
+  });
+});
+
+describe("retired graphics still resolve", () => {
+  /*
+   * `arc` and `rings` were removed, and someone's stored config still says one
+   * of them. Falling through to the default would silently move them off a
+   * choice they made; mapping each onto its nearest successor keeps the
+   * decision they expressed.
+   */
+  it("maps arc onto ascent and rings onto constellation", () => {
+    assert.equal(normalizeGrowthStyle("arc"), "ascent");
+    assert.equal(normalizeGrowthStyle("rings"), "constellation");
+  });
+
+  it("still maps the pre-rename trio onto the two originals", () => {
+    assert.equal(normalizeGrowthStyle("plant"), "sprout");
+    assert.equal(normalizeGrowthStyle("both"), "sprout");
+    assert.equal(normalizeGrowthStyle("water"), "orb");
+  });
+
+  it("keeps a current name untouched", () => {
+    for (const style of ["bloom", "constellation", "ascent", "sprout", "orb"]) {
+      assert.equal(normalizeGrowthStyle(style), style);
+    }
+  });
+
+  it("falls back to the default for anything unknown", () => {
+    assert.equal(normalizeGrowthStyle("spiral"), "bloom");
+    assert.equal(normalizeGrowthStyle(undefined), "bloom");
   });
 });

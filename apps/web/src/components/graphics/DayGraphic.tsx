@@ -2,14 +2,16 @@ import { useMemo } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import {
   arcPath,
-  dayArcPoint,
   growthGeometry,
+  journeyFeel,
   petalPath,
   type AgendaItem,
   type GrowthStyle,
   type HabitWithToday,
 } from "@life-os/shared";
 import { GrowthMeter } from "./GrowthMeter";
+import { Constellation } from "./Constellation";
+import { Ascent } from "./Ascent";
 
 /**
  * The day, drawn.
@@ -57,6 +59,8 @@ export function DayGraphic({
 }) {
   const reduce = useReducedMotion() ?? false;
 
+  const feel = journeyFeel(efficiencyPct);
+
   const geo = useMemo(
     () =>
       growthGeometry({
@@ -84,12 +88,24 @@ export function DayGraphic({
     );
   }
 
-  if (style === "arc") {
+  if (style === "constellation") {
     return (
-      <ArcGraphic
+      <Constellation
+        efficiencyPct={efficiencyPct}
+        habits={habits}
+        history={history}
+        reduce={reduce}
+        className={className}
+      />
+    );
+  }
+
+  if (style === "ascent") {
+    return (
+      <Ascent
+        efficiencyPct={efficiencyPct}
         agenda={agenda}
         dayProgress={dayProgress}
-        efficiencyPct={efficiencyPct}
         reduce={reduce}
         className={className}
       />
@@ -111,8 +127,13 @@ export function DayGraphic({
           and 100% — the light *is* the progress, not decoration on top of it.
         */}
         <radialGradient id="dg-halo" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.16 + geo.fill * 0.2} />
-          <stop offset="65%" stopColor="var(--accent)" stopOpacity={0.05} />
+          {/*
+            Brightens on a curve rather than linearly, so the last stretch of
+            the day looks like the last stretch. A linear glow makes 60→80 look
+            the same as 80→100, and it should not.
+          */}
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.12 + feel.glow * 0.34} />
+          <stop offset="65%" stopColor="var(--accent)" stopOpacity={0.04 + feel.glow * 0.1} />
           <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
         </radialGradient>
         <filter id="dg-bloom" x="-40%" y="-40%" width="180%" height="180%">
@@ -143,23 +164,6 @@ export function DayGraphic({
           opacity={0.06 + ring.strength * 0.16}
         />
       ))}
-
-      {/*
-        Only drawn for `rings`, where the stack is the whole graphic rather than
-        the backdrop — so the two styles are genuinely different readings of the
-        same data, not the same picture twice.
-      */}
-      {style === "rings" && (
-        <circle
-          cx={geo.centre}
-          cy={geo.centre}
-          r={geo.coreRadius + 14}
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth={2}
-          opacity={0.25}
-        />
-      )}
 
       {style === "bloom" &&
         geo.petals.map((petal, i) => (
@@ -230,132 +234,29 @@ export function DayGraphic({
         of {geo.total}
       </text>
 
-      {geo.complete && (
-        <circle
-          cx={geo.centre}
-          cy={geo.centre}
-          r={geo.coreRadius + 7}
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth={1.5}
-          opacity={0.5}
-        />
-      )}
-    </svg>
-  );
-}
-
-/**
- * The day as a horizon: sunrise on the left, now where the clock is, each
- * scheduled thing a mark along the path.
- *
- * For people who think in shape-of-day rather than in counts — it answers "how
- * much of today is left, and what is still on it" in one look.
- */
-function ArcGraphic({
-  agenda,
-  dayProgress,
-  efficiencyPct,
-  reduce,
-  className,
-}: {
-  agenda: AgendaItem[];
-  dayProgress: number;
-  efficiencyPct: number;
-  reduce: boolean;
-  className?: string;
-}) {
-  const size = 240;
-  const centre = size / 2;
-  const radius = 88;
-  const baseline = centre + 34;
-
-  const timed = agenda.filter((i) => i.startHour !== null);
-  const sun = dayArcPoint(dayProgress, centre, radius);
-
-  return (
-    <svg
-      viewBox={`0 0 ${size} ${size}`}
-      className={className}
-      role="img"
-      aria-label={`${Math.round(dayProgress * 100)}% through the day, ${Math.round(efficiencyPct)}% of target`}
-    >
-      <path
-        d={`M ${centre - radius} ${baseline - 0} A ${radius} ${radius} 0 0 1 ${centre + radius} ${baseline}`}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1}
-        opacity={0.18}
-        transform={`translate(0 ${centre - baseline + 34})`}
-      />
-
-      <g transform={`translate(0 ${34})`}>
-        {/* Where the day has already gone. */}
-        <path
-          d={`M ${centre - radius} ${centre} A ${radius} ${radius} 0 0 1 ${sun.x} ${sun.y}`}
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth={2}
-          opacity={0.5}
-          strokeLinecap="round"
-        />
-
-        {timed.map((item) => {
-          const f = Math.max(0, Math.min(1, (item.startHour ?? 0) / 24));
-          const p = dayArcPoint(f, centre, radius);
-          return (
-            <circle
-              key={item.id}
-              cx={p.x}
-              cy={p.y}
-              r={item.done ? 5 : 3.5}
-              fill={item.done ? item.themeColor || "var(--accent)" : "none"}
-              stroke={item.themeColor || "var(--accent)"}
-              strokeWidth={1.5}
-              opacity={item.done ? 0.95 : 0.55}
-            />
-          );
-        })}
-
-        <motion.circle
-          cx={sun.x}
-          cy={sun.y}
-          r={9}
-          fill="var(--accent)"
-          initial={reduce ? false : { scale: 0.6 }}
-          animate={{ scale: 1 }}
-          transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 160 }}
-        />
-
-        <line
-          x1={centre - radius - 10}
-          y1={centre}
-          x2={centre + radius + 10}
-          y2={centre}
-          stroke="currentColor"
-          strokeWidth={1}
-          opacity={0.22}
-        />
-
-        <text
-          x={centre}
-          y={centre + 30}
-          textAnchor="middle"
-          className="fill-[var(--text)] font-mono"
-          style={{ fontSize: 21, fontWeight: 600 }}
-        >
-          {Math.round(efficiencyPct)}%
-        </text>
-        <text
-          x={centre}
-          y={centre + 46}
-          textAnchor="middle"
-          className="fill-[var(--faint)]"
-          style={{ fontSize: 10 }}
-        >
-          of today's target
-        </text>
-      </g>
+      {/*
+        The arrival. Two rings settling outward rather than one static circle —
+        99% and 100% used to look identical, which is the least interesting
+        possible way to finish a day.
+      */}
+      {feel.complete &&
+        [0, 1].map((i) => (
+          <motion.circle
+            key={`done-${i}`}
+            cx={geo.centre}
+            cy={geo.centre}
+            r={geo.coreRadius + 8 + i * 12}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth={1.4 - i * 0.5}
+            initial={reduce ? false : { scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1, opacity: 0.55 - i * 0.22 }}
+            transition={
+              reduce ? { duration: 0 } : { duration: 0.9, delay: 0.5 + i * 0.18 }
+            }
+            style={{ transformOrigin: `${geo.centre}px ${geo.centre}px` }}
+          />
+        ))}
     </svg>
   );
 }

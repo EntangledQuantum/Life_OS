@@ -87,10 +87,10 @@ describe("the growth meter, which is where this was found", () => {
   it("really changed it, rather than answering 200 and doing nothing", async () => {
     await call("/api/v1/gamification/config", {
       method: "PATCH",
-      body: { growthStyle: "rings" },
+      body: { growthStyle: "constellation" },
     });
     const read = await call("/api/v1/gamification/config");
-    assert.equal(read.body.growthStyle, "rings");
+    assert.equal(read.body.growthStyle, "constellation");
   });
 });
 

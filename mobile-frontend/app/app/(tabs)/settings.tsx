@@ -96,16 +96,17 @@ export default function SettingsScreen() {
                   <SectionHeader title="How the day is drawn" />
                   <Card style={{ gap: 14 }}>
                     <Body>
-                      Bloom, Arc and Rings read the same day and differ only in
-                      shape. Sprout and Orb show today against target and
-                      nothing else — simpler on purpose.
+                      Five readings of the same day. Bloom, Constellation and
+                      Ascent each show which habits did it; Sprout and Orb show
+                      today against target and nothing else, simpler on purpose.
+                      All five finish differently at 100% than at 99%.
                     </Body>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
                       {(
                         [
                           ["bloom", "Bloom", "a petal per habit"],
-                          ["arc", "Arc", "the day as a horizon"],
-                          ["rings", "Rings", "one ring per week"],
+                          ["constellation", "Constellation", "a star per habit"],
+                          ["ascent", "Ascent", "a trail up a ridge"],
                           ["sprout", "Sprout", "a plant that grows"],
                           ["orb", "Orb", "fills with light"],
                         ] as [GrowthStyle, string, string][]

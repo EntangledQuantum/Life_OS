@@ -11,6 +11,9 @@ import Svg, {
 } from "react-native-svg";
 import { useTokens } from "@/lib/theme-provider";
 import { GrowthMeter } from "./growth-meter";
+import { Constellation } from "./constellation";
+import { Ascent } from "./ascent";
+import { journeyFeel } from "@/lib/journey";
 import type { AgendaItem, GrowthStyle, HabitWithToday } from "@/lib/types";
 
 /**
@@ -145,6 +148,7 @@ export function DayGraphic({
   size?: number;
 }) {
   const t = useTokens();
+  const feel = journeyFeel(efficiencyPct);
 
   const geo = useMemo(
     () =>
@@ -177,77 +181,25 @@ export function DayGraphic({
     );
   }
 
-  if (style === "arc") {
-    const radius = 88;
-    const sun = dayArcPoint(dayProgress, radius);
-    const timed = agenda.filter((i) => i.startHour !== null);
+  if (style === "constellation") {
     return (
-      <View style={{ width: size, height: size }}>
-        <Svg width={size} height={size} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-          <Path
-            d={`M ${CENTRE - radius} ${CENTRE} A ${radius} ${radius} 0 0 1 ${CENTRE + radius} ${CENTRE}`}
-            fill="none"
-            stroke={t.muted}
-            strokeWidth={1}
-            opacity={0.2}
-          />
-          <Path
-            d={`M ${CENTRE - radius} ${CENTRE} A ${radius} ${radius} 0 0 1 ${sun.x} ${sun.y}`}
-            fill="none"
-            stroke={t.accent}
-            strokeWidth={2}
-            opacity={0.55}
-            strokeLinecap="round"
-          />
-          {timed.map((item) => {
-            const p = dayArcPoint(
-              Math.max(0, Math.min(1, (item.startHour ?? 0) / 24)),
-              radius,
-            );
-            return (
-              <Circle
-                key={item.id}
-                cx={p.x}
-                cy={p.y}
-                r={item.done ? 5 : 3.5}
-                fill={item.done ? item.themeColor || t.accent : "none"}
-                stroke={item.themeColor || t.accent}
-                strokeWidth={1.5}
-                opacity={item.done ? 0.95 : 0.55}
-              />
-            );
-          })}
-          <Circle cx={sun.x} cy={sun.y} r={9} fill={t.accent} />
-          <Line
-            x1={CENTRE - radius - 10}
-            y1={CENTRE}
-            x2={CENTRE + radius + 10}
-            y2={CENTRE}
-            stroke={t.muted}
-            strokeWidth={1}
-            opacity={0.25}
-          />
-          <SvgText
-            x={CENTRE}
-            y={CENTRE + 34}
-            textAnchor="middle"
-            fill={t.text}
-            fontSize={22}
-            fontWeight="600"
-          >
-            {`${Math.round(efficiencyPct)}%`}
-          </SvgText>
-          <SvgText
-            x={CENTRE}
-            y={CENTRE + 50}
-            textAnchor="middle"
-            fill={t.faint}
-            fontSize={10}
-          >
-            of today&apos;s target
-          </SvgText>
-        </Svg>
-      </View>
+      <Constellation
+        efficiencyPct={efficiencyPct}
+        habits={habits}
+        history={history}
+        size={size}
+      />
+    );
+  }
+
+  if (style === "ascent") {
+    return (
+      <Ascent
+        efficiencyPct={efficiencyPct}
+        agenda={agenda}
+        dayProgress={dayProgress}
+        size={size}
+      />
     );
   }
 
@@ -263,8 +215,8 @@ export function DayGraphic({
         */}
         <Defs>
           <RadialGradient id="dg-halo" cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={t.accent} stopOpacity={0.16 + geo.fill * 0.2} />
-            <Stop offset="65%" stopColor={t.accent} stopOpacity={0.05} />
+            <Stop offset="0%" stopColor={t.accent} stopOpacity={0.12 + feel.glow * 0.34} />
+            <Stop offset="65%" stopColor={t.accent} stopOpacity={0.04 + feel.glow * 0.1} />
             <Stop offset="100%" stopColor={t.accent} stopOpacity={0} />
           </RadialGradient>
         </Defs>
@@ -282,18 +234,6 @@ export function DayGraphic({
             opacity={0.06 + ring.strength * 0.16}
           />
         ))}
-
-        {style === "rings" && (
-          <Circle
-            cx={CENTRE}
-            cy={CENTRE}
-            r={geo.coreRadius + 14}
-            fill="none"
-            stroke={t.accent}
-            strokeWidth={2}
-            opacity={0.25}
-          />
-        )}
 
         {style === "bloom" &&
           geo.petals.map((petal) => (
@@ -349,17 +289,24 @@ export function DayGraphic({
           {`of ${geo.total}`}
         </SvgText>
 
-        {geo.complete && (
-          <Circle
-            cx={CENTRE}
-            cy={CENTRE}
-            r={geo.coreRadius + 7}
-            fill="none"
-            stroke={t.accent}
-            strokeWidth={1.5}
-            opacity={0.5}
-          />
-        )}
+        {/*
+          The arrival. Two rings rather than one, so a finished day does not
+          look like a slightly brighter unfinished one.
+        */}
+        {feel.complete
+          ? [0, 1].map((i) => (
+              <Circle
+                key={`done-${i}`}
+                cx={CENTRE}
+                cy={CENTRE}
+                r={geo.coreRadius + 8 + i * 12}
+                fill="none"
+                stroke={t.accent}
+                strokeWidth={1.4 - i * 0.5}
+                opacity={0.55 - i * 0.22}
+              />
+            ))
+          : null}
       </Svg>
     </View>
   );

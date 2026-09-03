@@ -50,10 +50,11 @@ no goal-creation UI; never colour a bad day red.
 
 | File | Role |
 |------|------|
-| `components/day-graphic.tsx` | The entry point every surface uses. `bloom` / `arc` / `rings` drawn here; `sprout` / `orb` delegate to the file below |
-| `components/growth-meter.tsx` | The two original visuals; **must** keep drawing the ghosted 100% state behind the live one |
+| `components/day-graphic.tsx` | The entry point every surface uses. `bloom` drawn here; the other four delegate |
+| `components/constellation.tsx` · `components/ascent.tsx` | The two scenes. Mirrors of the web files of the same name |
+| `components/growth-meter.tsx` | `sprout` and `orb`; **must** keep drawing the ghosted 100% state behind the live one |
 | `components/agenda-row.tsx` | One row of today, habit or task. The 3px bar marks a habit |
-| Geometry | Duplicated from `packages/shared/src/growth.ts` **on purpose** — this app must not import from the workspace. The constants at the top of `day-graphic.tsx` are the ones that must match |
+| Geometry | Duplicated from `packages/shared/src/{growth,journey}.ts` **on purpose** — this app must not import from the workspace. `lib/journey.ts` is a straight copy and has to stay one; the bloom constants at the top of `day-graphic.tsx` are the other half |
 | Leaf thresholds | `0.16 0.32 0.46 0.62 0.78 0.90` then bloom at 1.0 (match web) |
 | Web reference | `apps/web/src/components/graphics/DayGraphic.tsx` (read only — copy patterns, don't import) |
 | Settings | `reducedMotion`, `celebrationIntensity`, `progress.growthStyle` |
@@ -63,9 +64,15 @@ Prefer `react-native-reanimated` + `react-native-svg` already in the project.
 Honour `reducedMotion` from settings **and** the OS (`useTheme().osReducedMotion`).
 
 **No SVG filters.** `react-native-svg`'s filter support varies by version and a
-missing one does not degrade — it renders a black rectangle. The web's bloom
-uses `feGaussianBlur`; here the same brightening is a `RadialGradient` halo.
-Keep it that way.
+missing one does not degrade — it renders a black rectangle. `constellation`
+and `ascent` are filter-free on both platforms for exactly this reason, so the
+two are genuine mirrors; bloom's web copy uses `feGaussianBlur` and here the
+same brightening is a `RadialGradient` halo. Keep it that way.
+
+**Every style has an arrival.** `journeyFeel` gives all five a `complete` state
+so 100% does not look like a brighter 99%: bloom settles two rings, the
+constellation closes its figure, the ascent lights the summit and says
+"summit". If you add a style, give it one.
 
 Two things in the orb are load-bearing and easy to undo by accident:
 

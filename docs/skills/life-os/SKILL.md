@@ -8,7 +8,7 @@ description: >
   long-running agent (Hermes, OpenClaw, Claude Code, cron) should read what
   actually happened, schedule what happens next, react to completions, or set
   Life OS up for a user who does not have it.
-version: 4.3.0
+version: 4.4.0
 license: MIT
 platforms: [macos, linux, windows]
 metadata:

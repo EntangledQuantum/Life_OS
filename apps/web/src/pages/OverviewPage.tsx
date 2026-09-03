@@ -150,7 +150,13 @@ export function OverviewPage() {
             agenda={agenda}
             history={(data.consistency7 ?? []).map((d) => d.pct)}
             dayProgress={dayProgress}
-            className="h-56 w-56 text-[var(--muted)] sm:h-64 sm:w-64"
+            /*
+              Big enough to be the thing you look at. At 224px it was an icon
+              sitting above a list; the whole point of the top half is that it
+              is worth looking at, and a scene — a sky, a ridge — needs room to
+              be one.
+            */
+            className="h-64 w-64 text-[var(--muted)] sm:h-80 sm:w-80"
           />
 
           <div className="mt-2 font-mono text-xs text-[var(--faint)]">
