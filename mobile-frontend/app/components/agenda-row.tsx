@@ -1,26 +1,45 @@
 import { Pressable, Text, View } from "react-native";
-import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { font, radius, rgba } from "@/lib/theme";
 import { useTokens } from "@/lib/theme-provider";
-import type { AgendaItem } from "@/lib/types";
+import { ArtBackground, ArtIcon, hasArt } from "@/components/art";
+import type { AgendaItem, HabitWithToday } from "@/lib/types";
 
 /**
- * One row of today, whatever table it came from.
+ * One card of today, whatever table it came from.
  *
  * Habits and scheduled tasks used to render as two separate lists on this
  * screen, which is what made it reasonable for an agent to create one of each
  * for the same act — and gave two things to tick, paying out twice if both were
  * ticked. `source` decides where the tick lands; nothing else here cares which
  * kind it is.
+ *
+ * It is a card rather than a row because this is the only place a habit is
+ * shown. The dashboard used to have a second, larger view of the same habits —
+ * their art, their week — which meant the screen you actually look at every day
+ * was the poorer of the two. That page is gone and this is what it was.
+ *
+ * The 3px colour bar went with it. It was doing the job of saying "this is a
+ * habit, and this is which part of the day it belongs to" in three pixels,
+ * where it read as a divider. The card's own edge carries it now.
  */
 export function AgendaRow({
   item,
+  habit,
   busy,
   onComplete,
   onUndo,
 }: {
   item: AgendaItem;
+  /**
+   * The full habit row, for the art and the week.
+   *
+   * Looked up by the screen rather than copied onto every agenda item — the
+   * dashboard payload already carries these, and a background picture is a
+   * `data:` URI big enough that sending it twice per poll is real bandwidth on
+   * a phone.
+   */
+  habit?: HabitWithToday;
   busy: boolean;
   onComplete: (item: AgendaItem) => void;
   onUndo: (item: AgendaItem) => void;
@@ -38,138 +57,185 @@ export function AgendaRow({
         minute: "2-digit",
         hourCycle: "h23",
       })
-    : "—";
+    : null;
 
   const isHabit = item.source === "habit";
+  const tint = item.themeColor || t.accent;
+  const overdue = item.state === "overdue" && !item.done;
+  /* The habit's own art if there is any; otherwise whatever the row resolved. */
+  const art = habit ?? {
+    iconImageData: item.iconImage,
+    iconImageUrl: null,
+    backgroundImageData: null,
+    backgroundImageUrl: null,
+  };
 
   return (
     <View
       style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 11,
         borderRadius: radius.lg,
         borderWidth: 1,
-        borderColor:
-          item.done
-            ? "transparent"
-            : item.state === "now"
-              ? rgba(t.accent, 0.4)
-              : t.border,
-        backgroundColor: item.done
-          ? rgba(t.text, 0.02)
+        /*
+          An outline in the activity's colour, and a glow under it while it is
+          the current thing. Same information the bar carried, at a size you can
+          see without looking for it.
+        */
+        borderColor: item.done
+          ? t.border
           : item.state === "now"
-            ? rgba(t.accent, 0.07)
-            : "transparent",
+            ? rgba(tint, 0.55)
+            : rgba(tint, 0.28),
+        backgroundColor: hasArt(habit) ? "transparent" : rgba(t.text, 0.02),
+        overflow: "hidden",
+        borderCurve: "continuous",
+        opacity: item.done ? 0.72 : 1,
+        ...(item.state === "now" && !item.done
+          ? {
+              shadowColor: tint,
+              shadowOpacity: 0.35,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 4,
+            }
+          : {}),
       }}
     >
-      <Text
-        style={{
-          width: 42,
-          fontFamily: font.mono,
-          fontSize: 11,
-          color: item.state === "overdue" && !item.done ? t.warning : t.faint,
-        }}
-      >
-        {item.at ? time : ""}
-      </Text>
+      <ArtBackground art={habit} />
 
-      {/*
-        A habit is marked, because the two behave differently and the difference
-        matters when you look at the row: a habit comes back tomorrow and can be
-        un-ticked, a task is a one-off and cannot. A bar rather than a label —
-        quieter, and it survives being glanced at.
-      */}
       <View
         style={{
-          width: 3,
-          height: 26,
-          borderRadius: 2,
-          backgroundColor: item.themeColor || t.accent,
-          opacity: isHabit ? 0.7 : 0,
+          flexDirection: "row",
+          alignItems: "flex-start",
+          gap: 12,
+          padding: 13,
         }}
-      />
+      >
+        {/* Big enough to be the picture, not a bullet point. */}
+        <ArtIcon art={art} emoji={item.emoji} color={tint} size={46} />
 
-      {/*
-        A habit with its own icon shows it here instead of the emoji. Only the
-        icon — a row is not a card.
-      */}
-      {item.iconImage ? (
-        <Image
-          source={{ uri: item.iconImage }}
-          style={{ width: 22, height: 22, borderRadius: 6 }}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-        />
-      ) : item.emoji ? (
-        <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
-      ) : null}
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                flex: 1,
+                fontSize: 15,
+                fontFamily: font.bodySemi,
+                color: item.done ? t.faint : t.text,
+                textDecorationLine: item.done ? "line-through" : "none",
+              }}
+            >
+              {item.title}
+            </Text>
+            {time ? (
+              <Text
+                style={{
+                  fontFamily: font.mono,
+                  fontSize: 11,
+                  color: overdue ? t.warning : t.faint,
+                }}
+              >
+                {time}
+              </Text>
+            ) : null}
+          </View>
 
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text
-          numberOfLines={1}
-          style={{
-            fontSize: 14,
-            color: item.done ? t.faint : t.text,
-            textDecorationLine: item.done ? "line-through" : "none",
-          }}
-        >
-          {item.title}
-        </Text>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 2 }}>
-          {isHabit ? (
-            <Text style={{ fontSize: 10, color: t.faint }}>
-              habit{(item.streak ?? 0) > 0 ? ` · ${item.streak}d` : ""}
-            </Text>
-          ) : null}
-          {/*
-            The kind is a tag, not a tab. A study block is a task with links on
-            it — the Study screen said otherwise and kept its own copy of this
-            same list.
-          */}
-          {item.kind && item.kind !== "task" ? (
-            <Text style={{ fontSize: 10, color: t.faint, textTransform: "capitalize" }}>
-              {item.kind}
-            </Text>
-          ) : null}
-          {item.state === "overdue" && !item.done ? (
-            <Text style={{ fontSize: 10, color: t.warning }}>missed its slot</Text>
-          ) : null}
-          {item.xp > 0 ? (
-            <Text style={{ fontSize: 10, color: t.faint, fontFamily: font.mono }}>
-              {item.xp} XP
-            </Text>
-          ) : null}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {isHabit ? (
+              <Text style={{ fontSize: 11, color: t.muted }}>
+                {habit?.category ?? "habit"}
+                {(item.streak ?? 0) > 0 ? ` · ${item.streak}d streak` : ""}
+              </Text>
+            ) : item.kind && item.kind !== "task" ? (
+              /* The kind is a tag, not a tab — a study block is a task with links. */
+              <Text
+                style={{ fontSize: 11, color: t.muted, textTransform: "capitalize" }}
+              >
+                {item.kind}
+              </Text>
+            ) : null}
+            {item.xp > 0 ? (
+              <Text style={{ fontSize: 11, color: t.faint, fontFamily: font.mono }}>
+                {item.xp} XP
+              </Text>
+            ) : null}
+            {overdue ? (
+              <Text style={{ fontSize: 11, color: t.warning }}>missed its slot</Text>
+            ) : null}
+          </View>
         </View>
+
+        <Pressable
+          disabled={busy || (item.done && !isHabit)}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (item.done) onUndo(item);
+            else onComplete(item);
+          }}
+          hitSlop={8}
+          style={{
+            width: 38,
+            height: 38,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: radius.md,
+            borderWidth: 1,
+            borderColor: item.done ? t.border : rgba(tint, 0.4),
+            opacity: item.done && !isHabit ? 0.35 : 1,
+            borderCurve: "continuous",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={
+            item.done ? `Undo ${item.title}` : `Mark ${item.title} done`
+          }
+        >
+          <Text style={{ color: item.done ? t.faint : t.muted, fontSize: 16 }}>
+            {item.done ? "↺" : "✓"}
+          </Text>
+        </Pressable>
       </View>
 
-      <Pressable
-        disabled={busy || (item.done && !isHabit)}
-        onPress={() => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          if (item.done) onUndo(item);
-          else onComplete(item);
-        }}
-        hitSlop={8}
-        style={{
-          width: 34,
-          height: 34,
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: radius.md,
-          borderWidth: item.done ? 0 : 1,
-          borderColor: t.border,
-          opacity: item.done && !isHabit ? 0.35 : 1,
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={item.done ? `Undo ${item.title}` : `Mark ${item.title} done`}
-      >
-        <Text style={{ color: item.done ? t.faint : t.muted, fontSize: 15 }}>
-          {item.done ? "↺" : "✓"}
+      {/*
+        The week, habits only — a task has no week, it happens once. This came
+        off the dashboard's Habits page, and it is the reason that page existed:
+        the useful thing about a habit is the run behind it, not today's tick.
+      */}
+      {habit && habit.history7.length > 0 ? (
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 5,
+            paddingHorizontal: 13,
+            paddingBottom: 11,
+          }}
+        >
+          {habit.history7.map((was, i) => (
+            <View
+              key={i}
+              style={{
+                flex: 1,
+                height: 5,
+                borderRadius: 3,
+                backgroundColor: was ? tint : rgba(t.text, 0.07),
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {habit?.anchor ? (
+        <Text
+          style={{
+            paddingHorizontal: 13,
+            paddingBottom: 11,
+            color: t.faint,
+            fontFamily: font.body,
+            fontSize: 11,
+          }}
+        >
+          Anchor: {habit.anchor}
         </Text>
-      </Pressable>
+      ) : null}
     </View>
   );
 }

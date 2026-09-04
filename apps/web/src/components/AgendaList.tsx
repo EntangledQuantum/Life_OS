@@ -1,32 +1,44 @@
 import { Check, Undo2 } from "lucide-react";
-import type { AgendaItem } from "@life-os/shared";
+import type { AgendaItem, HabitWithToday } from "@life-os/shared";
 import { cn } from "@/lib/utils";
+import { ArtBackground, ArtIcon, hasArt } from "./Art";
 
 /**
- * Today, as **one** list.
+ * Today, as **one** list of cards — and the only place habits live.
  *
- * Two things went wrong before this. Habits and scheduled tasks were rendered
- * as separate lists, which is what made it reasonable for an agent to create
- * one of each for the same act — two rows to tick, XP paid twice if you ticked
- * both. And then, having merged them, the merged list was split again into
- * "Today" and "Anytime", so a habit with no time sat in a second section
- * underneath a task with a similar name and read as a duplicate of it.
+ * Three things went wrong on the way here. Habits and scheduled tasks were
+ * rendered as separate lists, which is what made it reasonable for an agent to
+ * create one of each for the same act. Then, having merged them, the merged
+ * list was split again into "Today" and "Anytime", so a habit with no time sat
+ * under a task with a similar name and read as a duplicate of it. And then
+ * there were *two pages*: this list, and a Habits page showing the same habits
+ * larger, with their art and their week — so the thing you looked at every day
+ * was the poorer of the two views.
  *
- * There are no sections now. Everything that is on today is in one place, in
- * the order it happens, with untimed work after the timed. A row does not move
- * when you tick it — it stays where it was and shows as done, because a list
- * that reorders under your finger is a list you have to re-read.
+ * The Habits page is gone and this is what it was. Same size, same pictures,
+ * same seven-day strip. A habit is on today's list or it is nowhere.
  *
- * At the reset the habits come back open on their own: a habit is not done
- * until it is logged, and a log belongs to the life-day it was written in.
+ * There are still no sections, and a card does not move when you tick it — a
+ * list that reorders under your finger is a list you have to re-read. At the
+ * reset the habits come back open on their own: a habit is not done until it is
+ * logged, and a log belongs to the life-day it was written in.
  */
 export function AgendaList({
   items,
+  habits,
   busy,
   onComplete,
   onUndo,
 }: {
   items: AgendaItem[];
+  /**
+   * The full habit rows, for the art and the week.
+   *
+   * Looked up by `habitId` rather than copied onto every agenda item: the
+   * dashboard payload already carries these, and a background picture is a
+   * `data:` URI big enough that sending it twice per poll is real bandwidth.
+   */
+  habits: HabitWithToday[];
   busy: boolean;
   onComplete: (item: AgendaItem) => void;
   onUndo: (item: AgendaItem) => void;
@@ -40,10 +52,11 @@ export function AgendaList({
   }
 
   const done = items.filter((i) => i.done).length;
+  const byId = new Map(habits.map((h) => [h.id, h]));
 
   return (
     <section>
-      <header className="mb-2.5 flex items-baseline justify-between">
+      <header className="mb-3 flex items-baseline justify-between">
         <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--faint)]">
           Today
         </h2>
@@ -51,11 +64,17 @@ export function AgendaList({
           {done}/{items.length}
         </span>
       </header>
-      <ul className="space-y-1.5">
+      {/*
+        Two up once the column is wide enough for a card to still be a card.
+        Below that, one — half of one of these is unreadable, which is the
+        mistake the old narrow row column was avoiding by being a row.
+      */}
+      <ul className="grid gap-3 xl:grid-cols-2">
         {items.map((item) => (
-          <Row
+          <AgendaCard
             key={item.id}
             item={item}
+            habit={item.habitId ? byId.get(item.habitId) : undefined}
             busy={busy}
             onComplete={onComplete}
             onUndo={onUndo}
@@ -66,22 +85,23 @@ export function AgendaList({
   );
 }
 
-function Row({
+function AgendaCard({
   item,
+  habit,
   busy,
   onComplete,
   onUndo,
 }: {
   item: AgendaItem;
+  habit: HabitWithToday | undefined;
   busy: boolean;
   onComplete: (item: AgendaItem) => void;
   onUndo: (item: AgendaItem) => void;
 }) {
   /*
-   * 24-hour, always. The locale default gave "07:30 AM", which wrapped the
-   * fixed-width column onto two lines and pushed every row taller — and the
-   * ribbon underneath is already labelled 00/06/12/18/24, so a 12-hour list
-   * above it made the two disagree.
+   * 24-hour, always. The locale default gave "07:30 AM", which is wider, and
+   * the ribbon on the other side of the page is labelled 00/06/12/18/24 — a
+   * 12-hour list beside it made the two disagree.
    */
   const time = item.at
     ? new Date(item.at).toLocaleTimeString([], {
@@ -92,127 +112,156 @@ function Row({
     : null;
 
   const isHabit = item.source === "habit";
+  const color = item.themeColor || "var(--accent)";
+  /* The habit's own art if it has any; otherwise whatever the row resolved. */
+  const art = habit ?? { iconImageData: item.iconImage, iconImageUrl: null };
+  const overdue = item.state === "overdue" && !item.done;
 
   return (
     <li
       className={cn(
-        "group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors",
-        item.done
-          ? "border-transparent bg-white/[0.02]"
-          : item.state === "now"
-            ? "border-[var(--accent)]/40 bg-[var(--accent)]/[0.06]"
-            : "border-white/[0.06] hover:bg-white/[0.03]",
+        "group relative isolate flex flex-col overflow-hidden rounded-2xl border transition-all",
+        item.done ? "border-white/[0.06] opacity-70" : "border-white/[0.08]",
+        !hasArt(habit) && !item.done && "bg-white/[0.03]",
+        !item.done && "hover:-translate-y-px",
       )}
+      style={
+        item.done
+          ? undefined
+          : {
+              /*
+                The bar is gone. It was three pixels of colour doing the job of
+                saying "this is a habit, and this is which part of your day it
+                belongs to" — at that size it read as a divider. The card's own
+                edge carries it now: an outline in the activity's colour, and a
+                glow underneath that lifts it off the page. Same information,
+                and you can see it without looking for it.
+              */
+              borderColor: `${item.themeColor ?? "#5B8CFF"}${item.state === "now" ? "88" : "40"}`,
+              boxShadow:
+                item.state === "now"
+                  ? `0 0 0 1px ${item.themeColor ?? "#5B8CFF"}55, 0 10px 34px -14px ${item.themeColor ?? "#5B8CFF"}`
+                  : `0 8px 26px -20px ${item.themeColor ?? "#5B8CFF"}`,
+            }
+      }
     >
-      {/*
-        A fixed-width time column, so the list reads as a schedule rather than
-        as ragged text. Untimed rows keep the column and leave it blank instead
-        of collapsing it, which would make them look like a different kind of
-        thing — they are not, they just have no hour.
-      */}
-      <span
-        className={cn(
-          "w-11 shrink-0 font-mono text-[11px] tabular-nums",
-          item.state === "overdue" && !item.done
-            ? "text-[#FBBF24]"
-            : "text-[var(--faint)]",
-        )}
-      >
-        {time ?? ""}
-      </span>
+      <ArtBackground art={habit} className="-z-10" />
 
-      {/*
-        A habit is marked, because the two behave differently and the difference
-        matters when you look at the row: a habit comes back tomorrow and can be
-        un-ticked, a task is a one-off and cannot. The bar is quieter than a
-        label and survives being glanced at.
-      */}
-      <span
-        aria-hidden
-        className={cn(
-          "h-7 w-[3px] shrink-0 rounded-full",
-          isHabit ? "opacity-70" : "opacity-0",
-        )}
-        style={{ background: item.themeColor || "var(--accent)" }}
-      />
-
-      {/*
-        A habit with its own icon shows it here instead of the emoji. Only the
-        icon: a row is not a card, and a photograph behind 40pt of text is
-        unreadable at any scrim.
-      */}
-      {item.iconImage ? (
-        <img
-          src={item.iconImage}
-          alt=""
-          className="h-5 w-5 shrink-0 rounded-md object-cover"
+      <div className="flex items-start gap-3 p-4">
+        <ArtIcon
+          art={art}
+          emoji={item.emoji}
+          color={item.themeColor ?? "#5B8CFF"}
+          /* Big enough to be the picture, not a bullet point. */
+          className="h-12 w-12"
+          emojiClassName="text-2xl"
         />
-      ) : item.emoji ? (
-        <span className="shrink-0 text-base leading-none">{item.emoji}</span>
-      ) : null}
 
-      <div className="min-w-0 flex-1">
-        <div
-          className={cn(
-            "truncate text-sm",
-            item.done && "text-[var(--faint)] line-through",
-          )}
-        >
-          {item.title}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <h3
+              className={cn(
+                "min-w-0 flex-1 truncate font-medium leading-tight",
+                item.done && "text-[var(--faint)] line-through",
+              )}
+            >
+              {item.title}
+            </h3>
+            {time && (
+              <span
+                className={cn(
+                  "shrink-0 font-mono text-xs tabular-nums",
+                  overdue ? "text-[#FBBF24]" : "text-[var(--faint)]",
+                )}
+              >
+                {time}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--muted)]">
+            {isHabit ? (
+              <span title="A habit — it comes back tomorrow">
+                {habit?.category ?? "habit"}
+                {item.streak !== null && item.streak > 0
+                  ? ` · ${item.streak}d streak`
+                  : ""}
+              </span>
+            ) : (
+              /*
+                The kind is a tag rather than a tab. A study block is a task
+                with links on it, not a separate section of the app — the Study
+                page said otherwise and kept its own copy of this same list.
+              */
+              item.kind &&
+              item.kind !== "task" && (
+                <span className="rounded bg-white/[0.06] px-1.5 py-0.5 capitalize">
+                  {item.kind}
+                </span>
+              )
+            )}
+            {item.xp > 0 && <span className="font-mono">{item.xp} XP</span>}
+            {overdue && <span className="text-[#FBBF24]">missed its slot</span>}
+          </div>
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[var(--faint)]">
-          {isHabit && (
-            <span title="A habit — it comes back tomorrow">
-              habit
-              {item.streak !== null && item.streak > 0 ? ` · ${item.streak}d` : ""}
-            </span>
-          )}
-          {/*
-            The kind is a tag rather than a tab. A study block is a task with
-            links on it, not a separate section of the app — the Study page said
-            otherwise and had to keep its own copy of the same list.
-          */}
-          {item.kind && item.kind !== "task" && (
-            <span className="rounded bg-white/[0.05] px-1.5 py-0.5 capitalize">
-              {item.kind}
-            </span>
-          )}
-          {item.state === "overdue" && !item.done && (
-            <span className="text-[#FBBF24]">missed its slot</span>
-          )}
-          {item.xp > 0 && <span className="font-mono">{item.xp} XP</span>}
-        </div>
+
+        {item.done ? (
+          <button
+            type="button"
+            disabled={busy || !isHabit}
+            onClick={() => onUndo(item)}
+            className={cn(
+              "shrink-0 rounded-xl border border-white/[0.08] p-2.5 text-[var(--faint)] transition-colors",
+              isHabit
+                ? "hover:bg-white/[0.06] hover:text-[var(--text)]"
+                : "opacity-40",
+            )}
+            title={
+              isHabit
+                ? "Undo"
+                : "Completed tasks are not undone — ask your agent to reschedule"
+            }
+          >
+            <Undo2 className="h-4 w-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onComplete(item)}
+            className="shrink-0 rounded-xl border p-2.5 text-[var(--muted)] transition-colors hover:text-[var(--text)] disabled:opacity-40"
+            style={{ borderColor: `${item.themeColor ?? "#5B8CFF"}55` }}
+            title="Mark done"
+          >
+            <Check className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      {item.done ? (
-        <button
-          type="button"
-          disabled={busy || !isHabit}
-          onClick={() => onUndo(item)}
-          className={cn(
-            "shrink-0 rounded-lg p-2 text-[var(--faint)] transition-colors",
-            isHabit
-              ? "hover:bg-white/[0.06] hover:text-[var(--text)]"
-              : "opacity-40",
-          )}
-          title={
-            isHabit
-              ? "Undo"
-              : "Completed tasks are not undone — ask your agent to reschedule"
-          }
-        >
-          <Undo2 className="h-4 w-4" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onComplete(item)}
-          className="shrink-0 rounded-lg border border-white/[0.08] p-2 text-[var(--muted)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent)]/[0.12] hover:text-[var(--accent)] disabled:opacity-40"
-          title="Mark done"
-        >
-          <Check className="h-4 w-4" />
-        </button>
+      {/*
+        The week, for habits only — a task has no week, it happens once. This
+        came off the Habits page, and it is the reason that page existed: the
+        useful thing about a habit is the run behind it, not today's tick.
+      */}
+      {habit && habit.history7.length > 0 && (
+        <div className="flex items-center gap-1.5 px-4 pb-3">
+          {habit.history7.map((was, i) => (
+            <div
+              key={i}
+              className="h-1.5 flex-1 rounded-full"
+              style={{
+                background: was ? item.themeColor ?? "#5B8CFF" : "rgba(255,255,255,0.07)",
+              }}
+              title={was ? "done" : "not done"}
+            />
+          ))}
+        </div>
+      )}
+
+      {habit?.anchor && (
+        <p className="px-4 pb-3 text-[11px] text-[var(--faint)]">
+          Anchor: {habit.anchor}
+        </p>
       )}
     </li>
   );

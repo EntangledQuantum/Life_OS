@@ -53,7 +53,7 @@ no goal-creation UI; never colour a bad day red.
 | `components/day-graphic.tsx` | The entry point every surface uses. `bloom` drawn here; the other four delegate |
 | `components/constellation.tsx` · `components/ascent.tsx` | The two scenes. Mirrors of the web files of the same name |
 | `components/growth-meter.tsx` | `sprout` and `orb`; **must** keep drawing the ghosted 100% state behind the live one |
-| `components/agenda-row.tsx` | One row of today, habit or task. The 3px bar marks a habit |
+| `components/agenda-row.tsx` | One **card** of today, habit or task — the only place a habit is drawn. Art, 46pt icon, week strip, coloured outline |
 | Geometry | Duplicated from `packages/shared/src/{growth,journey}.ts` **on purpose** — this app must not import from the workspace. `lib/journey.ts` is a straight copy and has to stay one; the bloom constants at the top of `day-graphic.tsx` are the other half |
 | Leaf thresholds | `0.16 0.32 0.46 0.62 0.78 0.90` then bloom at 1.0 (match web) |
 | Web reference | `apps/web/src/components/graphics/DayGraphic.tsx` (read only — copy patterns, don't import) |
@@ -102,6 +102,22 @@ as separate sections is what made it reasonable for an agent to create one of
 each for the same act; "Today" and "Anytime" as separate sections put a habit
 with no time underneath a task with a similar name, which looks like the same
 row twice. One section, no regrouping, and a row does not move when it is ticked.
+
+**A row is a card, and it is the only place a habit is shown.** There is no
+habits screen on either client any more — the dashboard had one, showing the
+same habits larger with their art and their week, which meant the screen you
+actually look at every day was the poorer of the two views. `agenda-row.tsx` is
+what that page was: the picture, the 46pt icon, the seven-day strip, the anchor.
+
+Two things it needs that an `AgendaItem` does not carry:
+
+- **The habit itself**, passed in by the screen and looked up by `habitId`. The
+  art and `history7` live on `data.habits`, which the same payload already
+  carries — copying a `data:` URI onto every agenda item would send the same
+  picture twice, every eight seconds.
+- **No colour bar.** The 3px bar that used to mark a habit is gone; the card's
+  border and glow carry the activity colour instead. At three pixels it read as
+  a divider.
 
 **The list comes before the agent's cards on a phone.** `TwoPane` emits `left`
 then `right` when there is only one column, so anything parked in the left

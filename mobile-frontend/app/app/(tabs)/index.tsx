@@ -236,6 +236,8 @@ export default function TodayScreen() {
    */
   const agenda = data.agenda ?? [];
   const doneCount = agenda.filter((i) => i.done).length;
+  /* One pass, so each card can find its own habit without scanning the list. */
+  const habitsById = new Map((data.habits ?? []).map((h) => [h.id, h]));
 
   const dayStart = Date.parse(data.lifeDay?.lifeDayStart ?? "");
   const dayEnd = Date.parse(data.lifeDay?.lifeDayEnd ?? "");
@@ -425,7 +427,7 @@ export default function TodayScreen() {
                   and shows as done — a list that reorders under your thumb is a
                   list you have to re-read.
                 */}
-                <View style={{ gap: 10 }}>
+                <View style={{ gap: 12 }}>
                   <SectionHeader
                     title="Today"
                     right={
@@ -438,6 +440,13 @@ export default function TodayScreen() {
                     <AgendaRow
                       key={item.id}
                       item={item}
+                      /*
+                        The habit behind the row, for its art and its week.
+                        Looked up here rather than copied onto every agenda item
+                        — a background is a data: URI, and this payload arrives
+                        every eight seconds.
+                      */
+                      habit={item.habitId ? habitsById.get(item.habitId) : undefined}
                       busy={completeItem.isPending || undoItem.isPending}
                       onComplete={(i) => completeItem.mutate(i)}
                       onUndo={(i) => undoItem.mutate(i)}

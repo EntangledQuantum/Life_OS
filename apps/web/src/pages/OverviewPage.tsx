@@ -121,7 +121,13 @@ export function OverviewPage() {
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mx-auto max-w-6xl pb-16"
+      /*
+        Wider than it was. The day's cards carry pictures and a week each now —
+        they are the size the Habits page used to draw them, because they *are*
+        that page — and two of those beside a 320px graphic do not fit in
+        1152px. The reading column is capped for prose; this is a board.
+      */
+      className="mx-auto max-w-[1500px] pb-16"
     >
       <ReminderRunner due={data.dueReminders ?? []} />
       <GoalCelebration goals={data.pendingCelebrations ?? []} />
@@ -164,7 +170,12 @@ export function OverviewPage() {
         The list is the part you touch, so on a narrow screen it gets the half
         nearest your thumb.
       */}
-      <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+      {/*
+        The hero holds its width and the day takes the rest. A 50/50 split gave
+        the list exactly as much room as a 320px picture needed, which is what
+        made the old rows rows — there was never space for anything else.
+      */}
+      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(320px,400px)_1fr] lg:items-start lg:gap-10">
         <section className="flex flex-col items-center">
           <DayGraphic
             style={p.growthStyle}
@@ -235,6 +246,7 @@ export function OverviewPage() {
         <section className="min-w-0">
           <AgendaList
             items={agenda}
+            habits={data.habits}
             busy={complete.isPending || undo.isPending}
             onComplete={(item) => complete.mutate(item)}
             onUndo={(item) => undo.mutate(item)}

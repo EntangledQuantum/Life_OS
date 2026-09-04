@@ -11,7 +11,6 @@ import { PairPage } from "./pages/PairPage";
 import { RequireAuth } from "./pages/RequireAuth";
 import { OverviewPage } from "./pages/OverviewPage";
 import { TimelinePage } from "./pages/TimelinePage";
-import { HabitsPage } from "./pages/HabitsPage";
 import { GoalsPage } from "./pages/GoalsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -45,7 +44,6 @@ const routes = IS_PAGES ? (
       <Route path="/app" element={<AppShell />}>
         <Route index element={<OverviewPage />} />
         <Route path="timeline" element={<TimelinePage />} />
-        <Route path="habits" element={<HabitsPage />} />
         <Route path="goals" element={<GoalsPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="settings" element={<SettingsPage />} />

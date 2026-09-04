@@ -1,7 +1,7 @@
 {
   "name": "life-os-mobile",
   "main": "index.js",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "scripts": {
     "start": "expo start",

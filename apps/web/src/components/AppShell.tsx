@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   Settings,
   Target,
-  CheckCircle2,
 } from "lucide-react";
 import { isWithinQuietHours } from "@life-os/shared";
 import { useQuery } from "@tanstack/react-query";
@@ -19,7 +18,6 @@ import { useEffect } from "react";
 const tabs = [
   { to: "/app", end: true, label: "Overview", icon: LayoutDashboard },
   { to: "/app/timeline", label: "Timeline", icon: CalendarClock },
-  { to: "/app/habits", label: "Habits", icon: CheckCircle2 },
   { to: "/app/goals", label: "Goals", icon: Target },
   { to: "/app/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/app/settings", label: "Settings", icon: Settings },

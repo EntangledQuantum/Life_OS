@@ -199,6 +199,12 @@ Each habit in `habits` is a `HabitWithToday`:
 | `history7` | Seven booleans, oldest first — a tiny bar strip |
 | `baseXp`, `extraXp` | What completing it is worth |
 | `anchor` | "after I sit at my desk" — surface it, it is why the habit sticks |
+| `iconImage*` / `backgroundImage*` | Optional art. The icon replaces the emoji; the background fills the card under a scrim. Both usually null — see §3.9 |
+
+**Habits are drawn where the day is, and nowhere else.** Both clients used to
+have a second, larger view of the same habits; the screen the user actually
+looks at was then the poorer of the two. Render them as part of `agenda`, at
+full size, with their art and their week. Do not build a habits tab.
 
 Completing: `POST /api/v1/habits/:id/complete`. Status codes matter:
 
