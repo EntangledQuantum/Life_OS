@@ -49,11 +49,21 @@ const shots = [
     file: "dashboard.png",
     path: "/app",
     /*
-     * Tall enough for the graphic and the day's list, and no taller. It was
-     * 1560 when the page opened with five comparison tiles, a metrics strip and
-     * an XP chart above the work; all of that lives on Analytics now.
+     * Tall enough for the day's cards *and* the agent's two underneath them —
+     * at 940 the Complete buttons were sliced in half, which reads as a broken
+     * page rather than as a crop.
      */
-    height: 940,
+    height: 1060,
+  },
+  {
+    file: "goals.png",
+    path: "/app/goals",
+    /*
+     * The goals and the counters they read, whole. Cutting through the counters
+     * row makes the page look like it continues into something unfinished; it
+     * does not, that is the end of it.
+     */
+    height: 1090,
   },
   {
     file: "layers.png",

@@ -33,7 +33,8 @@ WEB_URL=http://localhost:5174 pnpm screenshots
 
 | File | Section | Used in the root README |
 |------|---------|:--:|
-| `dashboard.png` | The Overview dashboard, down to the growth meter and Quick log | ✅ |
+| `dashboard.png` | Overview — the day as cards with their art, and the agent's two beneath | ✅ |
+| `goals.png` | Goals, each with its rarity ladder, and the counters the conditions read | ✅ |
 | `mobile-1.png` | Android — today's one list, with the day drawn above it | ✅ |
 | `mobile-2.png` | Android — the timeline, today vs yesterday, seven days of XP | ✅ |
 | `layers.png` | "Two layers, one job each" | ✅ |

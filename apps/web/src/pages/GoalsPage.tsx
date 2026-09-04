@@ -247,11 +247,22 @@ function TierPip({
     <li
       className={cn(
         "flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors",
-        reached ? "text-[var(--text)]" : "text-[var(--faint)]",
+        reached ? "text-[var(--text)]" : "text-[var(--muted)]",
       )}
+      /*
+        Every pip carries its own dark backing, reached or not.
+        
+        A transparent chip in a faint grey was legible on the flat card it was
+        designed against and disappeared entirely once the card had a
+        photograph behind it — a bright page or a lit window swallowed the
+        rungs the user has not got to yet, which are exactly the ones worth
+        seeing. The card's scrim cannot fix this on its own: it is one gradient
+        over the whole card, and these sit in the middle of it.
+      */
       style={{
-        borderColor: reached ? `${color}88` : current ? `${color}55` : "rgba(255,255,255,0.08)",
-        background: reached ? `${color}1f` : "transparent",
+        borderColor: reached ? `${color}88` : current ? `${color}55` : "rgba(255,255,255,0.14)",
+        background: reached ? `${color}33` : "rgba(8,9,14,0.55)",
+        backdropFilter: "blur(2px)",
       }}
       title={
         reached

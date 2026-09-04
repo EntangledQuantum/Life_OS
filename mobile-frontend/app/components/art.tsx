@@ -51,8 +51,8 @@ export function ArtBackground({
       */}
       <LinearGradient
         colors={[
-          `rgba(7,8,12,${overlay * 0.78})`,
-          `rgba(7,8,12,${Math.min(0.96, overlay + 0.18)})`,
+          `rgba(7,8,12,${overlay * 0.86})`,
+          `rgba(7,8,12,${Math.min(0.96, overlay + 0.24)})`,
         ]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}

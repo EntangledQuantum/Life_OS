@@ -283,8 +283,13 @@ function TierPip({
           ? rgba(color, 0.55)
           : current
             ? rgba(color, 0.35)
-            : t.border,
-        backgroundColor: reached ? rgba(color, 0.14) : "transparent",
+            : rgba(t.text, 0.14),
+        /*
+          Its own dark backing, reached or not. Transparent was legible on a
+          flat card and vanished once the card had a photograph behind it —
+          swallowing exactly the rungs the user has not reached yet.
+        */
+        backgroundColor: reached ? rgba(color, 0.22) : "rgba(8,9,14,0.55)",
         borderCurve: "continuous",
       }}
     >
@@ -298,7 +303,7 @@ function TierPip({
       />
       <Text
         style={{
-          color: reached ? t.text : t.faint,
+          color: reached ? t.text : t.muted,
           fontFamily: font.mono,
           fontSize: 10,
           textTransform: "uppercase",

@@ -38,7 +38,7 @@ export function ArtBackground({
       <div
         className="absolute inset-0"
         style={{
-          background: `linear-gradient(180deg, rgba(7,8,12,${overlay * 0.78}), rgba(7,8,12,${Math.min(0.96, overlay + 0.18)}))`,
+          background: `linear-gradient(180deg, rgba(7,8,12,${overlay * 0.86}), rgba(7,8,12,${Math.min(0.96, overlay + 0.24)}))`,
         }}
       />
     </div>
