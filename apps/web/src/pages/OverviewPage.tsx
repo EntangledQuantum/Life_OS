@@ -224,23 +224,6 @@ export function OverviewPage() {
             })}
           </div>
 
-          {/*
-            Under the graphic rather than below the fold. This column ran out of
-            content halfway down while the cards sat full-width underneath, so
-            the page had a hole in it and its most-read prose was the last thing
-            you reached. Stacked, because half a wide card is unreadable.
-          */}
-          <div className="mt-8 w-full">
-            <AgentCardsSection
-              tasks={data.tasks}
-              habits={data.habits}
-              stacked
-              busy={complete.isPending}
-              onComplete={(id) =>
-                complete.mutate({ source: "task", refId: id } as AgendaItem)
-              }
-            />
-          </div>
         </section>
 
         <section className="min-w-0">
@@ -252,6 +235,30 @@ export function OverviewPage() {
             onUndo={(item) => undo.mutate(item)}
           />
         </section>
+      </div>
+
+      {/*
+        Side by side, across the whole page.
+
+        These were stacked in the hero column when that column was half the
+        width of the screen and ran out of content halfway down. It is 400px
+        now — the width of the graphic and nothing more — and a card whose body
+        is a paragraph turns into a ribbon in it: two of them ran twice the
+        height of the day they were commenting on.
+
+        Below the day and across the full width, they are the shape they were
+        written to be, and the reading order is right: your day, then the
+        agent's reading of it.
+      */}
+      <div className="mt-10">
+        <AgentCardsSection
+          tasks={data.tasks}
+          habits={data.habits}
+          busy={complete.isPending}
+          onComplete={(id) =>
+            complete.mutate({ source: "task", refId: id } as AgendaItem)
+          }
+        />
       </div>
 
 

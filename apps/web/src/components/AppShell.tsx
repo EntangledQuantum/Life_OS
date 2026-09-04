@@ -151,7 +151,14 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="relative mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      {/*
+        1152px was a reading width, and it was right when every page was a
+        column of text and rows. Overview is a board now — the day as cards
+        beside the hero, the agent's two cards under it — and at 1152 those come
+        out 326px each, which is a row wearing a card's clothes. The pages that
+        are still prose cap themselves.
+      */}
+      <main className="relative mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
         <Outlet />
       </main>
     </div>

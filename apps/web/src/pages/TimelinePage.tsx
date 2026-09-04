@@ -138,7 +138,8 @@ export function TimelinePage() {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-10 pb-16"
+      // a day read top to bottom — a list does not want 1600px
+      className="mx-auto max-w-6xl space-y-10 pb-16"
     >
       <header>
         <h1 className="text-2xl font-bold">Timeline</h1>

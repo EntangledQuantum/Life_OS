@@ -73,7 +73,8 @@ export function AnalyticsPage() {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-10 pb-16"
+      // charts and prose, sized for a reading column
+      className="mx-auto max-w-6xl space-y-10 pb-16"
     >
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
