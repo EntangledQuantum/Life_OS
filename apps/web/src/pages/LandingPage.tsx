@@ -9,14 +9,17 @@ import {
   Copy,
   Database,
   Download,
+  Flag,
   Github,
   HardDrive,
+  Image as ImageIcon,
   Layers,
   Moon,
   Plug,
   Smartphone,
   Sparkles,
   Terminal,
+  Trophy,
   Webhook,
   Zap,
 } from "lucide-react";
@@ -28,10 +31,9 @@ import {
   SectionHeading,
 } from "@/components/landing/Reveal";
 import { LayersStack } from "@/components/landing/LayersStack";
+import { HeroDayMock } from "@/components/landing/HeroDayMock";
 import {
   AgentFlowDiagram,
-  DashboardMock,
-  QuickLogArt,
   TimelineArt,
   VsYesterdayArt,
   XpPoolDiagram,
@@ -42,16 +44,16 @@ import {
   ANDROID_APK_URL,
   asset,
   IS_PAGES,
-  RELEASES_URL,
   REPO_URL,
 } from "@/lib/deploy";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "#how", label: "How it works" },
+  { href: "#features", label: "The day" },
+  { href: "#goals", label: "Goals" },
+  { href: "#app", label: "App" },
   { href: "#start", label: "Quick start" },
-  { href: "#features", label: "Features" },
-  { href: "#xp", label: "XP" },
 ];
 
 export function LandingPage() {
@@ -62,15 +64,14 @@ export function LandingPage() {
       <main className="relative z-10">
         <Hero />
         <HowItWorks />
-        {/* Getting running is one story — start the server, hand it the brief.
-            It sits here rather than at the bottom because it is what someone
-            who has just decided they want this actually needs next. */}
-        <Webhooks />
-        <QuickStart />
         <Features />
+        <GoalsSection />
         <GrowthSection />
         <XpSection />
         <DatabaseSection />
+        <AppSection />
+        <QuickStart />
+        <Webhooks />
         <FinalCta />
       </main>
       <Footer />
@@ -337,7 +338,7 @@ function Hero() {
           transition={{ duration: 0.8, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
         >
           <div className="float-slow">
-            <DashboardMock className="w-full drop-shadow-[0_30px_60px_rgba(0,0,0,0.5)]" />
+            <HeroDayMock className="w-full" />
           </div>
         </motion.div>
       </div>
@@ -401,23 +402,17 @@ function HowItWorks() {
 
 const FEATURE_ROWS = [
   {
-    eyebrow: "Day timeline",
-    title: "One continuous ribbon, midnight to midnight",
-    body: "Your agent lays out the day as coloured blocks. Behind the now-marker the ribbon is what you actually did; ahead of it, it is only the plan, drawn differently so the two are never confused. Nothing on it starts — you tick things off, and what you are doing is yours to set.",
+    eyebrow: "Today",
+    title: "The day is the list",
+    body: "Habits and scheduled work are one list, in time order. Each row is a card — background art your agent chose, an icon, a streak, the slot it belongs to. Tick it where it sits. Agent cards sit under the day, two across, not on top of it. The timeline is still there when you want the ribbon: behind the now-marker is what you actually did; ahead of it, only the plan.",
     art: TimelineArt,
-  },
-  {
-    eyebrow: "Quick log",
-    title: "Agent work first, habits second",
-    body: "Reviews and tasks your agent injects sit at the top and pulse until they are done. While that queue has anything in it, habits step out of the way — one decision at a time, which is the whole point.",
-    art: QuickLogArt,
-    flip: true,
   },
   {
     eyebrow: "Improvement pulse",
     title: "You versus yesterday. Nothing else.",
     body: "Efficiency is today's XP over today's target. Improvement is the difference from yesterday, in plain percentage points. There are no levels, no ranks, and nobody else on the screen.",
     art: VsYesterdayArt,
+    flip: true,
   },
 ];
 
@@ -491,6 +486,155 @@ function Features() {
         ))}
       </div>
     </section>
+  );
+}
+
+/* ------------------------------------------------- goals & achievements */
+
+function GoalsSection() {
+  return (
+    <section id="goals" className="mx-auto max-w-6xl px-5 py-24">
+      <SectionHeading
+        eyebrow="Goals and achievements"
+        title="A ladder, not a switch — with pictures your agent chose"
+        lede="A goal used to be met or not. That cannot describe “read 12 books” against “read 50”. Now one goal is a ladder of rungs, each with its own condition, words, art, and celebration. The agent writes the counters it measures against. You just keep showing up."
+      />
+
+      <div className="mt-14 grid items-stretch gap-10 lg:grid-cols-2">
+        <Reveal>
+          <div className="space-y-3">
+            <GoalCardPreview
+              image="landing/habit-book.jpg"
+              icon="landing/habit-book.jpg"
+              title="A Game of Thrones"
+              pct="31%"
+              rungs={[
+                { label: "The Wall", done: true },
+                { label: "The Red Keep", done: false },
+                { label: "The Iron Throne", done: false },
+              ]}
+              body="Companion reading that protects the morning. The book ends; the habit does not."
+            />
+            <GoalCardPreview
+              image="landing/goal-library.jpg"
+              icon="landing/goal-library.jpg"
+              title="Literary pages"
+              pct="14%"
+              rungs={[
+                { label: "Thousand", done: false },
+                { label: "Two thousand", done: false },
+                { label: "Library", done: false },
+              ]}
+              body="The long reading arc. Volume done honestly, with a picture that is actually a library."
+            />
+          </div>
+        </Reveal>
+
+        <div className="space-y-4">
+          {[
+            {
+              icon: Flag,
+              title: "Rungs, not a single bar",
+              body: "Up to five rungs on one goal, bottom first. A higher rung implies every lower one. The goal finishes at the top; everything below fires as a tier, so hitting Gold is not the same as finishing.",
+            },
+            {
+              icon: Sparkles,
+              title: "Counters the agent invents",
+              body: "Books read, pages, reviews graded, kilometres — agent properties are custom tracking variables the agent writes and the goal conditions read. The dashboard does not decide what is worth counting.",
+            },
+            {
+              icon: ImageIcon,
+              title: "Art and celebration themes",
+              body: "Habits, goals, and rungs take the same two picture slots a card does: a square icon and a 3:2 background under a scrim. Six celebration themes, same on phone and web. The agent picks the feeling, not the hex codes.",
+            },
+            {
+              icon: Trophy,
+              title: "Read-only on purpose",
+              body: "You do not create goals in the UI. Deciding what to want is the executive-function tax Life OS removes. The agent interviews you, then writes the ladder.",
+            },
+          ].map((item, i) => (
+            <Reveal key={item.title} delay={i * 70}>
+              <div className="panel flex gap-4 p-5">
+                <item.icon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]" />
+                <div>
+                  <h3 className="font-semibold">{item.title}</h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-[var(--muted)]">
+                    {item.body}
+                  </p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GoalCardPreview({
+  image,
+  icon,
+  title,
+  pct,
+  rungs,
+  body,
+}: {
+  image: string;
+  icon: string;
+  title: string;
+  pct: string;
+  rungs: { label: string; done: boolean }[];
+  body: string;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08]">
+      <img
+        src={asset(image)}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 bg-[oklch(10%_0.02_260)]/70" />
+      <div className="relative p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <img
+              src={asset(icon)}
+              alt=""
+              className="h-11 w-11 rounded-xl object-cover ring-1 ring-white/15"
+            />
+            <div>
+              <p className="text-lg font-bold">{title}</p>
+              <p className="text-xs text-white/45">Active</p>
+            </div>
+          </div>
+          <p className="font-mono text-lg font-semibold text-[var(--accent)]">
+            {pct}
+          </p>
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full rounded-full bg-[var(--accent)]"
+            style={{ width: pct }}
+          />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {rungs.map((r) => (
+            <span
+              key={r.label}
+              className={cn(
+                "rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+                r.done
+                  ? "border-[var(--accent)]/40 text-[var(--accent)]"
+                  : "border-white/15 text-white/45",
+              )}
+            >
+              {r.label}
+            </span>
+          ))}
+        </div>
+        <p className="mt-3 text-sm leading-relaxed text-white/70">{body}</p>
+      </div>
+    </div>
   );
 }
 
@@ -785,27 +929,6 @@ function QuickStart() {
               </div>
             ))}
           </div>
-          <div className="panel mt-3 flex flex-wrap items-center gap-4 p-5">
-            <Smartphone className="h-5 w-5 shrink-0 text-[var(--accent)]" />
-            <div className="min-w-[12rem] flex-1">
-              <h4 className="font-semibold">Android app</h4>
-              <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">
-                Same token, same day. Install the APK, then point it at this
-                machine&apos;s address while you are on the same Wi-Fi. You will
-                need to allow installing from unknown sources.{" "}
-                <a
-                  href={RELEASES_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[var(--accent)] hover:underline"
-                >
-                  Release notes
-                </a>
-              </p>
-            </div>
-            <AndroidDownload className="shrink-0" />
-          </div>
-
           <div className="panel mt-3 p-5">
             <p className="text-sm leading-relaxed text-[var(--muted)]">
               Setup generates a strong{" "}
@@ -945,6 +1068,65 @@ function DatabaseSection() {
           >
             Database docs <ArrowRight className="h-3.5 w-3.5" />
           </a>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------- app */
+
+function AppSection() {
+  const shots = [
+    {
+      src: "landing/landing-page.jpeg",
+      alt: "Today — the day's habits as cards",
+    },
+    {
+      src: "landing/goals-page.jpeg",
+      alt: "Goals with rungs and art",
+    },
+    {
+      src: "landing/analytics.jpeg",
+      alt: "Analytics — XP against target",
+    },
+  ];
+
+  return (
+    <section id="app" className="mx-auto max-w-6xl px-5 py-24">
+      <SectionHeading
+        eyebrow="The app"
+        title="Android now. iOS is coming."
+        lede="Same day, same token, on the phone. Pair by scanning the dashboard QR. The three screens below are the real app — Today, Goals, Analytics."
+      />
+
+      <Reveal className="mt-12">
+        <div className="flex flex-wrap items-end justify-center gap-4 sm:gap-6">
+          {shots.map((s) => (
+            <img
+              key={s.src}
+              src={asset(s.src)}
+              alt={s.alt}
+              className="w-[min(100%,220px)] rounded-2xl border border-white/[0.08] shadow-[0_20px_40px_rgba(0,0,0,0.45)] sm:w-[240px]"
+            />
+          ))}
+        </div>
+      </Reveal>
+
+      <Reveal className="mt-10">
+        <div className="panel mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-4 p-5">
+          <div className="flex items-start gap-3">
+            <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]" />
+            <div>
+              <h3 className="font-semibold">Install the Android APK</h3>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">
+                Point it at this machine on the same Wi-Fi, or a tunnel. You
+                will need to allow installing from unknown sources. iOS follows
+                once Apple signing is in place.
+              </p>
+            </div>
+          </div>
+          <AndroidDownload className="shrink-0" />
         </div>
       </Reveal>
     </section>

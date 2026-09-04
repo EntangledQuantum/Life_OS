@@ -18,20 +18,12 @@ Your agent designs the system and keeps it up to date. You just tap to complete.
 
 <br />
 
-![The Life OS dashboard](docs/screenshots/dashboard.png?v=3)
-
-<br />
-
-<!--
-  Goals earn their own shot now that they have rungs: the pips under each one
-  are a rarity ladder, and which of them are lit is the whole story.
--->
-![Goals, each with its rarity ladder](docs/screenshots/goals.png?v=1)
-
 <p align="center">
-  <img src="docs/screenshots/mobile-1.png" alt="Life OS on Android — today's list, with the day drawn as a bloom" width="270" />
+  <img src="docs/screenshots/landing-page.jpeg" alt="Life OS — Today, the day's habits as cards" width="270" />
   &nbsp;&nbsp;
-  <img src="docs/screenshots/mobile-2.png" alt="Life OS on Android — the timeline, today against yesterday, and seven days of XP" width="270" />
+  <img src="docs/screenshots/goals-page.jpeg" alt="Life OS — Goals with rungs and art" width="270" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/analytics.jpeg" alt="Life OS — Analytics, XP against target and habit strips" width="270" />
 </p>
 
 <br />
