@@ -6,6 +6,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/shared/**"
+      - "docs/**"
       - "scripts/build-pages.mjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:

@@ -10,7 +10,7 @@ Your agent designs the system and keeps it up to date. You just tap to complete.
 
 [**🌐 Website**](https://entangledquantum.github.io/Life_OS/) &nbsp;·&nbsp;
 [**📱 Android app**](https://github.com/EntangledQuantum/Life_OS/releases) &nbsp;·&nbsp;
-[**📖 Docs**](docs/)
+[**📖 Docs**](https://entangledquantum.github.io/Life_OS/docs/)
 
 <sub>Runs on your machine · no account · Node 22.5+ · SQLite · MIT</sub>
 

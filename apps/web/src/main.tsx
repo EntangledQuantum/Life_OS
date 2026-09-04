@@ -6,6 +6,7 @@ import { Toaster } from "sonner";
 import "./index.css";
 import { AppShell } from "./components/AppShell";
 import { LandingPage } from "./pages/LandingPage";
+import { DocsPage } from "./pages/DocsPage";
 import { ConnectPage } from "./pages/ConnectPage";
 import { PairPage } from "./pages/PairPage";
 import { RequireAuth } from "./pages/RequireAuth";
@@ -23,16 +24,25 @@ const qc = new QueryClient({
 });
 
 /**
- * The GitHub Pages build is the landing page and nothing else — there is no API
+ * The GitHub Pages build is the landing page plus docs — there is no API
  * or database behind a static host, so the app routes are not shipped at all.
  */
+const docsRoutes = (
+  <>
+    <Route path="/docs" element={<Navigate to="/docs/overview" replace />} />
+    <Route path="/docs/:slug" element={<DocsPage />} />
+  </>
+);
+
 const routes = IS_PAGES ? (
   <Routes>
+    {docsRoutes}
     <Route path="*" element={<LandingPage />} />
   </Routes>
 ) : (
   <Routes>
     <Route path="/" element={<LandingPage />} />
+    {docsRoutes}
     <Route path="/connect" element={<ConnectPage />} />
     {/*
       Opened by a phone camera after scanning the pairing QR. Deliberately

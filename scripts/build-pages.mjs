@@ -4,9 +4,9 @@
  *
  *   pnpm build:pages
  *
- * This is the landing page only — no dashboard routes are shipped, because a
- * static host has no API and no database behind it. Output goes to
- * apps/web/dist-pages.
+ * This is the landing page and the docs viewer — no dashboard routes are
+ * shipped, because a static host has no API and no database behind it. Output
+ * goes to apps/web/dist-pages.
  *
  * Env vars are set here rather than inline in the npm script so the command
  * works identically on Windows and on CI.

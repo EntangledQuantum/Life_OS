@@ -218,6 +218,12 @@ function Nav() {
               {item.label}
             </a>
           ))}
+          <Link
+            to="/docs"
+            className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted)] transition-colors hover:bg-white/[0.05] hover:text-[var(--text)]"
+          >
+            Docs
+          </Link>
         </nav>
 
         <div className="ml-auto flex items-center gap-2 md:ml-0">
@@ -295,10 +301,10 @@ function RotatingManagedWord() {
 
 function Hero() {
   return (
-    <section id="top" className="mx-auto max-w-6xl px-5 pb-20 pt-16 sm:pt-24">
-      <div className="grid items-center gap-12 lg:grid-cols-12">
+    <section id="top" className="mx-auto max-w-[1400px] px-5 pb-20 pt-16 sm:pt-24">
+      <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-8">
         <motion.div
-          className="lg:col-span-6"
+          className="lg:col-span-5"
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
@@ -332,7 +338,7 @@ function Hero() {
         </motion.div>
 
         <motion.div
-          className="lg:col-span-6"
+          className="lg:col-span-7"
           initial={{ opacity: 0, y: 28, rotateX: 6 }}
           animate={{ opacity: 1, y: 0, rotateX: 0 }}
           transition={{ duration: 0.8, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
@@ -1093,7 +1099,7 @@ function AppSection() {
   ];
 
   return (
-    <section id="app" className="mx-auto max-w-6xl px-5 py-24">
+    <section id="app" className="mx-auto max-w-[1400px] px-5 py-24">
       <SectionHeading
         eyebrow="The app"
         title="Android now. iOS is coming."
@@ -1101,13 +1107,13 @@ function AppSection() {
       />
 
       <Reveal className="mt-12">
-        <div className="flex flex-wrap items-end justify-center gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 sm:gap-6">
           {shots.map((s) => (
             <img
               key={s.src}
               src={asset(s.src)}
               alt={s.alt}
-              className="w-[min(100%,220px)] rounded-2xl border border-white/[0.08] shadow-[0_20px_40px_rgba(0,0,0,0.45)] sm:w-[240px]"
+              className="w-full rounded-2xl border border-white/[0.08] shadow-[0_20px_40px_rgba(0,0,0,0.45)]"
             />
           ))}
         </div>
@@ -1181,30 +1187,18 @@ function Footer() {
           </span>
         </div>
         <div className="flex flex-wrap gap-5 font-mono text-xs text-[var(--faint)]">
-          <a
-            href={`${REPO_URL}/blob/master/docs/skills/life-os/SKILL.md`}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-[var(--muted)]"
-          >
+          <Link to="/docs" className="hover:text-[var(--muted)]">
+            docs
+          </Link>
+          <Link to="/docs/skill" className="hover:text-[var(--muted)]">
             agent skill
-          </a>
-          <a
-            href={`${REPO_URL}/blob/master/docs/API.md`}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-[var(--muted)]"
-          >
+          </Link>
+          <Link to="/docs/api" className="hover:text-[var(--muted)]">
             api
-          </a>
-          <a
-            href={`${REPO_URL}/blob/master/docs/DATABASE.md`}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-[var(--muted)]"
-          >
+          </Link>
+          <Link to="/docs/database" className="hover:text-[var(--muted)]">
             database
-          </a>
+          </Link>
           <a href={REPO_URL} target="_blank" rel="noreferrer" className="hover:text-[var(--muted)]">
             github
           </a>

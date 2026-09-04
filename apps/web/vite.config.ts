@@ -69,9 +69,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      "@docs": path.resolve(__dirname, "../../docs"),
     },
   },
   server: {
+    fs: {
+      allow: [path.resolve(__dirname, "../..")],
+    },
     port: 5173,
     /**
      * Bind on every interface so a phone on the same Wi-Fi can load the app.

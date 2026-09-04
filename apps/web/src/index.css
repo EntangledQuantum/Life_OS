@@ -614,3 +614,118 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --------------------------------------------------------------- docs */
+
+.docs-prose {
+  color: var(--muted);
+  font-size: 0.975rem;
+  line-height: 1.7;
+}
+.docs-prose > * + * {
+  margin-top: 1.05em;
+}
+.docs-prose h1,
+.docs-prose h2,
+.docs-prose h3,
+.docs-prose h4 {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin-top: 2em;
+}
+.docs-prose h1 {
+  font-size: 1.85rem;
+}
+.docs-prose h2 {
+  font-size: 1.35rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.docs-prose h3 {
+  font-size: 1.12rem;
+}
+.docs-prose p,
+.docs-prose li {
+  color: var(--muted);
+}
+.docs-prose strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.docs-prose a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.docs-prose a:hover {
+  text-decoration: underline;
+}
+.docs-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.12em 0.4em;
+  color: var(--text);
+}
+.docs-prose pre {
+  background: oklch(10% 0.014 260);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+}
+.docs-prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.65;
+}
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  display: block;
+  overflow-x: auto;
+}
+.docs-prose th,
+.docs-prose td {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+.docs-prose th {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  font-weight: 600;
+}
+.docs-prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.15rem 0 0.15rem 1rem;
+  color: var(--text);
+  background: color-mix(in oklch, var(--accent) 7%, transparent);
+  border-radius: 0 12px 12px 0;
+}
+.docs-prose hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  margin: 2rem 0;
+}
+.docs-prose ul,
+.docs-prose ol {
+  padding-left: 1.25rem;
+}
+.docs-prose li + li {
+  margin-top: 0.3em;
+}
+.docs-prose img {
+  max-width: 100%;
+  border-radius: 12px;
+}
+.docs-prose .hljs {
+  background: transparent;
+}
