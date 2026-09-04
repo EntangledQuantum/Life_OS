@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -45,6 +45,10 @@ export function DocsPage() {
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [page.slug]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -241,7 +245,7 @@ function Sidebar({
           value={query}
           onChange={(e) => onQuery(e.target.value)}
           placeholder="Search docs"
-          className="input py-2 pl-9 text-sm"
+          className="input input-icon-left py-2 text-sm"
         />
       </label>
       {DOC_GROUPS.map((group) => {
