@@ -249,6 +249,14 @@ Ask, in a conversation rather than a form:
    machine-checkable: `GOAL_CONDITION_SYNTAX` (via `/api/v1/agent/goal-syntax`)
    is the language. If a goal cannot be written as a condition, you need a
    counter for it.
+
+   **Ask whether it has degrees.** "Read more" is not one bar, it is several —
+   twelve books, twenty-five, fifty. A goal like that takes `tiers`: up to five
+   rungs on the one goal, written bottom first, each with its own condition,
+   wording and celebration. The user then gets something at every rung instead
+   of one payoff a year away, and reaching the top of a five-rung ladder means
+   something the same number on a progress bar does not. A goal that is simply
+   done or not done stays a single `condition` — most are.
 5. **What you should count.** Agent properties are yours to invent —
    `books_read`, `gym_sessions`, `pages_written`. Anything you can push to when
    something happens on your side, and write goals against.
@@ -275,6 +283,19 @@ Ask, in a conversation rather than a form:
 
 Then, and only then, call `lifeos_setup` (MCP) or `POST /api/v1/agent/setup`
 with what they actually told you.
+
+### Afterwards, not during: how it looks
+
+Habits, goals, goal tiers and cards can each carry two pictures — an **icon**
+(square, 256×256, drawn at about 44pt in place of the emoji) and a
+**background** (3:2 landscape, 1200×800, cover-cropped from the centre and
+always under a scrim). Both are optional everywhere, and **most things should
+have neither**: a picture earns its place when it says something the emoji
+cannot. The book they are actually reading, yes. Their water habit, no.
+
+Do this after the interview, if at all. Nobody's setup is improved by waiting
+while you find artwork, and a wall of stock photography is worse than a wall of
+emoji. Full field list and the exact crop rules: the `life-os` skill, "Pictures".
 
 ---
 
@@ -330,8 +351,20 @@ deliberate.
   do.
 - **A goal is not achieved until the user has seen the celebration.** The
   condition being true only marks it pending.
+- **A tiered goal finishes at its top rung, not its first.** Every rung below
+  fires `goal.tier` when it is witnessed; only the last one fires
+  `goal.achieved`. Congratulating someone for finishing a goal they are three
+  rungs into is worse than saying nothing. Reaching a rung also implies every
+  rung beneath it, so write a ladder as increasing bars — fifty books cannot be
+  true while twelve is false.
 - **Two front-page card slots.** That is the limit, and it is the point. If you
   want to show a third thing, decide which of the two matters less.
+- **A pinned card is not also a row.** A task in slot 0 or 1 is drawn as a card
+  — picture, body, progress bar, its own Complete button — and is deliberately
+  left out of the agenda, the day list and the timeline. It is already on the
+  screen in a richer form. So do not create a companion task for a card: that is
+  the same duplication as a habit plus a matching task, and it gives the user
+  two things to tick for one act. `slot: null` turns a card back into a row.
 - **The life-day is not the calendar day.** It rolls over at `dayResetTime`
   (default 04:00), so a 01:00 completion belongs to the day before. Do not
   re-derive this: every day payload carries `lifeDay` with the exact start and
@@ -379,7 +412,8 @@ Before you tell them you are done:
 - [ ] `lifeos_get_workload` looks like their real life — if `backlog` is in the
       hundreds, you imported a catalogue that belongs somewhere else.
 - [ ] Their habits are in, and the demo ones are gone.
-- [ ] Their goals have real conditions, not just titles.
+- [ ] Their goals have real conditions, not just titles — and anything with
+      degrees has a ladder rather than one distant bar.
 - [ ] Tomorrow already has a schedule in it.
 - [ ] Your recurring check-in is scheduled and you have tested that it fires.
 - [ ] They have the token, and the app is connected if they wanted it.

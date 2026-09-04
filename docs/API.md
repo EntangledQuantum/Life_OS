@@ -371,6 +371,68 @@ the full-screen animation — sets `status: "achieved"`. A goal the user never s
 not, as far as this product is concerned, completed. `createGoal`/`updateGoal` do not accept
 `"achieved"` as an input status.
 
+### Tiers: one goal, up to five heights
+
+A goal with degrees rather than a single bar carries `tiers` — a ladder written
+**bottom rung first**, each rung a complete condition of its own with its own wording,
+art and celebration theme.
+
+```json
+POST /api/v1/goals
+{
+  "title": "Books this year",
+  "tiers": [
+    { "label": "Bronze", "theme": "spark",
+      "condition": { "type": "property", "key": "books_read", "op": ">=", "value": 12 } },
+    { "label": "Gold", "theme": "gold",
+      "condition": { "type": "property", "key": "books_read", "op": ">=", "value": 50 },
+      "backgroundImageUrl": "https://…/shelf.jpg" }
+  ]
+}
+```
+
+- Array order is the ladder; stored `rank` is always `1..n`. At most **5**.
+- **Reaching a rung implies every rung below it** — write increasing bars, not unrelated
+  tests. A ladder whose rungs can be true in any order is not a ladder.
+- The goal's `progressPct` is its position on the ladder: rungs cleared plus how far up
+  the next one it is.
+- Each rung owes its own celebration, lowest first. `POST /goals/:id/celebration-seen`
+  claims the lowest one still owed; `?tier=<id>` names a specific rung. A client that
+  predates tiers therefore walks the ladder one claim at a time rather than skipping.
+- Only the **top** rung sets `status: "achieved"` and fires `goal.achieved`; the rest fire
+  `goal.tier` with `tierLabel`, `tierRank` and `isTopTier`.
+- Sending `tiers` **replaces** the ladder — rungs are relative to each other, so a partial
+  update is how Gold ends up below Bronze. A rung that keeps its rank and label keeps the
+  date it was earned and does not replay. `[]` removes the ladder.
+
+Themes: `spark`, `ember`, `frost`, `gold`, `aurora`, `void` — roughly quietest to loudest.
+An unknown theme is a `400`, not a silent default: a tier is the definition of what counts
+as having got there.
+
+The goal's own `currentTier`, `nextTier` and `pendingTier` are derived, not stored.
+
+---
+
+## Pictures on habits, goals and tiers
+
+Four optional fields, identical on `habits`, `goals` and each entry of `tiers`. A row with
+none of them renders exactly as it did before art existed, which is the normal case.
+
+| Field | Shape |
+|---|---|
+| `iconImageUrl` / `iconImageData` | Square. **256×256** recommended, 96 minimum. Drawn at ~44pt in place of the emoji |
+| `backgroundImageUrl` / `backgroundImageData` | **3:2 landscape, 1200×800** recommended, 600×400 minimum. Cover-cropped from the centre, always under a scrim |
+| `artOverlay` | `0.35`–`0.92`. How dark that scrim is. Clamped; it cannot be turned off |
+
+`…Data` is a `data:` URI and wins over `…Url`. Inline data needs no network and survives the
+device being offline; a URL is better for anything large, since every inline byte rides on
+every dashboard poll. Both clients cache what they fetch and prefetch the day's art on load,
+so send a picture once — re-sending the same art is churn on every device watching.
+
+A card (a task in slot 0/1) has the same two slots under its older names: `imageUrl` /
+`imageData` for the picture `cardStyle.layout` places, and `iconImageUrl` / `iconImageData`
+for the tile beside the title.
+
 ---
 
 ## Agent properties
@@ -466,6 +528,12 @@ Presets: `hermes` (HMAC-SHA256 over `<timestamp>.<body>`), `openclaw` (bearer),
 `generic` (`X-LifeOS-Secret`). Three attempts with backoff, and every attempt is
 recorded — so a target that has been failing for a week stops looking identical
 to one that was never configured.
+
+Events: `card.complete`, `card.interaction`, `habit.complete`, `habit.undo`,
+`study.complete`, `block.complete`, `review.complete`, `event.complete`,
+`goal.tier`, `goal.achieved`, `property.changed`. An empty `events[]` means all
+of them. `goal.tier` carries the rung — `tierLabel`, `tierRank`, `isTopTier` —
+and fires on every rung of a ladder; `goal.achieved` fires only on the last.
 
 **The URL is resolved by Life OS, not by you.** If Life OS runs on the user's
 machine and you run in a container or on another host, `127.0.0.1` in a target

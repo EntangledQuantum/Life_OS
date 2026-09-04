@@ -8,7 +8,7 @@ description: >
   long-running agent (Hermes, OpenClaw, Claude Code, cron) should read what
   actually happened, schedule what happens next, react to completions, or set
   Life OS up for a user who does not have it.
-version: 4.6.0
+version: 4.7.0
 license: MIT
 platforms: [macos, linux, windows]
 metadata:
@@ -363,6 +363,27 @@ never touch a config outside Life OS without saying what you are about to do.
 
 ---
 
+## How the day is drawn
+
+The dashboard and the phone draw the day as one picture, chosen by the user in
+Settings. You can set it — `lifeos_update_xp_rules { "growthStyle": "bloom" }` —
+but **ask first**: it is the thing they look at every day and the choice is
+theirs, not an optimisation for you to make.
+
+| style | what it shows |
+|---|---|
+| `bloom` | a petal per habit — the default |
+| `constellation` | a star per habit, joined into a figure as the day closes |
+| `ascent` | a trail up a ridge; the sky is the clock, the marker is the score |
+| `sprout` | a plant that grows toward today's target |
+| `orb` | fills with light toward today's target |
+
+The first three show *which habits* did it, so they need habits to be worth
+looking at. `sprout` and `orb` show today against target and nothing else, which
+is simpler on purpose.
+
+---
+
 ## Pictures: habits, goals, tiers
 
 Habits and goals take the same two picture slots a card takes, with the same
@@ -429,7 +450,7 @@ cannot describe "read 12 books" versus "read 50" — those had to be two unrelat
 goals with two unrelated celebrations, and nothing said the second was the
 harder version of the first.
 
-`tiers` is a ladder on one goal. **Up to five rungs, defined bottom first**, each
+`tiers` is a ladder on one goal. **Up to 5 rungs, defined bottom first**, each
 with its own condition, words, art and celebration.
 
 ```json
