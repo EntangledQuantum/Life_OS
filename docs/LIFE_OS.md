@@ -3,7 +3,7 @@
 **Version:** 1.3  
 **Date:** 2026-08-02  
 **Status:** Ready for implementation by any agent  
-**Owner:** Sunny (Entropy Lapse)  
+**Owner:** Entropy Lapse  
 **Primary companion system:** Hermes Agent + Obsidian Learning Vault  
 **Key updates:**  
 - 1.1 → Full ADHD-optimized gamification (streaks, XP, levels, achievements) enabled by default, fully toggleable.  
