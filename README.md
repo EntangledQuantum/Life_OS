@@ -28,13 +28,19 @@ Your agent designs the system and keeps it up to date. You just tap to complete.
 -->
 ![Goals, each with its rarity ladder](docs/screenshots/goals.png?v=1)
 
-<p align="center">
-  <img src="docs/screenshots/landing-page.jpeg" alt="Life OS on Android — Today, the day's habits as cards" width="270" />
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/goals-page.jpeg" alt="Life OS on Android — Goals with rungs and art" width="270" />
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/analytics.jpeg" alt="Life OS on Android — Analytics, XP against target and habit strips" width="270" />
-</p>
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <img src="docs/screenshots/landing-page.jpeg" alt="Life OS on Android — Today, the day's habits as cards" />
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/screenshots/goals-page.jpeg" alt="Life OS on Android — Goals with rungs and art" />
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/screenshots/analytics.jpeg" alt="Life OS on Android — Analytics, XP against target and habit strips" />
+    </td>
+  </tr>
+</table>
 
 <br />
 
