@@ -1066,14 +1066,9 @@ function DatabaseSection() {
             Back it up by copying one file, or export everything as JSON from
             Settings.
           </p>
-          <a
-            href={`${REPO_URL}/blob/master/docs/DATABASE.md`}
-            target="_blank"
-            rel="noreferrer"
-            className="btn py-2 text-sm"
-          >
+          <Link to="/docs/database" className="btn py-2 text-sm">
             Database docs <ArrowRight className="h-3.5 w-3.5" />
-          </a>
+          </Link>
         </div>
       </Reveal>
     </section>
