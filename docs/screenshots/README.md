@@ -33,11 +33,11 @@ WEB_URL=http://localhost:5174 pnpm screenshots
 
 | File | Section | Used in the root README |
 |------|---------|:--:|
+| `dashboard.png` | Overview — the day as cards with their art, and the agent's two beneath | ✅ |
+| `goals.png` | Goals, each with its rarity ladder, and the counters the conditions read | ✅ |
 | `landing-page.jpeg` | Android Today — bloom, Right now, habit cards | ✅ |
 | `goals-page.jpeg` | Android Goals — rungs and art | ✅ |
 | `analytics.jpeg` | Android Analytics — XP vs target, habit strips | ✅ |
-| `dashboard.png` | Overview (web) | — |
-| `goals.png` | Goals (web) | — |
 | `mobile-1.png` | Older Android Today | — |
 | `mobile-2.png` | Older Android timeline | — |
 | `layers.png` | "Two layers, one job each" | ✅ |
