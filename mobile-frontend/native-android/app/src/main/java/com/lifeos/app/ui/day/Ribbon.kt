@@ -86,22 +86,26 @@ fun DayRibbon(
                 val colour = serverColor(segment.colorHex) ?: p.accent
                 val left = segment.left * size.width
                 val width = segment.width * size.width + bleed
+                // Multiplied through, never replaced. The server sends
+                // "Unlogged" as rgba(255,255,255,0.05) and serverColor keeps
+                // that 0.05 — but copy(alpha = x) *overwrites* it, which turned
+                // a 5% white into a solid white block filling the ribbon.
                 val alpha = if (segment.done) 0.55f else 1f
 
                 if (segment.actual) {
                     drawRect(
-                        color = colour.copy(alpha = alpha),
+                        color = colour.copy(alpha = colour.alpha * alpha),
                         topLeft = Offset(left, 0f),
                         size = Size(width, size.height),
                     )
                 } else {
                     drawRect(
-                        color = colour.copy(alpha = 0.22f * alpha),
+                        color = colour.copy(alpha = colour.alpha * 0.22f * alpha),
                         topLeft = Offset(left, 0f),
                         size = Size(width, size.height),
                     )
                     drawRect(
-                        color = colour.copy(alpha = 0.55f * alpha),
+                        color = colour.copy(alpha = colour.alpha * 0.55f * alpha),
                         topLeft = Offset(left, 0f),
                         size = Size(segment.width * size.width, size.height),
                         style = Stroke(width = 1.dp.toPx()),

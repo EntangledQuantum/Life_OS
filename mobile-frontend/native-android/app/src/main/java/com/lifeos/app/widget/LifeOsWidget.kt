@@ -331,9 +331,9 @@ private fun cellColour(cell: RibbonCell, palette: Palette): Color {
     val raw = cell.colorHex ?: return palette.text.copy(alpha = 0.08f)
     val parsed = serverColor(raw) ?: return palette.text.copy(alpha = 0.08f)
     return when {
-        cell.done -> parsed.copy(alpha = 0.55f)
+        cell.done -> parsed.copy(alpha = parsed.alpha * 0.55f)
         cell.actual -> parsed
-        else -> parsed.copy(alpha = 0.32f)
+        else -> parsed.copy(alpha = parsed.alpha * 0.32f)
     }
 }
 
