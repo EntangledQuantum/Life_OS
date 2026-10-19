@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, Copy, Smartphone } from "lucide-react";
 import { asset } from "@/lib/deploy";
 import { ANDROID_APK_URL } from "@/lib/deploy";
+import { basePath } from "@/lib/base";
 
 /**
  * Where the phone lands after scanning the QR.
@@ -26,7 +27,8 @@ export function PairPage() {
     setCode(value && /^[A-Z2-9]{6,32}$/i.test(value) ? value.toUpperCase() : null);
   }, []);
 
-  const base = `${window.location.protocol}//${window.location.host}`;
+  // Includes the gateway prefix (`…ts.net/lifeos`) — the API lives under it too.
+  const base = `${window.location.protocol}//${window.location.host}${basePath()}`;
 
   /*
    * Two forms of the same link, because Android Chrome will not follow a bare

@@ -122,6 +122,25 @@ sudo ufw allow from 192.168.0.0/16 to any port 5173 proto tcp
 
 ---
 
+## One port, and serving under a path
+
+`pnpm dev` is two processes (Vite on 5173, the API on 8787). For an always-on
+install, `pnpm serve` builds the dashboard and starts the API with
+`SERVE_WEB=1`, so **8787 serves both** — the API, and `apps/web/dist` with an SPA
+fallback for every non-API path. `pnpm serve:nobuild` skips the build.
+
+The same build also works **under a path prefix** behind a reverse proxy, e.g.
+`https://box.tailnet.ts.net/lifeos/`. The proxy sends `X-Forwarded-Prefix:
+/lifeos` and may strip the prefix or not; either way the API routes the request
+and rewrites `index.html` so assets, the router and API calls all carry the
+prefix. Direct access at `http://127.0.0.1:8787/` keeps working at the root.
+
+Set `PUBLIC_PATH=/lifeos` (or a full `PUBLIC_URL=https://…/lifeos`) so pairing
+QRs hand the phone `https://…/lifeos`. With `PUBLIC_PATH`, Tailscale detection
+only checks that Funnel is on, since Funnel then fronts the proxy rather than
+this port. The phone app and MCP clients use that URL as their base:
+`<base>/health`, `<base>/api/v1/…`, `<base>/mcp`.
+
 ## Checking it works
 
 From the phone or another machine:

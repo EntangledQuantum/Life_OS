@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
+import { getPath } from "hono/utils/url";
 import { ensureSchema, getDb } from "@life-os/db";
 import {
   CELEBRATION_THEMES,
@@ -62,13 +63,27 @@ import { getAnalytics } from "./services/analytics.js";
 import { claimPairingCode, mintPairingCode } from "./services/pairing.js";
 import { getPublicUrl, getReachabilityHint, getTunnelMode } from "./reachability.js";
 import { isAllowedOrigin, isExposed, lanAddresses } from "./net.js";
+import { forwardedBaseUrl, readForwardedPrefix, stripPathPrefix } from "./prefix.js";
+import { webAppHandler } from "./static.js";
 import { env } from "./env.js";
 /** Typed context so `c.get("username")` is checked rather than inferred as never. */
 type AppEnv = { Variables: AuthVars };
 
 export function createApp() {
   ensureSchema();
-  const app = new Hono<AppEnv>();
+  const app = new Hono<AppEnv>({
+    /*
+     * Behind a gateway that forwards `/lifeos/api/v1/x` unchanged (rather than
+     * stripping its prefix), route it as `/api/v1/x`. The prefix comes from
+     * the gateway's `X-Forwarded-Prefix`, so direct requests are untouched.
+     * See `prefix.ts`.
+     */
+    getPath: (req) =>
+      stripPathPrefix(
+        getPath(req),
+        readForwardedPrefix(req.headers.get("x-forwarded-prefix")),
+      ),
+  });
 
   app.use(
     "*",
@@ -85,9 +100,10 @@ export function createApp() {
        * when it is reached through the very tunnel we told the phone to use.
        */
       origin: (origin) => {
-        const publicUrl = getPublicUrl();
-        const extra = publicUrl
-          ? [...env.corsOrigins, publicUrl]
+        // An Origin header has no path; a public URL may (`…ts.net/lifeos`).
+        const publicOrigin = originOf(getPublicUrl());
+        const extra = publicOrigin
+          ? [...env.corsOrigins, publicOrigin]
           : env.corsOrigins;
         return isAllowedOrigin(origin, extra) ? origin : null;
       },
@@ -612,8 +628,15 @@ export function createApp() {
       requestOrigin !== null &&
       /^https?:\/\/(127\.|\[?::1\]?|localhost)/i.test(requestOrigin);
     const lan = lanAddresses()[0];
+    /*
+     * Behind a gateway the request URL is the upstream's loopback address (it
+     * rewrites Host), but `X-Forwarded-*` say where the browser actually is —
+     * including the `/lifeos` prefix — and that is reachable by the phone too.
+     */
+    const forwarded = forwardedBaseUrl(c.req.raw.headers);
     const base =
       getPublicUrl() ??
+      forwarded ??
       (loopback && lan ? `http://${lan}:${env.apiPort}` : requestOrigin);
 
     if (!base) {
@@ -813,6 +836,12 @@ export function createApp() {
 
   app.route("/api/v1", api);
 
+  /*
+   * Production serve mode (`pnpm serve`): the built dashboard from this same
+   * port, with an SPA fallback for everything that is not an API path.
+   */
+  if (env.serveWeb) app.get("*", webAppHandler(env.webDist));
+
   app.onError((err, c) => {
     console.error(err);
     if (err && typeof err === "object" && "issues" in err) {
@@ -825,4 +854,13 @@ export function createApp() {
   });
 
   return app;
+}
+
+function originOf(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import { announceGeneratedToken, ensureApiToken } from "./token.js";
 import { readTunnelMode } from "./tunnel.js";
+import { normalizePublicPath } from "./prefix.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -55,6 +56,24 @@ export const env = {
    * a named Cloudflare tunnel, or a quick tunnel whose hostname changed.
    */
   publicUrl: (process.env.PUBLIC_URL ?? "").trim() || null,
+  /**
+   * The path this instance is published under on the public host, e.g.
+   * `/lifeos` behind a gateway that serves several apps from one Funnel
+   * hostname. Appended to the *detected* Tailscale URL (an explicit
+   * `PUBLIC_URL` is used as-is and should already include it). Empty = root.
+   */
+  publicPath: normalizePublicPath(process.env.PUBLIC_PATH),
+  /**
+   * Production serve mode: the API also serves the built dashboard
+   * (`apps/web/dist`) on its own port, so one process on one port is the whole
+   * app. Off for `pnpm dev`, where Vite serves the dashboard. `pnpm serve`
+   * turns it on — see `src/serve.ts`.
+   */
+  serveWeb: /^(1|true|yes|on)$/i.test((process.env.SERVE_WEB ?? "").trim()),
+  webDist: path.resolve(
+    root,
+    (process.env.WEB_DIST ?? "").trim() || "apps/web/dist",
+  ),
   /**
    * Extra CORS origins beyond localhost and private-LAN addresses, comma
    * separated. Only needed for a tunnel or a real hostname.

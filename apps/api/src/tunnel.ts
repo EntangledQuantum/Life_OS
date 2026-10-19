@@ -55,7 +55,10 @@ export interface PublicUrlResult {
  * anything outside the tailnet can reach it, and reporting a URL that only
  * works from your own devices would be the same lie in a different costume.
  */
-async function tailscaleUrl(port: number): Promise<PublicUrlResult> {
+async function tailscaleUrl(
+  port: number,
+  publicPath = "",
+): Promise<PublicUrlResult> {
   let dnsName: string;
   try {
     const { stdout } = await run("tailscale", ["status", "--json"], {
@@ -86,7 +89,20 @@ async function tailscaleUrl(port: number): Promise<PublicUrlResult> {
      * Funnel prints the ports it is serving. If this one is not among them, the
      * hostname resolves but nothing outside the tailnet answers on it.
      */
-    if (!stdout.includes(String(port))) {
+    /*
+     * With a `PUBLIC_PATH`, Funnel fronts a gateway that routes `/lifeos/*`
+     * here — it does not serve this port itself, so all that can be checked
+     * is that Funnel is on for this machine at all.
+     */
+    if (publicPath) {
+      if (!/Funnel on/i.test(stdout) && !stdout.includes(dnsName)) {
+        return {
+          url: null,
+          mode: "tailscale",
+          hint: `Tailscale is up, but Funnel is off. Publish the gateway that serves ${publicPath}, or set PUBLIC_URL.`,
+        };
+      }
+    } else if (!new RegExp(`[^0-9]${port}(?![0-9])`).test(stdout)) {
       return {
         url: null,
         mode: "tailscale",
@@ -102,7 +118,7 @@ async function tailscaleUrl(port: number): Promise<PublicUrlResult> {
   }
 
   // Funnel always terminates TLS on 443, whatever port it forwards to.
-  return { url: `https://${dnsName}`, mode: "tailscale", hint: null };
+  return { url: `https://${dnsName}${publicPath}`, mode: "tailscale", hint: null };
 }
 
 /**
@@ -117,6 +133,8 @@ export async function resolvePublicUrl(opts: {
   explicit: string | null;
   mode: TunnelMode;
   port: number;
+  /** `/lifeos` when published under a path on a shared host; "" at the root. */
+  publicPath?: string;
 }): Promise<PublicUrlResult> {
   if (opts.explicit) {
     return {
@@ -142,5 +160,5 @@ export async function resolvePublicUrl(opts: {
     };
   }
 
-  return tailscaleUrl(opts.port);
+  return tailscaleUrl(opts.port, opts.publicPath ?? "");
 }

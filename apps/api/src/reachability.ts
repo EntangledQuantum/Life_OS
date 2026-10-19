@@ -24,6 +24,7 @@ export async function discoverReachability(): Promise<void> {
       explicit: env.publicUrl,
       mode: env.tunnel,
       port: env.apiPort,
+      publicPath: env.publicPath,
     });
     publicUrl = result.url;
     hint = result.hint;

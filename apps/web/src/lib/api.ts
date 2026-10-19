@@ -3,13 +3,23 @@ import {
   PROTOCOL_VERSION,
   type AnalyticsPayload,
 } from "@life-os/shared";
+import { basePath } from "./base";
 /*
  * `?.` because `import.meta.env` is Vite's, and this module is also imported by
  * a test running under plain Node, where it does not exist. Without the guard
  * the import throws before a single assertion runs — and this is the one module
  * that most needs testing, since every call in the app goes through it.
  */
-const API_BASE = import.meta.env?.VITE_API_URL ?? "";
+const API_URL = import.meta.env?.VITE_API_URL || "";
+
+/**
+ * Where `/api/...` lives. An explicit `VITE_API_URL` wins; otherwise the API is
+ * same-origin, under whatever prefix the page was served from (`/lifeos` behind
+ * the gateway, "" at the root) — read per request, see `base.ts`.
+ */
+function apiBase(): string {
+  return API_URL ? API_URL.replace(/\/+$/, "") : basePath();
+}
 
 function getToken(): string | null {
   return localStorage.getItem("lifeos_token");
@@ -32,7 +42,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // No `credentials: "include"` — auth is the bearer header only. A cookie
   // would ride along automatically on cross-site requests, which is the whole
   // CSRF problem.
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${apiBase()}${path}`, { ...options, headers });
 
   if (!res.ok) {
     let message = res.statusText;

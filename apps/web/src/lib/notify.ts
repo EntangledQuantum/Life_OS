@@ -10,6 +10,7 @@
  * ever succeeded. When it hasn't, reminders still flash — the visual channel is
  * never allowed to depend on the audio one.
  */
+import { withBase } from "./base";
 
 let ctx: AudioContext | null = null;
 let unlocked = false;
@@ -253,8 +254,7 @@ export function showSystemNotification(
  * the browser's generic icon.
  */
 function notificationIcon(): string {
-  const base = import.meta.env.BASE_URL ?? "/";
-  return `${base.endsWith("/") ? base : `${base}/`}icon.png`;
+  return withBase("icon.png");
 }
 
 export interface ReminderAlertOptions {

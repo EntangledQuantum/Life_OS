@@ -61,10 +61,16 @@ const apiProxy = {
 
 const proxyToApi = { "/api": apiProxy, "/health": apiProxy };
 
-export default defineConfig({
-  // GitHub Pages serves the site from /<repo>/, so the build needs that prefix.
-  // Set VITE_BASE=/Life_OS/ for the Pages build; local dev stays at the root.
-  base: process.env.VITE_BASE ?? "/",
+export default defineConfig(({ command }) => ({
+  /*
+   * GitHub Pages serves the site from /<repo>/, so that build sets
+   * VITE_BASE=/Life_OS/. Everything else builds with a **relative** base
+   * (`./assets/…`), so one build works at `http://127.0.0.1:8787/` and behind a
+   * gateway at `/lifeos/`: the API rewrites `index.html` per request and tells
+   * the client its prefix (`apps/api/src/static.ts`, `src/lib/base.ts`).
+   * The dev server always runs at the root.
+   */
+  base: process.env.VITE_BASE ?? (command === "build" ? "./" : "/"),
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -83,6 +89,12 @@ export default defineConfig({
      * `WEB_HOST=localhost` puts it back on loopback only.
      */
     host: process.env.WEB_HOST ?? true,
+    /*
+     * Vite refuses Host headers it does not know (DNS-rebinding guard). Allow
+     * Tailscale names, so dev still works when Funnel or a gateway forwards
+     * the original host instead of rewriting it.
+     */
+    allowedHosts: [".ts.net"],
     proxy: proxyToApi,
   },
   preview: {
@@ -90,4 +102,4 @@ export default defineConfig({
     host: process.env.WEB_HOST ?? true,
     proxy: proxyToApi,
   },
-});
+}));

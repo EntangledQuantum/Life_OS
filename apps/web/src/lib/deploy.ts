@@ -9,15 +9,16 @@
  * so every "open the dashboard" affordance is hidden rather than dangled in
  * front of someone who has nothing to open.
  */
+import { withBase } from "./base";
+
 export const IS_PAGES = import.meta.env.VITE_DEPLOY_TARGET === "pages";
 
 /**
- * Resolve a file in `public/` against the deploy base path.
- * Pages serves the site from `/<repo>/`, so a bare `/icon.png` would 404.
+ * Resolve a file in `public/` against the base path. Pages serves the site
+ * from `/<repo>/` and the gateway from `/lifeos/`, so a bare `/icon.png` 404s.
  */
 export function asset(file: string): string {
-  const base = import.meta.env.BASE_URL || "/";
-  return `${base.replace(/\/$/, "")}/${file.replace(/^\//, "")}`;
+  return withBase(file);
 }
 
 export const REPO_URL = "https://github.com/EntangledQuantum/Life_OS";

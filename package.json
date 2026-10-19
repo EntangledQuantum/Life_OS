@@ -8,6 +8,8 @@
     "dev": "pnpm --parallel --filter @life-os/api --filter @life-os/web dev",
     "dev:api": "pnpm --filter @life-os/api dev",
     "dev:web": "pnpm --filter @life-os/web dev",
+    "serve": "pnpm --filter @life-os/web build && pnpm --filter @life-os/api serve",
+    "serve:nobuild": "pnpm --filter @life-os/api serve",
     "build": "pnpm -r build",
     "build:pages": "pnpm --filter @life-os/web build:pages",
     "preview:pages": "node scripts/preview-pages.mjs",

@@ -16,6 +16,7 @@ import { GoalsPage } from "./pages/GoalsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { IS_PAGES } from "./lib/deploy";
+import { basePath } from "./lib/base";
 
 const qc = new QueryClient({
   defaultOptions: {
@@ -66,7 +67,8 @@ const routes = IS_PAGES ? (
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={qc}>
-      <BrowserRouter basename={import.meta.env.BASE_URL}>
+      {/* Runtime base: "/lifeos" behind the gateway, "/" direct. See lib/base.ts. */}
+      <BrowserRouter basename={basePath() || "/"}>
         {routes}
       </BrowserRouter>
       <Toaster
