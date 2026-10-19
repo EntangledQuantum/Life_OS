@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- `windowLightNavigationBar` exists from API 27. Dark only, so it is false. -->
+<resources>
+    <style name="Theme.LifeOS" parent="Theme.LifeOS.Base">
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

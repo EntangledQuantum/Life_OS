@@ -1,0 +1,10 @@
+# Gradle / Android build output
+.gradle/
+build/
+app/build/
+local.properties
+.kotlin/
+captures/
+*.hprof
+
+# Room exports the schema on purpose (ksp room.schemaLocation) — keep schemas/.

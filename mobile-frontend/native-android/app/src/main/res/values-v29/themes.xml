@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  `forceDarkAllowed` exists from API 29. It must be false: the app is already
+  dark, and letting the platform "help" would re-tone surfaces the growth meter's
+  gradients are drawn against.
+-->
+<resources>
+    <style name="Theme.LifeOS" parent="Theme.LifeOS.Base">
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>
