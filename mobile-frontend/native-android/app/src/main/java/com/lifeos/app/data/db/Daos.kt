@@ -36,6 +36,41 @@ interface ServerSettingsDao {
 }
 
 @Dao
+interface FiredNotificationDao {
+
+    /**
+     * Claim the right to fire, atomically.
+     *
+     * Returns the new row id, or **-1** when the key was already there — which
+     * is `INSERT OR IGNORE` doing the de-duplication inside SQLite. A
+     * read-the-set-then-decide version of this loses the race between the alarm
+     * receiver and the in-app poll, and the user hears the same reminder twice.
+     * The caller fires only on a non-negative result.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun claim(row: FiredNotificationEntity): Long
+
+    @Query("SELECT `key` FROM fired_notifications")
+    suspend fun keys(): List<String>
+
+    @Query("SELECT `key` FROM fired_notifications")
+    fun observeKeys(): Flow<List<String>>
+
+    /** Snooze and "it really did not fire" both need the claim released. */
+    @Query("DELETE FROM fired_notifications WHERE `key` = :key")
+    suspend fun release(key: String)
+
+    /**
+     * Keep the table small.
+     *
+     * A week is well past any horizon alarms are seeded over, so a pruned key
+     * can never be re-fired by a task that is still live.
+     */
+    @Query("DELETE FROM fired_notifications WHERE fired_at < :before")
+    suspend fun prune(before: Long)
+}
+
+@Dao
 interface PendingWriteDao {
     @Query("SELECT * FROM pending_writes ORDER BY enqueued_at ASC, id ASC")
     fun observeAll(): Flow<List<PendingWriteEntity>>

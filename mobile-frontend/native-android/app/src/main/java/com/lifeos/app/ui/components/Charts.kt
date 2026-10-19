@@ -84,19 +84,40 @@ fun AreaChart(
         }
         drawPath(path = outline, color = line, style = Stroke(width = 2f))
 
-        /* The target, dashed, only where there is one. */
+        /*
+         * The target, dashed, only where there is one.
+         *
+         * Two renderings, because they are two different statements:
+         *
+         *  - **In the domain.** A solid-ish dash at the value, which is where
+         *    the target really is.
+         *  - **Off-scale** — the target is above the top of the box, because
+         *    the domain is sized to the data (see `AnalyticsModel.series`).
+         *    Then it is drawn as a *boundary* rather than as a value: pinned
+         *    just inside the ceiling so it is not half-clipped, at a lower
+         *    alpha and a longer dash so it does not read as "the target is
+         *    exactly here". The caller prints the figure and says it is above
+         *    the chart; that caption is the other half of this, not decoration.
+         */
         val targets = points.filter { it.target > 0.0 }
         if (targets.isNotEmpty()) {
-            val dash = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
+            val offScale = series.targetOffScale
+            val dash = PathEffect.dashPathEffect(
+                if (offScale) floatArrayOf(14f, 10f) else floatArrayOf(6f, 6f),
+            )
+            // Half the stroke plus a hair, so a clamped line sits fully inside
+            // the box instead of being cut in half by the top edge.
+            val ceiling = 2f
             val targetPath = Path().apply {
                 points.forEachIndexed { index, point ->
                     val value = if (point.target > 0.0) point.target else targets.first().target
-                    if (index == 0) moveTo(x(index), y(value)) else lineTo(x(index), y(value))
+                    val yy = if (offScale) ceiling else y(value)
+                    if (index == 0) moveTo(x(index), yy) else lineTo(x(index), yy)
                 }
             }
             drawPath(
                 path = targetPath,
-                color = target.copy(alpha = 0.55f),
+                color = target.copy(alpha = if (offScale) 0.3f else 0.55f),
                 style = Stroke(width = 1.5f, pathEffect = dash),
             )
         }

@@ -12,6 +12,7 @@ import com.lifeos.app.domain.CelebrationIntensity
 import com.lifeos.app.domain.Celebrations
 import com.lifeos.app.domain.GoalOrder
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -62,13 +63,40 @@ class AnalyticsAndCelebrationTest {
     }
 
     @Test
-    fun `the target rides the same axis as the actual`() {
+    fun `a target within reach of the data rides the same axis as the actual`() {
         val series = AnalyticsModel.fromSnapshot(
-            listOf(SeriesPointDto(date = "d", current = 40.0, target = 200.0)),
+            listOf(
+                SeriesPointDto(date = "a", current = 120.0, target = 200.0),
+                SeriesPointDto(date = "b", current = 150.0, target = 200.0),
+            ),
         )
-        // A 200-XP target over a 40-XP day: the axis is the target, or the
-        // dashed line would sit outside the chart.
-        assertEquals(200.0, series.axisMax, 1e-9)
+        // 200 is inside 2 x 150, so it stays in the domain and the dashed line
+        // is drawn where it really is, with headroom above it.
+        assertFalse(series.targetOffScale)
+        assertEquals(200.0, series.target, 1e-9)
+        assertEquals(200.0 * 1.15, series.axisMax, 1e-9)
+    }
+
+    @Test
+    fun `a target far above the data does not flatten the week onto the floor`() {
+        val series = AnalyticsModel.fromSnapshot(
+            listOf(SeriesPointDto(date = "d", current = 25.0, target = 200.0)),
+        )
+        /*
+         * The bug this rule exists for. Under the old `max(value, target)` axis
+         * this returned 200.0, which drew a 25-XP morning as a flat line on the
+         * floor under a dashed line on the ceiling, two thirds of the box empty.
+         *
+         * Now the data owns the domain: 25 is capped at twice itself, plus 15%
+         * headroom, so the day occupies most of the height. The target is not
+         * lost — it is reported as off-scale with its figure intact, and the
+         * caller prints it.
+         */
+        assertEquals(25.0 * 2.0 * 1.15, series.axisMax, 1e-9)
+        assertTrue(series.targetOffScale)
+        assertEquals(200.0, series.target, 1e-9)
+        // The day reads as more than half the box, which is the whole point.
+        assertTrue(25.0 / series.axisMax > 0.4)
     }
 
     @Test
@@ -79,8 +107,21 @@ class AnalyticsAndCelebrationTest {
             ),
         )
         // efficiencyPct can exceed 100; the figure is never clamped, so neither
-        // is the axis it is drawn against.
-        assertEquals(260.0, series.axisMax, 1e-9)
+        // is the axis it is drawn against. A 130% day keeps its overshoot and
+        // the target stays honestly inside the chart.
+        assertTrue(series.axisMax > 260.0)
+        assertFalse(series.targetOffScale)
+        assertTrue(260.0 / series.axisMax > 0.8)
+    }
+
+    @Test
+    fun `a series with no target at all has no off-scale claim to make`() {
+        val series = AnalyticsModel.fromSnapshot(
+            listOf(SeriesPointDto(date = "d", current = 40.0, target = 0.0)),
+        )
+        assertEquals(0.0, series.target, 1e-9)
+        assertFalse(series.targetOffScale)
+        assertEquals(40.0 * 1.15, series.axisMax, 1e-9)
     }
 
     @Test

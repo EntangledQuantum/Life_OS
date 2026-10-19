@@ -8,14 +8,20 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [SnapshotEntity::class, ServerSettingsEntity::class, PendingWriteEntity::class],
-    version = 2,
+    entities = [
+        SnapshotEntity::class,
+        ServerSettingsEntity::class,
+        PendingWriteEntity::class,
+        FiredNotificationEntity::class,
+    ],
+    version = 3,
     exportSchema = true,
 )
 abstract class LifeOsDatabase : RoomDatabase() {
     abstract fun snapshots(): SnapshotDao
     abstract fun serverSettings(): ServerSettingsDao
     abstract fun pendingWrites(): PendingWriteDao
+    abstract fun firedNotifications(): FiredNotificationDao
 
     companion object {
         /**
@@ -38,6 +44,24 @@ abstract class LifeOsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 2 → 3: `fired_notifications`.
+         *
+         * The once-only set (§8.4), which has to outlive the process. Additive
+         * again, and again it does not touch `pending_writes`.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `fired_notifications` (" +
+                        "`key` TEXT NOT NULL, " +
+                        "`fired_at` INTEGER NOT NULL, " +
+                        "`life_day_date` TEXT NOT NULL, " +
+                        "PRIMARY KEY(`key`))",
+                )
+            }
+        }
+
         fun build(context: Context): LifeOsDatabase =
             Room.databaseBuilder(context, LifeOsDatabase::class.java, "lifeos.db")
                 /*
@@ -47,7 +71,7 @@ abstract class LifeOsDatabase : RoomDatabase() {
                  * written by hand from here on; there is no
                  * fallbackToDestructiveMigration.
                  */
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

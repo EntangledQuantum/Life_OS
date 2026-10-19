@@ -43,6 +43,7 @@ import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.LocalReducedMotion
 import com.lifeos.app.ui.theme.Motion
 import com.lifeos.app.ui.theme.Palette
+import com.lifeos.app.ui.theme.serverColor
 import com.lifeos.app.ui.theme.Spacing
 import com.lifeos.app.ui.theme.palette
 import kotlin.math.min
@@ -432,7 +433,7 @@ private fun Bloom(
             /* ---- petals: one per habit. A done petal is longer AND brighter,
                    so the state survives with the colour stripped out. ---- */
             geometry.petals.forEach { petal ->
-                val colour = parseHex(petal.colorHex) ?: palette.accent
+                val colour = serverColor(petal.colorHex) ?: palette.accent
                 drawPath(
                     path = GrowthShapes.petal(petal, centre),
                     color = if (petal.done) colour else colour.copy(alpha = 0.22f),
@@ -483,18 +484,12 @@ private fun Bloom(
     }
 }
 
-/** `#RRGGBB` → a Color. Server-supplied, so a malformed value must not crash. */
-internal fun parseHex(hex: String?): Color? {
-    val text = hex?.trim()?.removePrefix("#") ?: return null
-    val full = when (text.length) {
-        3 -> text.map { "$it$it" }.joinToString("")
-        6 -> text
-        8 -> text
-        else -> return null
-    }
-    val value = full.toLongOrNull(16) ?: return null
-    return if (full.length == 8) Color(value) else Color(value or 0xFF000000L)
-}
+/*
+ * `parseHex` used to live here, and five files imported it from the growth
+ * meter — which is a strange place for the app's only colour parser and is
+ * part of why nobody noticed it could not read `rgba(...)`. It is now
+ * `ui/theme/serverColor`, which handles every form the server actually sends.
+ */
 
 /* --------------------------------------------------------------- readouts */
 

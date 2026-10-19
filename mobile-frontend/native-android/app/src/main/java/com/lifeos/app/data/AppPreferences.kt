@@ -27,6 +27,29 @@ data class AppPrefs(
     val paletteId: String = "bloom",
     /** OR'd with the OS animator scale at the point of use (§5.6). */
     val reducedMotionLocal: Boolean = false,
+    /**
+     * Per-notification-type sound, by `NotificationType.key` → `SoundId.wire`.
+     *
+     * **Device-local, and that is a decision.** The server has one
+     * `notificationSound`, which this app reads as the *default* for Reminder
+     * and Due-now so the phone agrees with the dashboard out of the box. But a
+     * sound is bound to an Android channel and therefore to this device and this
+     * install: writing a per-type choice back to the server would describe one
+     * phone's channels to every client, and the web client has no channels at
+     * all. Same reasoning as the palette (§9.1).
+     *
+     * A type absent from the map has not been chosen and falls back —
+     * see `NotificationSounds.resolve`.
+     */
+    val notificationSounds: Map<String, String> = emptyMap(),
+    /**
+     * Whether the in-context `POST_NOTIFICATIONS` rationale has been shown.
+     *
+     * §8.2 asks for the permission the first time the user is about to rely on
+     * a reminder, never on first launch cold. This is how "the first time" is
+     * remembered across processes, so a denial is not re-asked on every resume.
+     */
+    val notificationPermissionAsked: Boolean = false,
 )
 
 /**
@@ -50,6 +73,8 @@ class AppPreferences(private val context: Context) : ConnectionConfig {
                 ?: emptyList(),
             paletteId = p[KEY_PALETTE] ?: "bloom",
             reducedMotionLocal = p[KEY_REDUCED_MOTION] ?: false,
+            notificationSounds = decodeSounds(p[KEY_NOTIFICATION_SOUNDS]),
+            notificationPermissionAsked = p[KEY_PERMISSION_ASKED] ?: false,
         )
     }
 
@@ -78,12 +103,43 @@ class AppPreferences(private val context: Context) : ConnectionConfig {
         context.dataStore.edit { it[KEY_REDUCED_MOTION] = value }
     }
 
+    /** `typeKey` → `soundWire`. The channel is created by the caller, not here. */
+    suspend fun setNotificationSound(typeKey: String, soundWire: String) {
+        context.dataStore.edit { p ->
+            val merged = decodeSounds(p[KEY_NOTIFICATION_SOUNDS]) + (typeKey to soundWire)
+            p[KEY_NOTIFICATION_SOUNDS] = merged.entries
+                .joinToString(PAIR_SEPARATOR) { "${it.key}=${it.value}" }
+        }
+    }
+
+    suspend fun setNotificationPermissionAsked(value: Boolean) {
+        context.dataStore.edit { it[KEY_PERMISSION_ASKED] = value }
+    }
+
     private companion object {
         val KEY_BASE_URL = stringPreferencesKey("base_url")
         val KEY_RECENT = stringPreferencesKey("recent_addresses")
         val KEY_PALETTE = stringPreferencesKey("palette_id")
         val KEY_REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
+        val KEY_NOTIFICATION_SOUNDS = stringPreferencesKey("notification_sounds")
+        val KEY_PERMISSION_ASKED = booleanPreferencesKey("notification_permission_asked")
         const val RECENT_SEPARATOR = "\u0001"
+        const val PAIR_SEPARATOR = "\u0001"
         const val MAX_RECENT = 5
+
+        /**
+         * `key=value` pairs, because DataStore has no map type.
+         *
+         * Anything unparseable is dropped rather than throwing: a corrupted
+         * preference must cost a sound choice, never the launch.
+         */
+        fun decodeSounds(stored: String?): Map<String, String> =
+            stored?.split(PAIR_SEPARATOR)
+                ?.mapNotNull { pair ->
+                    val parts = pair.split('=', limit = 2)
+                    if (parts.size == 2 && parts[0].isNotBlank()) parts[0] to parts[1] else null
+                }
+                ?.toMap()
+                ?: emptyMap()
     }
 }

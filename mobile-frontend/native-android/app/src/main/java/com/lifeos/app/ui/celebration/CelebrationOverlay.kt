@@ -40,7 +40,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.lifeos.app.domain.Celebration
 import com.lifeos.app.domain.CelebrationIntensity
-import com.lifeos.app.ui.growth.parseHex
+import com.lifeos.app.ui.theme.serverColor
 import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.LocalReducedMotion
 import com.lifeos.app.ui.theme.Motion
@@ -78,7 +78,7 @@ fun CelebrationOverlay(
 ) {
     val p = palette
     val reduced = LocalReducedMotion.current
-    val accent = parseHex(celebration.themeColor) ?: p.accent
+    val accent = serverColor(celebration.themeColor) ?: p.accent
 
     val particles = !reduced && intensity == CelebrationIntensity.FULL
     val bloom = !reduced && intensity != CelebrationIntensity.OFF

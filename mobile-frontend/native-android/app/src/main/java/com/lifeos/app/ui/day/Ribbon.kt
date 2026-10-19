@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.lifeos.app.data.api.TimelineBlockDto
 import com.lifeos.app.domain.Ribbon
 import com.lifeos.app.ui.components.Mono
-import com.lifeos.app.ui.growth.parseHex
+import com.lifeos.app.ui.theme.serverColor
 import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
@@ -83,7 +83,7 @@ fun DayRibbon(
             val bleed = 0.2.dp.toPx()
 
             segments.forEach { segment ->
-                val colour = parseHex(segment.colorHex) ?: p.accent
+                val colour = serverColor(segment.colorHex) ?: p.accent
                 val left = segment.left * size.width
                 val width = segment.width * size.width + bleed
                 val alpha = if (segment.done) 0.55f else 1f
@@ -178,7 +178,7 @@ fun RibbonLegend(blocks: List<TimelineBlockDto>, modifier: Modifier = Modifier) 
                     modifier = Modifier
                         .size(8.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(parseHex(entry.colorHex) ?: p.accent),
+                        .background(serverColor(entry.colorHex) ?: p.accent),
                 )
                 androidx.compose.material3.Text(
                     text = entry.category,

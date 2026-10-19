@@ -116,6 +116,18 @@ object Predicates {
         return a.title.compareTo(b.title)
     }
 
+    /**
+     * The next one or two things — what the widget shows (§8.5).
+     *
+     * Taken off `data.agenda`, which the server has already merged and already
+     * ordered, so the widget's "next" is the same next the agenda card shows at
+     * the top of Today. Writing "the soonest timed task" here instead would be
+     * a second ordering rule, and the two would drift the first time the server
+     * changed `compareAgenda`.
+     */
+    fun upNext(data: DashboardTodayDto, limit: Int): List<AgendaItemDto> =
+        data.agenda.asSequence().filter { !it.done }.take(limit.coerceAtLeast(0)).toList()
+
     /** Habits only: the week strip comes from `data.habits[habitId].history7`. */
     fun habitFor(data: DashboardTodayDto, item: AgendaItemDto) =
         item.habitId?.let { id -> data.habits.firstOrNull { it.id == id } }

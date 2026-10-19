@@ -5,6 +5,38 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      Requested in context, never on first launch cold: the first time the user
+      is about to rely on a reminder (§8.2). Denied is a supported state — the
+      in-app pulse and the status strip still carry everything.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Alarms must survive a reboot. The OS drops every alarm on restart, so
+      without this the app is silent from a restart until it is next opened,
+      which on a phone that reboots overnight means silent all morning.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      Exact alarms: declared, and deliberately only this one.
+
+      `SCHEDULE_EXACT_ALARM` is granted at install on Android 12 and is a
+      user-grantable special permission from 13, revocable at any time. The app
+      checks `canScheduleExactAlarms()` per alarm and falls back to
+      `setAndAllowWhileIdle`, which still escapes Doze but may be batched.
+
+      `USE_EXACT_ALARM` — the one that cannot be revoked — is **not** declared
+      and will not be: it is reserved by policy for alarm clocks and calendars,
+      and a habit tracker claiming it is what gets an app flagged. See
+      `notify/ReminderAlarms`.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Vibration is a channel property; without this the OS silently ignores it. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:name=".LifeOsApp"
         android:allowBackup="false"
@@ -46,5 +78,58 @@
           WorkManager's default initialiser is kept; the queue drain worker is a
           plain CoroutineWorker so no custom factory is needed.
         -->
+
+        <!-- ================= notifications (§8.1–§8.4) ================= -->
+
+        <!--
+          The alarm that says one reminder. Not exported: nothing outside this
+          app has any business firing our reminders.
+        -->
+        <receiver
+            android:name=".notify.AlarmReceiver"
+            android:exported="false" />
+
+        <!--
+          Done / Snooze on the notification itself. `exported="false"` and the
+          PendingIntents are immutable, so the actions cannot be re-targeted by
+          another app.
+        -->
+        <receiver
+            android:name=".notify.ActionReceiver"
+            android:exported="false" />
+
+        <!--
+          Re-seed the alarms after a reboot, a timezone change, or an update of
+          this app — all three clear what the OS was holding for us.
+        -->
+        <receiver
+            android:name=".notify.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ===================== the widget (§8.5) ===================== -->
+
+        <!--
+          `exported="true"` is required: the launcher is a different process and
+          has to be able to bind this. It is the one exported component besides
+          the Activity, and it carries no data of its own — everything it draws
+          comes from the app's own Room cache.
+        -->
+        <receiver
+            android:name=".widget.LifeOsWidgetReceiver"
+            android:label="@string/app_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/lifeos_widget_info" />
+        </receiver>
     </application>
 </manifest>

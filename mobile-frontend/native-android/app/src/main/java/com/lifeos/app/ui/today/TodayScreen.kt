@@ -36,7 +36,7 @@ import com.lifeos.app.ui.components.SkeletonBlock
 import com.lifeos.app.ui.components.TwoPane
 import com.lifeos.app.ui.growth.GrowthMeter
 import com.lifeos.app.ui.growth.GrowthStyle
-import com.lifeos.app.ui.growth.parseHex
+import com.lifeos.app.ui.theme.serverColor
 import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.NEUTRAL_NEG
 import com.lifeos.app.ui.theme.POSITIVE
@@ -285,7 +285,7 @@ private fun MeterBlock(data: DashboardTodayDto, onOpenDetail: () -> Unit) {
         )
         // Keeps the petal colours honest: a malformed themeColor falls back to
         // the accent rather than drawing nothing.
-        if (petals.isNotEmpty() && petals.all { parseHex(it.colorHex) == null }) {
+        if (petals.isNotEmpty() && petals.all { serverColor(it.colorHex) == null }) {
             Mono("", color = p.faint)
         }
     }

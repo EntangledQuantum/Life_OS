@@ -16,6 +16,7 @@ import com.lifeos.app.domain.AgendaEpoch
 import com.lifeos.app.domain.AnalyticsRange
 import com.lifeos.app.domain.Celebration
 import com.lifeos.app.domain.Celebrations
+import com.lifeos.app.domain.NotificationType
 import com.lifeos.app.domain.PendingWrite
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -74,6 +75,9 @@ sealed interface AppSheet {
  * equivalent, so offering Undo on a task would be a button that cannot work.
  */
 data class UndoPrompt(val item: AgendaItemDto, val shownAt: Long)
+
+/** A tapped notification: which kind, and what it was about (§8.4). */
+data class NotificationTap(val type: NotificationType, val targetId: String)
 
 /** You's lower half. One request per range the user asks for, never polled. */
 data class AnalyticsState(
@@ -190,6 +194,65 @@ class LifeOsViewModel(
                     )
                 },
             )
+        }
+    }
+
+    /* ---------------------------------------------------- notification taps */
+
+    /**
+     * A notification tap, waiting to be acted on.
+     *
+     * Held as state rather than handled where it arrives, because the two
+     * halves of §8.4's tap rule arrive in different places: the cold-start
+     * intent is read in `MainActivity.onCreate` and the warm one in
+     * `onNewIntent`. **Both are required** — a listener alone misses the cold
+     * start, which is the *common* case, since the notification is why the app
+     * is opening. Funnelling both into one flow means there is one handler and
+     * it cannot be half-implemented.
+     */
+    private val _notificationTap = MutableStateFlow<NotificationTap?>(null)
+    val notificationTap: StateFlow<NotificationTap?> = _notificationTap
+
+    fun onNotificationTap(typeKey: String?, targetId: String?) {
+        val type = NotificationType.ofKey(typeKey) ?: return
+        if (targetId.isNullOrBlank()) return
+        _notificationTap.value = NotificationTap(type, targetId)
+    }
+
+    /**
+     * Open the overlay a tap asked for, and clear it.
+     *
+     * The sheet is resolved here rather than at the notification site because
+     * only this side knows the snapshot: a reminder's target is a **task** id,
+     * while an agenda row's own id is `task:<id>` with the task in `refId`. So
+     * a reminder tap prefers the agenda sheet for that row — which is what
+     * "opens Today with that row's sheet expanded" means — and falls back to
+     * the task sheet when the row is not on today's agenda.
+     */
+    fun consumeNotificationTap(tap: NotificationTap) {
+        if (_notificationTap.value == tap) _notificationTap.value = null
+        val data = state.value.view?.data
+        when (tap.type) {
+            NotificationType.REMINDER, NotificationType.DUE_NOW -> {
+                val row = data?.agenda?.firstOrNull { it.refId == tap.targetId }
+                    ?: data?.anytime?.firstOrNull { it.refId == tap.targetId }
+                openSheet(
+                    if (row != null) AppSheet.Agenda(row.id) else AppSheet.Task(tap.targetId),
+                )
+            }
+
+            NotificationType.NEEDS_YOU -> openSheet(AppSheet.Task(tap.targetId))
+
+            /*
+             * Nothing to open. The celebration overlay is already global and
+             * outside the `NavHost` (§3.4), so it is on screen the moment the
+             * app resumes — and `celebration-seen` still fires only on **Nice.**
+             */
+            NotificationType.GOAL_READY -> Unit
+
+            // The destination is the pending-write list, which the shell
+            // navigates to; there is no sheet for it.
+            NotificationType.SYNC_PROBLEM -> Unit
         }
     }
 
@@ -395,6 +458,19 @@ class LifeOsViewModel(
      * control moves instantly offline and syncs later (§3.5).
      */
     fun patchSetting(key: String, value: String) {
+        viewModelScope.launch {
+            repository.patchSettings(key, value)
+            SyncWorker.request(appContext)
+            refresh()
+        }
+    }
+
+    /**
+     * `doNotDisturb` and `quietHoursSilent` — server-backed, like every other
+     * setting, because the web client honours them too. A phone-only quiet-hours
+     * switch would mean the dashboard chiming while the phone stayed silent.
+     */
+    fun patchSetting(key: String, value: Boolean) {
         viewModelScope.launch {
             repository.patchSettings(key, value)
             SyncWorker.request(appContext)

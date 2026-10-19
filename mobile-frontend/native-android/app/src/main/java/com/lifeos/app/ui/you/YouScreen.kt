@@ -48,7 +48,7 @@ import com.lifeos.app.ui.components.PageBody
 import com.lifeos.app.ui.components.SectionHeader
 import com.lifeos.app.ui.components.SkeletonBlock
 import com.lifeos.app.ui.components.ThinTrack
-import com.lifeos.app.ui.growth.parseHex
+import com.lifeos.app.ui.theme.serverColor
 import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.NEUTRAL_NEG
 import com.lifeos.app.ui.theme.POSITIVE
@@ -269,7 +269,7 @@ fun YouScreen(
 @Composable
 private fun GoalCard(goal: GoalDto, lead: Boolean) {
     val p = palette
-    val accent = parseHex(goal.themeColor) ?: p.accent
+    val accent = serverColor(goal.themeColor) ?: p.accent
     val rungs = remember(goal) { GoalOrder.rungs(goal) }
     val achieved = goal.status == "achieved"
 
@@ -447,6 +447,27 @@ private fun AnalyticsBlock(
 
         // XP against its dashed target, always — this is the collapsed state.
         AreaChart(series = xp, height = 120.dp)
+
+        /*
+         * The target as a figure, under the line that draws it.
+         *
+         * The chart's domain is sized to the data rather than to the target
+         * (see `AnalyticsModel.series`), so on a quiet day the target can be
+         * above the top of the box. When it is, the dashed line is pinned to
+         * the ceiling and this line says so — the caption is the other half of
+         * the clamp, not decoration.
+         */
+        if (xp.target > 0.0) {
+            Mono(
+                text = if (xp.targetOffScale) {
+                    "target ${Math.round(xp.target)} XP · above this chart"
+                } else {
+                    "target ${Math.round(xp.target)} XP"
+                },
+                color = p.faint,
+                style = LifeOsType.mono11,
+            )
+        }
 
         if (state.loading) {
             Mono("loading ${state.range.label}…", color = p.faint, style = LifeOsType.mono11)

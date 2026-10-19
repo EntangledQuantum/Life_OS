@@ -327,6 +327,20 @@ class LifeOsRepository(
         payload = JsonObject(mapOf(key to JsonPrimitive(value))),
     )
 
+    /**
+     * `POST /api/v1/tasks/:id/notified` — the de-dupe receipt (§8.4).
+     *
+     * Enqueued like every other write, and **posted even under do-not-disturb
+     * and quiet hours**. That is a contract, not an optimisation: it is how the
+     * server knows the item was surfaced, and skipping it while silenced means
+     * every suppressed reminder fires the instant DND ends. An avalanche is
+     * worse than the interruption that was being avoided.
+     *
+     * Day-independent, so the life-day guard never strands it — a receipt means
+     * the same thing whatever day it is finally sent.
+     */
+    suspend fun markNotified(taskId: String): Long = enqueue(WriteKind.TASK_NOTIFIED, taskId)
+
     /** Put a task away without doing it. Day-independent, so never stranded. */
     suspend fun dismissTask(taskId: String): Long = enqueue(WriteKind.TASK_DISMISS, taskId)
 

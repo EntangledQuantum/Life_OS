@@ -64,7 +64,7 @@ fun SettingsIndexScreen(
             SettingsRow("The day", "Reset time, lead minutes, sleep/wake") { onOpen("day") }
             SettingsRow("Connection", "Server, token, health, pending writes") { onOpen("connection") }
             HorizontalDivider(color = palette.border, modifier = Modifier.padding(vertical = Spacing.sm))
-            SettingsRow("Home screen widget", "Not in this build yet") { onOpen("widget") }
+            SettingsRow("Home screen widget", "What it shows, and how to place it") { onOpen("widget") }
             SettingsRow("About", "Version · protocol · open source") { onOpen("about") }
         }
     }

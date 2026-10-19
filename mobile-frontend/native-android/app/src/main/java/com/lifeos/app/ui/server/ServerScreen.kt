@@ -89,6 +89,10 @@ fun ServerScreen(
                     // port and the alphabetic layout fights it.
                     keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Next,
+                    // An address is not a secret, so this is correctness rather
+                    // than privacy: autocorrect on `192.168.29.131` or on a
+                    // `.ts.net` name produces something that will not resolve.
+                    autoCorrectEnabled = false,
                 ),
             )
             Text(
@@ -136,7 +140,50 @@ fun ServerScreen(
                         )
                     }
                 },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                /*
+                 * `KeyboardType.Password`, and it is not cosmetic — this was a
+                 * real leak found by typing into the field on a phone.
+                 *
+                 * The field masked correctly, so it looked right, but the IME's
+                 * suggestion strip displayed the token in plaintext above the
+                 * keyboard as it was typed. A suggestion strip is drawn by the
+                 * keyboard, which means the keyboard had the value, could show
+                 * it to anyone looking at the screen, and — worse — could add it
+                 * to its personalised dictionary and later suggest the user's
+                 * `API_TOKEN` while they typed a message.
+                 *
+                 * `VisualTransformation` is a *drawing* concern and buys none of
+                 * this. The keyboard type is the contract: Compose maps
+                 * `Password` to `TYPE_CLASS_TEXT or TYPE_TEXT_VARIATION_PASSWORD`,
+                 * and an IME is required not to show candidates for, autocorrect
+                 * or store a password field. Verified on the device rather than
+                 * assumed — `dumpsys input_method` reports `inputType=0x81` for
+                 * this field, and the suggestion strip is gone.
+                 *
+                 * `autoCorrectEnabled = false` is stated as well rather than
+                 * inherited, because it is the half an IME is most likely to
+                 * honour loosely.
+                 *
+                 * **What this does not do, stated honestly:** it does not set
+                 * `EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING`. The device
+                 * reports `imeOptions=0x2000006`, which is `NO_FULLSCREEN` plus
+                 * `ACTION_DONE` — Compose's `KeyboardOptions` has no way to add
+                 * an arbitrary IME flag, and `PlatformImeOptions` carries only a
+                 * vendor string. The password variation is the platform's own
+                 * mechanism for "do not learn this" and every mainstream IME
+                 * honours it, so this is belt without braces rather than a hole;
+                 * if a specific keyboard is ever found storing it anyway, the
+                 * fix is `InterceptPlatformTextInput`, not a different field.
+                 *
+                 * It stays `Password` even while "show" is on: revealing the
+                 * characters to the user is not a reason to hand them to the
+                 * keyboard.
+                 */
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                    autoCorrectEnabled = false,
+                ),
             )
             Text(
                 // Named so the user knows where to find it, and where it goes.

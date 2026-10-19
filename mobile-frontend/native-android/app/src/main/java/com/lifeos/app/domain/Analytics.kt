@@ -4,6 +4,7 @@ import com.lifeos.app.data.api.AnalyticsDto
 import com.lifeos.app.data.api.ConsistencyPointDto
 import com.lifeos.app.data.api.SeriesPointDto
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * You's lower half, as pure data (UI_SPEC §3.3).
@@ -53,6 +54,21 @@ data class ChartPoint(
 data class ChartSeries(
     val points: List<ChartPoint>,
     val axisMax: Double,
+    /**
+     * The target this series is measured against, or 0 when it has none.
+     *
+     * Carried explicitly so the caller can print the figure even on the days
+     * the line is clamped to the ceiling.
+     */
+    val target: Double = 0.0,
+    /**
+     * The target is above [axisMax] — the dashed line is drawn at the ceiling
+     * and the figure is above the chart.
+     *
+     * The caller must say so in words; a dashed line at the top edge that
+     * silently means "or higher" is the dishonest version of this.
+     */
+    val targetOffScale: Boolean = false,
 ) {
     val isEmpty: Boolean get() = points.isEmpty()
 }
@@ -61,6 +77,23 @@ object AnalyticsModel {
 
     /** Keeps an empty or all-zero series drawable. */
     private const val MIN_AXIS = 1.0
+
+    /**
+     * Breathing room above the tallest thing in the domain.
+     *
+     * Nothing — a peak or the target line — sits flush against the top edge,
+     * where it reads as clipped rather than as reached.
+     */
+    private const val HEADROOM = 1.15
+
+    /**
+     * How far above the data a target may still drag the domain.
+     *
+     * Past this the target is off-scale. 2.0 is the point at which the data
+     * still occupies half the box: a chart whose content is squeezed into the
+     * bottom third has stopped being a chart.
+     */
+    private const val MAX_TARGET_STRETCH = 2.0
 
     /** `7d`, from the snapshot the whole app already has. */
     fun fromSnapshot(xpSeries7: List<SeriesPointDto>): ChartSeries = series(
@@ -73,30 +106,73 @@ object AnalyticsModel {
     )
 
     /** The same window's consistency, which has no target of its own. */
-    fun consistency(payload: AnalyticsDto): ChartSeries = series(
+    fun consistency(payload: AnalyticsDto): ChartSeries = percentSeries(
         payload.daily.map { ChartPoint(it.date, it.consistencyPct, 0.0) },
-        floor = 100.0,
     )
 
-    fun consistencyFromSnapshot(consistency7: List<ConsistencyPointDto>): ChartSeries = series(
-        consistency7.map { ChartPoint(it.date, it.pct, 0.0) },
-        floor = 100.0,
-    )
+    fun consistencyFromSnapshot(consistency7: List<ConsistencyPointDto>): ChartSeries =
+        percentSeries(consistency7.map { ChartPoint(it.date, it.pct, 0.0) })
 
     /**
-     * The axis is the larger of the values and their targets.
+     * The y-domain, and the rule it follows.
      *
-     * Where there is a target, the target rides the same axis as the actual —
-     * a bar drawn past the top of its own chart is the alternative, and a 140%
-     * day is a real thing (`efficiencyPct` can exceed 100).
+     * **The rule:** the data owns the domain and the target is a guest.
+     *
+     *   `axisMax = max(dataMax, min(target, dataMax * 2)) * 1.15`
+     *
+     * This replaces `axisMax = max(dataMax, target)`, which was wrong on a real
+     * phone in a way no test caught: against a 200-XP daily target, a 25-XP
+     * morning put the dashed target line flush along the ceiling and every real
+     * value flat along the floor, leaving about two thirds of the box empty. The
+     * chart was drawing the target faithfully and saying nothing about the week.
+     *
+     * So the domain is sized to the data, with 15% of headroom so a peak is not
+     * read as clipped. The target raises the domain only as far as twice the
+     * data — the point at which the data still fills half the box. A target
+     * further above than that is **off-scale**: the domain stays with the data,
+     * the dashed line is pinned to the ceiling, and [ChartSeries.targetOffScale]
+     * is set so the caller prints the figure and says in words that it is above
+     * the chart. The target is never silently dropped and never silently
+     * rescaled.
+     *
+     * When the day *exceeds* its target the target is inside `2 * dataMax` by
+     * construction, so it stays in the domain and the overshoot is drawn: a 130%
+     * day is a real thing and is still not clipped, which is what the old rule
+     * got right and this one keeps.
      */
-    private fun series(points: List<ChartPoint>, floor: Double = MIN_AXIS): ChartSeries {
-        var top = floor
+    private fun series(points: List<ChartPoint>): ChartSeries {
+        if (points.isEmpty()) return ChartSeries(points, MIN_AXIS)
+
+        var dataMax = 0.0
+        var target = 0.0
         for (point in points) {
-            top = max(top, max(point.value, point.target))
+            dataMax = max(dataMax, point.value)
+            // One target per series in practice; the largest is the honest one
+            // to draw if the server ever moves it mid-window.
+            target = max(target, point.target)
         }
-        return ChartSeries(points = points, axisMax = max(top, MIN_AXIS))
+
+        val reachable = min(target, dataMax * MAX_TARGET_STRETCH)
+        val top = max(max(dataMax, reachable) * HEADROOM, MIN_AXIS)
+        return ChartSeries(
+            points = points,
+            axisMax = top,
+            target = target,
+            targetOffScale = target > top,
+        )
     }
+
+    /**
+     * A percentage series: the domain is fixed at 0–100 whatever happened.
+     *
+     * Consistency is a share of a possible total, so it is comparable across
+     * weeks only if the axis does not move. A quiet week must look like a quiet
+     * week rather than being rescaled into looking like a full one — which is
+     * what [series]' data-owns-the-domain rule would do to it, and why these are
+     * two functions rather than one with a flag.
+     */
+    private fun percentSeries(points: List<ChartPoint>): ChartSeries =
+        ChartSeries(points = points, axisMax = 100.0)
 
     /**
      * A signed figure in percentage **points**, not a ratio.

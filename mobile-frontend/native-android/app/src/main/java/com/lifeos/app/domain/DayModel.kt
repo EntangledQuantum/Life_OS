@@ -178,6 +178,19 @@ data class RibbonSegment(
 data class LegendEntry(val category: String, val colorHex: String)
 
 /**
+ * One cell of a quantised ribbon — see `Ribbon.cells`.
+ *
+ * `colorHex` is null for a cell no block covers, which draws as the empty
+ * track rather than as a gap: a day with nothing scheduled still has a shape.
+ */
+data class RibbonCell(
+    val colorHex: String?,
+    val actual: Boolean,
+    val done: Boolean,
+    val isNow: Boolean,
+)
+
+/**
  * The ribbon, **rendered exactly as the server computed it** (§3.2).
  *
  * The server has already closed the gaps, resolved the overlaps and assigned
@@ -207,6 +220,48 @@ object Ribbon {
                 done = block.status == "done",
             )
         }
+
+    /**
+     * The same ribbon as a fixed number of **equal** cells.
+     *
+     * For the widget, and the reason it exists is worth stating. An app widget
+     * is `RemoteViews`, and Glance's modifier vocabulary has `defaultWeight()`
+     * but no fractional weight — so a segment that is 7% of the day cannot be
+     * given 7% of the row. The alternative is a computed pixel width, which is
+     * the one thing §8.5 forbids outright: the launcher hands out a different
+     * box per device, per cell count, and again after every resize, so a
+     * computed width is wrong on the next phone and wrong again after a drag.
+     *
+     * So the ribbon is quantised instead: `count` equal cells, each taking the
+     * colour of whatever segment covers its midpoint. Every cell is
+     * `defaultWeight()`, nothing is a fixed dp, and the row spans whatever box
+     * it is given. The cost is resolution — at 24 cells the ribbon is hourly —
+     * which is honest for something the size of a launcher cell.
+     *
+     * It reads [segments], so the widget's ribbon and Day's ribbon are the same
+     * ribbon; a server that moves a block moves both.
+     */
+    fun cells(
+        blocks: List<TimelineBlockDto>,
+        count: Int,
+        nowFraction: Float,
+    ): List<RibbonCell> {
+        if (count <= 0) return emptyList()
+        val segments = segments(blocks)
+        val nowCell = (nowFraction * count).toInt().coerceIn(0, count - 1)
+        return (0 until count).map { index ->
+            val midpoint = (index + 0.5f) / count
+            val covering = segments.lastOrNull {
+                midpoint >= it.left && midpoint < it.left + it.width
+            }
+            RibbonCell(
+                colorHex = covering?.colorHex,
+                actual = covering?.actual ?: false,
+                done = covering?.done ?: false,
+                isNow = index == nowCell,
+            )
+        }
+    }
 
     /** `(hour + min/60) / 24`. */
     fun nowFraction(time: LocalTime): Float =

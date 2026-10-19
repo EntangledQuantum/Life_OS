@@ -195,9 +195,10 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
 /**
  * Settings → **Home screen widget** (§3.5).
  *
- * The widget itself is a later milestone, and this page says exactly that rather
- * than offering a control that does nothing — which is the bug this whole
- * rewrite started from.
+ * There is nothing to configure: the widget has no settings of its own by
+ * design. It follows the app's palette, reads the same cache, and is updated by
+ * the same background sync. So this page explains it and hands the one real
+ * control — placing it — to the launcher, which is where it lives.
  */
 @Composable
 fun WidgetSettingsScreen(modifier: Modifier = Modifier) {
@@ -206,49 +207,31 @@ fun WidgetSettingsScreen(modifier: Modifier = Modifier) {
         PageBody {
             SectionHeader("Home screen widget")
             Text(
-                text = "Not in this build. When it ships it will show the growth meter, the " +
-                    "ribbon with the now-marker and the next one or two things, reading the " +
-                    "same cached snapshot this app does and updating on the same poll — it " +
-                    "will never fetch on its own.",
+                text = "Long-press your home screen → Widgets → Life OS. It shows the day's " +
+                    "progress, the ribbon with the now-marker and the next one or two things.",
                 style = LifeOsType.body,
-                color = p.muted,
+                color = p.text,
             )
             Text(
-                text = "Ticking something on the widget will go through the same write queue, " +
-                    "so it will work with the app closed and the server asleep.",
+                text = "It never fetches on its own: it reads the same cached day this app " +
+                    "does, so it draws instantly and never waits on a sleeping server. It is " +
+                    "brought up to date by the same background sync as the app.",
                 style = LifeOsType.bodySmall,
                 color = p.faint,
             )
-        }
-    }
-}
-
-/**
- * Settings → **Notifications** (§3.5), deliberately not built here.
- *
- * Notifications own the channel strategy (§8.2) — a channel's sound is fixed at
- * creation and the OS owns it from then on — so the page and the delivery
- * mechanism have to ship together. A sound picker in front of no channels is
- * precisely the bug the rewrite exists to fix: the old app's picker did nothing
- * because `channelId` was being smuggled through content.
- */
-@Composable
-fun NotificationsSettingsScreen(modifier: Modifier = Modifier) {
-    val p = palette
-    Column(modifier = modifier.fillMaxSize().padding(Spacing.lg)) {
-        PageBody {
-            SectionHeader("Notifications")
             Text(
-                text = "Not in this build. Sounds, quiet hours and do-not-disturb arrive with " +
-                    "the delivery layer they configure — a sound picker in front of no " +
-                    "channels is the old app's dead control over again.",
-                style = LifeOsType.body,
-                color = p.muted,
+                text = "Ticking something on the widget goes through the same write queue, so " +
+                    "it works with the app closed and the server asleep. On the smallest size " +
+                    "the tick is not drawn at all — there is no room for a target big enough " +
+                    "to be sure of, and a mis-tap would complete a habit. That row opens the " +
+                    "app instead.",
+                style = LifeOsType.bodySmall,
+                color = p.faint,
             )
             Text(
-                text = "Until then, quiet hours and do-not-disturb set on your dashboard are " +
-                    "still honoured: the status strip shows a silenced line, and an item that " +
-                    "needs you still pulses.",
+                text = "Resize it and it changes what it shows rather than squeezing: below " +
+                    "about 150dp tall the ribbon and the activity chips are dropped, not " +
+                    "clipped.",
                 style = LifeOsType.bodySmall,
                 color = p.faint,
             )

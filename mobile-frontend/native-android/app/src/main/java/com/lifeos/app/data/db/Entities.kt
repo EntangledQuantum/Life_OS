@@ -58,6 +58,31 @@ data class ServerSettingsEntity(
 }
 
 /**
+ * `fired_notifications` — the once-only rule, made durable (§8.4).
+ *
+ * "Fire once and only once per item" has to survive a process death, or the
+ * version of the bug the user actually notices is the one where every reminder
+ * says itself again on the next cold start. An in-memory set cannot do that, so
+ * the set is a table.
+ *
+ * The primary key is `<type>:<taskId>` rather than the task id alone, because a
+ * Reminder fifteen minutes before a thing and a Due-now at the moment of it are
+ * two different statements about the same task and the user is entitled to both.
+ *
+ * Being the primary key is the whole mechanism: the claim is an
+ * `INSERT OR IGNORE`, so SQLite decides who fires and two callers racing cannot
+ * both win. Nothing reads the set and then writes it.
+ */
+@Entity(tableName = "fired_notifications")
+data class FiredNotificationEntity(
+    /** `<NotificationType.key>:<task or goal id>`. */
+    @PrimaryKey val key: String,
+    @ColumnInfo(name = "fired_at") val firedAt: Long,
+    /** Kept for the pruner and for answering "what did it say yesterday". */
+    @ColumnInfo(name = "life_day_date") val lifeDayDate: String,
+)
+
+/**
  * `pending_writes` (§7.5).
  *
  * `lifeDayDate` is stamped when the user taps, not when the worker runs. That

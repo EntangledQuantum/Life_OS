@@ -14,8 +14,8 @@ android {
         applicationId = "com.lifeos.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
 
         // The protocol this app can read. Source of truth:
         // packages/shared/src/protocol.ts (PROTOCOL_VERSION). Copied, not imported.
@@ -98,6 +98,8 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)
 

@@ -48,8 +48,12 @@ import com.lifeos.app.data.ConnectionState
 import com.lifeos.app.data.PollIntervals
 import com.lifeos.app.data.api.ApiClient
 import com.lifeos.app.domain.CelebrationIntensity
+import com.lifeos.app.domain.QuietHours
 import com.lifeos.app.ui.celebration.CelebrationOverlay
+import com.lifeos.app.ui.components.BlockScaffold
+import com.lifeos.app.ui.components.NotificationPermissionPrompt
 import com.lifeos.app.ui.components.PendingCountBadge
+import com.lifeos.app.ui.components.SecondaryScaffold
 import com.lifeos.app.ui.components.StatusStrip
 import com.lifeos.app.ui.components.UndoSnackbar
 import com.lifeos.app.ui.connect.ConnectScreen
@@ -62,7 +66,7 @@ import com.lifeos.app.ui.settings.AboutScreen
 import com.lifeos.app.ui.settings.AppearanceScreen
 import com.lifeos.app.ui.settings.ConnectionSettingsScreen
 import com.lifeos.app.ui.settings.DaySettingsScreen
-import com.lifeos.app.ui.settings.NotificationsSettingsScreen
+import com.lifeos.app.ui.settings.NotificationsRoute
 import com.lifeos.app.ui.settings.PendingWritesScreen
 import com.lifeos.app.ui.settings.SettingsIndexScreen
 import com.lifeos.app.ui.settings.WidgetSettingsScreen
@@ -93,7 +97,12 @@ private const val NETWORK_DOCS =
  * cannot reach the server — which is the old app's error panel with extra steps.
  */
 @Composable
-fun LifeOsRoot(container: AppContainer) {
+fun LifeOsRoot(
+    container: AppContainer,
+    /** `type.key to targetId` from the notification that opened the app, if any. */
+    pendingTap: Pair<String, String>? = null,
+    onTapRead: () -> Unit = {},
+) {
     val context = LocalContext.current
     val navController = rememberNavController()
     val viewModel: LifeOsViewModel = viewModel(
@@ -127,6 +136,33 @@ fun LifeOsRoot(container: AppContainer) {
         }
     }
 
+    /*
+     * The notification tap (§8.4), handled in exactly one place.
+     *
+     * The Activity collects both the cold-start intent and `onNewIntent` into
+     * one value; this turns it into a destination plus a sheet. A reminder opens
+     * Today with the row's sheet expanded, a Needs-you opens Day, and a
+     * Goal-ready opens nothing because the celebration is already a global
+     * overlay over every destination.
+     */
+    LaunchedEffect(pendingTap) {
+        val tap = pendingTap ?: return@LaunchedEffect
+        viewModel.onNotificationTap(tap.first, tap.second)
+        onTapRead()
+    }
+
+    val tap by viewModel.notificationTap.collectAsStateWithLifecycle()
+    LaunchedEffect(tap) {
+        val current = tap ?: return@LaunchedEffect
+        val destination = when (current.type) {
+            com.lifeos.app.domain.NotificationType.NEEDS_YOU -> Routes.DAY
+            com.lifeos.app.domain.NotificationType.SYNC_PROBLEM -> Routes.SETTINGS_PENDING
+            else -> Routes.TODAY
+        }
+        navController.navigate(destination) { launchSingleTop = true }
+        viewModel.consumeNotificationTap(current)
+    }
+
     NavHost(
         navController = navController,
         startDestination = if (prefs.baseUrl.isNullOrBlank()) Routes.CONNECT else Routes.TODAY,
@@ -147,20 +183,31 @@ fun LifeOsRoot(container: AppContainer) {
         /* ---- the three that work without the shell ---- */
 
         composable(Routes.CONNECT) {
-            ConnectScreen(
-                onScanQr = { navController.navigate(Routes.PAIR) },
-                onEnterManually = { navController.navigate(Routes.SERVER) },
-                onWhereDoIFindThis = { openUrl(context, NETWORK_DOCS) },
-            )
+            BlockScaffold {
+                ConnectScreen(
+                    onScanQr = { navController.navigate(Routes.PAIR) },
+                    onEnterManually = { navController.navigate(Routes.SERVER) },
+                    onWhereDoIFindThis = { openUrl(context, NETWORK_DOCS) },
+                )
+            }
         }
 
         composable(Routes.PAIR) {
-            PairStubScreen(onEnterManually = { navController.navigate(Routes.SERVER) })
+            SecondaryScaffold(title = "Pair", onBack = navController::popBackStack) {
+                PairStubScreen(onEnterManually = { navController.navigate(Routes.SERVER) })
+            }
         }
 
         composable(Routes.SERVER) {
             val serverVm: ServerViewModel = viewModel(factory = ServerViewModel.factory(container))
             val serverState by serverVm.state.collectAsStateWithLifecycle()
+            SecondaryScaffold(
+                title = "Server",
+                // `server` is reachable from five places, including states with
+                // nothing behind it on the stack. Popping to nothing would leave
+                // a blank window, so an empty stack lands on Today.
+                onBack = { if (!navController.popBackStack()) navController.navigate(Routes.TODAY) },
+            ) {
             ServerScreen(
                 state = serverState,
                 onAddressChange = serverVm::onAddressChange,
@@ -182,69 +229,90 @@ fun LifeOsRoot(container: AppContainer) {
                 onScanQr = { navController.navigate(Routes.PAIR) },
                 onOpenNetworkDocs = { openUrl(context, NETWORK_DOCS) },
             )
+            }
         }
 
         composable(Routes.OUTDATED) {
             val state = connection
-            OutdatedScreen(
-                mismatch = (state as? ConnectionState.Outdated)?.mismatch
-                    ?: com.lifeos.app.data.api.ProtocolMismatchDto(),
-                clientProtocol = ApiClient.clientProtocol,
-                onDownload = { url -> openUrl(context, url) },
-                onChangeServer = { navController.navigate(Routes.SERVER) },
-            )
+            BlockScaffold {
+                OutdatedScreen(
+                    mismatch = (state as? ConnectionState.Outdated)?.mismatch
+                        ?: com.lifeos.app.data.api.ProtocolMismatchDto(),
+                    clientProtocol = ApiClient.clientProtocol,
+                    onDownload = { url -> openUrl(context, url) },
+                    onChangeServer = { navController.navigate(Routes.SERVER) },
+                )
+            }
         }
 
         /* ---- settings: a leaf graph behind the gear ---- */
 
         composable(Routes.SETTINGS) {
-            SettingsIndexScreen(
-                onOpen = { page ->
-                    when (page) {
-                        "appearance" -> navController.navigate(Routes.SETTINGS_APPEARANCE)
-                        "notifications" -> navController.navigate(Routes.SETTINGS_NOTIFICATIONS)
-                        "day" -> navController.navigate(Routes.SETTINGS_DAY)
-                        "connection" -> navController.navigate(Routes.SETTINGS_CONNECTION)
-                        "widget" -> navController.navigate(Routes.SETTINGS_WIDGET)
-                        "about" -> navController.navigate(Routes.SETTINGS_ABOUT)
-                        else -> Unit
-                    }
-                },
-            )
+            SecondaryScaffold(title = "Settings", onBack = navController::popBackStack) {
+                SettingsIndexScreen(
+                    onOpen = { page ->
+                        when (page) {
+                            "appearance" -> navController.navigate(Routes.SETTINGS_APPEARANCE)
+                            "notifications" -> navController.navigate(Routes.SETTINGS_NOTIFICATIONS)
+                            "day" -> navController.navigate(Routes.SETTINGS_DAY)
+                            "connection" -> navController.navigate(Routes.SETTINGS_CONNECTION)
+                            "widget" -> navController.navigate(Routes.SETTINGS_WIDGET)
+                            "about" -> navController.navigate(Routes.SETTINGS_ABOUT)
+                            else -> Unit
+                        }
+                    },
+                )
+            }
         }
 
         composable(Routes.SETTINGS_DAY) {
             val state by viewModel.state.collectAsStateWithLifecycle()
-            DaySettingsScreen(
-                settings = state.view?.settings
-                    ?: com.lifeos.app.data.api.SettingsDto(),
-                onPatchString = viewModel::patchSetting,
-                onPatchInt = viewModel::patchSetting,
-            )
+            SecondaryScaffold(title = "The day", onBack = navController::popBackStack) {
+                DaySettingsScreen(
+                    settings = state.view?.settings
+                        ?: com.lifeos.app.data.api.SettingsDto(),
+                    onPatchString = viewModel::patchSetting,
+                    onPatchInt = viewModel::patchSetting,
+                )
+            }
         }
 
-        // Notifications owns the channel strategy, so the page ships with the
-        // delivery layer it configures. The row opens an honest statement of
-        // that rather than a control that does nothing.
-        composable(Routes.SETTINGS_NOTIFICATIONS) { NotificationsSettingsScreen() }
+        composable(Routes.SETTINGS_NOTIFICATIONS) {
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            SecondaryScaffold(title = "Notifications", onBack = navController::popBackStack) {
+                NotificationsRoute(
+                    container = container,
+                    settings = state.view?.settings ?: com.lifeos.app.data.api.SettingsDto(),
+                    onPatchBool = viewModel::patchSetting,
+                    onPatchString = viewModel::patchSetting,
+                )
+            }
+        }
 
-        composable(Routes.SETTINGS_WIDGET) { WidgetSettingsScreen() }
+        composable(Routes.SETTINGS_WIDGET) {
+            SecondaryScaffold(title = "Home screen widget", onBack = navController::popBackStack) {
+                WidgetSettingsScreen()
+            }
+        }
 
         composable(Routes.SETTINGS_APPEARANCE) {
             val scope = androidx.compose.runtime.rememberCoroutineScope()
-            AppearanceScreen(
-                currentPaletteId = prefs.paletteId,
-                reducedMotionLocal = prefs.reducedMotionLocal,
-                onPickPalette = { id -> scope.launch { container.preferences.setPalette(id) } },
-                onReducedMotionChange = { value ->
-                    scope.launch { container.preferences.setReducedMotion(value) }
-                },
-            )
+            SecondaryScaffold(title = "Appearance", onBack = navController::popBackStack) {
+                AppearanceScreen(
+                    currentPaletteId = prefs.paletteId,
+                    reducedMotionLocal = prefs.reducedMotionLocal,
+                    onPickPalette = { id -> scope.launch { container.preferences.setPalette(id) } },
+                    onReducedMotionChange = { value ->
+                        scope.launch { container.preferences.setReducedMotion(value) }
+                    },
+                )
+            }
         }
 
         composable(Routes.SETTINGS_CONNECTION) {
             val state by viewModel.state.collectAsStateWithLifecycle()
             val scope = androidx.compose.runtime.rememberCoroutineScope()
+            SecondaryScaffold(title = "Connection", onBack = navController::popBackStack) {
             ConnectionSettingsScreen(
                 address = prefs.baseUrl,
                 state = connection,
@@ -261,23 +329,28 @@ fun LifeOsRoot(container: AppContainer) {
                     }
                 },
             )
+            }
         }
 
         composable(Routes.SETTINGS_PENDING) {
             val writes by viewModel.pendingWrites.collectAsStateWithLifecycle()
-            PendingWritesScreen(
-                writes = writes,
-                onRetryAll = viewModel::retryAllStranded,
-                onDiscard = viewModel::discardStranded,
-            )
+            SecondaryScaffold(title = "Pending writes", onBack = navController::popBackStack) {
+                PendingWritesScreen(
+                    writes = writes,
+                    onRetryAll = viewModel::retryAllStranded,
+                    onDiscard = viewModel::discardStranded,
+                )
+            }
         }
 
         composable(Routes.SETTINGS_ABOUT) {
-            AboutScreen(
-                versionName = BuildConfig.VERSION_NAME,
-                protocol = ApiClient.clientProtocol,
-                applicationId = BuildConfig.APPLICATION_ID,
-            )
+            SecondaryScaffold(title = "About", onBack = navController::popBackStack) {
+                AboutScreen(
+                    versionName = BuildConfig.VERSION_NAME,
+                    protocol = ApiClient.clientProtocol,
+                    applicationId = BuildConfig.APPLICATION_ID,
+                )
+            }
         }
     }
 
@@ -434,6 +507,26 @@ private fun AppShell(
                     onChangeServer = { navController.navigate(Routes.SERVER) },
                     onDismissStranded = viewModel::dismissStrandedNotice,
                     onSeeStranded = { navController.navigate(Routes.SETTINGS_PENDING) },
+                )
+
+                /*
+                 * The notification permission, asked in context (§8.2) — and
+                 * here rather than on Today because it is chrome: it belongs
+                 * wherever the user happens to be when the day first has
+                 * something scheduled in it. It draws nothing at all unless
+                 * there is a reminder to be had and permission is missing.
+                 */
+                val promptScope = androidx.compose.runtime.rememberCoroutineScope()
+                NotificationPermissionPrompt(
+                    data = state.view?.data,
+                    leadMinutes = state.view?.settings?.reminderLeadMinutes
+                        ?: com.lifeos.app.domain.Reminders.DEFAULT_LEAD_MINUTES,
+                    alreadyAsked = prefs.notificationPermissionAsked,
+                    onAsked = {
+                        promptScope.launch {
+                            container.preferences.setNotificationPermissionAsked(true)
+                        }
+                    },
                 )
 
                 // Content cross-fades on a destination change; the chrome above
@@ -653,21 +746,16 @@ private fun androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteS
 /**
  * The silenced line's text, or null.
  *
- * DND and quiet hours are read here rather than computed per screen so the
- * strip's wording has exactly one source. Quiet hours wrap past midnight, which
- * is why the comparison is not a naive `start <= now <= end`.
+ * The comparison itself lives in `domain/QuietHours` and is **not** written
+ * here. It used to be: this function had its own `LocalTime` version of the
+ * wrap-past-midnight rule, and the notification layer was about to grow a
+ * second one. One predicate, one definition — the strip and the notifier now
+ * disagree only if the shared function is wrong, in which case a test fails.
  */
 private fun silencedUntil(state: TodayUiState): String? {
     val settings = state.view?.settings ?: return null
-    if (settings.doNotDisturb) return "you turn it back on"
-    if (!settings.quietHoursSilent) return null
     val now = java.time.LocalTime.now()
-    val start = runCatching { java.time.LocalTime.parse(settings.quietHoursStart) }.getOrNull()
-        ?: return null
-    val end = runCatching { java.time.LocalTime.parse(settings.quietHoursEnd) }.getOrNull()
-        ?: return null
-    val inside = if (start <= end) now >= start && now < end else now >= start || now < end
-    return if (inside) settings.quietHoursEnd else null
+    return QuietHours.silencedUntil(settings, now.hour * 60 + now.minute)
 }
 
 private val DATE_LABEL = DateTimeFormatter.ofPattern("EEE d MMM")

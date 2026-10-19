@@ -7,9 +7,10 @@ repository and keeps working as a fallback. Nothing here touches it.
 Product and interaction decisions live in [`docs/UI_SPEC.md`](docs/UI_SPEC.md). That file is
 the source of truth; this one is how to build and how the code is arranged.
 
-**Milestone 2** — the remaining screen surface: Day, You, the celebration, the five sheets,
-the undo snackbar and the expanded-width two columns. What is and is not built is listed
-under [Status](#status).
+**Milestone 3** — background reliability: notifications with per-type sounds and real
+channels, `AlarmManager`-seeded reminders, periodic background sync, and the Glance home
+screen widget. Plus three bugs found by driving milestone 2 on hardware. What is and is not
+built is listed under [Status](#status).
 
 ---
 
@@ -25,6 +26,7 @@ The toolchain is pinned, and the combination matters: AGP 8.x must not run on Gr
 | Kotlin | 2.1.20 (+ Compose compiler plugin) |
 | Compose BOM | 2025.04.01 |
 | Room | 2.7.1 |
+| Glance (app widget) | 1.1.1 |
 | compileSdk / targetSdk / minSdk | 35 / 35 / 26 |
 
 ```powershell
@@ -39,7 +41,18 @@ $env:ANDROID_HOME = "C:\Android\sdk"
 ```
 
 The build needs no `local.properties`: `ANDROID_HOME` is enough. It builds from a cold clone
-with no other setup.
+with no other setup — **including the notification sounds**, which are committed WAVs in
+`app/src/main/res/raw/`. `scripts/build-sounds.mjs` regenerates them from the note tables in
+`apps/web/src/lib/notify.ts`, and is run by hand when a sound design changes:
+
+```powershell
+node scripts\build-sounds.mjs   # rewrites app/src/main/res/raw/*.wav — commit the output
+```
+
+A build must never depend on having run it. `WidgetAndSoundsTest` pins the committed files
+against the durations those note tables imply, so a stale `res/raw` fails `test` rather than
+shipping a chime that is no longer the web client's chime. The five files are byte-identical
+to the Expo app's `assets/sounds/`, which is the same renderer over the same tables.
 
 > **If Gradle says `Plugin [id: 'com.android.application'] was not found`** and claims it only
 > searched the Gradle Central Plugin Repository, check that nothing — not even a comment —
@@ -66,6 +79,10 @@ To see the server's address as the phone must reach it, run Life OS and read the
 or `GET /api/v1/pair/reachability`. If **Test** reports `lan: false`, the server is bound to
 loopback only and no phone can reach it — see [`docs/NETWORK.md`](../../docs/NETWORK.md).
 
+To place the widget: long-press the home screen → **Widgets** → **Life OS**. It has no
+settings of its own — it follows the app's palette, reads the same cache, and is refreshed by
+the same background sync.
+
 ---
 
 ## Architecture
@@ -87,10 +104,16 @@ objects by constructor — and no telemetry, analytics or crash-reporting SDK an
 
 ```
 Compose  ──reads──►  Room  ◄──writes──  LifeOsRepository ──► OkHttp/Retrofit
-   │                   ▲                       ▲
-   │ tap               │                       │ SyncWorker (WorkManager)
-   └─► pending_writes ─┘                       └─ life-day guard
+Widget   ──reads──►   ▲ ▲                      ▲
+Reminders──reads──►   │ │                      │ SyncWorker (WorkManager)
+   │ tap              │ │                      └─ life-day guard
+   └─► pending_writes ┘ └─ fired_notifications ◄── ReminderCoordinator ──► AlarmManager
 ```
+
+The widget and the notification layer are **readers**, exactly like the UI: they collect the
+same Room snapshot and neither of them fetches. That is what keeps one seam — a widget with
+its own network call is a widget showing a spinner on a home screen, and a notification layer
+with its own fetch is a second connection state machine to keep in agreement with the first.
 
 **Two reads, not one.** `GET /api/v1/dashboard/today` carries no `settings` key — the
 server does not put one there — so settings are a second request on the same poll, cached in
@@ -108,9 +131,67 @@ question the user asked by tapping a chip.
 
 | Package | Holds |
 |---|---|
-| `domain` | Pure Kotlin, no Android: the life-day, the guard, the overlay, the agenda epoch, the growth geometry, and **every filtering/counting predicate** |
+| `domain` | Pure Kotlin, no Android: the life-day, the guard, the overlay, the agenda epoch, the growth geometry, the notification derivation rules, the widget's tier rule, and **every filtering/counting predicate** |
 | `data` | Room, Retrofit/OkHttp, the token store, preferences, the repository, the sync worker |
+| `notify` | Channels, posting, `AlarmManager` seeding, the three receivers, and the runner |
+| `widget` | The Glance app widget and its two actions |
 | `ui` | Compose. `theme` holds the palettes and the non-themed token objects |
+
+### Notifications (§8.1–§8.4)
+
+The arithmetic is in `domain/Reminders.kt` and has no Android in it: the derived time
+(`remindAt ?? eventAt - reminderLeadMinutes`), the window (`eventAt + durationMinutes`,
+which an item leaves whether or not it was completed), the quiet-hours comparison that
+**wraps past midnight**, the once-only rule, and which sound a type resolves to. That is the
+part four separate bugs lived in, so it is the part with tests.
+
+`notify/` is the thin Android layer above it. Three things in it are deliberate:
+
+**One channel per sound, with the sound in the id.** A channel's sound is fixed when it is
+created and the OS owns it from then on. Sharing a channel across sounds is not a shortcut,
+it is a picker that silently does nothing — which the old app shipped for its whole life. So
+ids are `lifeos-<type>-<soundId>`, changing a sound creates the new channel and deletes the
+old one, and adding a sixth sound later touches no existing channel. The Settings page also
+links out to `ACTION_CHANNEL_NOTIFICATION_SETTINGS` for the live channel, because once the OS
+owns the sound, the OS's own screen is the authority and ours is a convenience.
+
+**The runner is not owned by a screen.** `ReminderCoordinator` is created by `AppContainer`
+and started from `LifeOsApp.onCreate`, and it collects Room. In the old app the equivalent
+was mounted by the Today screen, so if the app opened anywhere else — which includes every
+notification tap — nothing was ever registered with the OS.
+
+**The once-only set is a table, and the claim is an `INSERT OR IGNORE`.** `fired_notifications`
+(database version 3) survives the process, so a reminder does not say itself again on the next
+cold start; and SQLite decides who wins, so the alarm receiver and the in-app poll racing
+cannot both fire. `POST /tasks/:id/notified` is enqueued **before** anything about audio or
+visuals is decided, so it still happens under DND and quiet hours — that is a contract, not an
+optimisation, and skipping it means every suppressed reminder arrives the instant DND ends.
+
+Taps go through one handler fed by **both** `onCreate`'s intent and `onNewIntent`. The
+listener alone misses the cold start, which is the common case because the notification is why
+the app is opening.
+
+### What background delivery actually guarantees
+
+Stated plainly, because the alternative is promising something the platform will not deliver.
+
+| Mechanism | What it is for | What Android actually promises |
+|---|---|---|
+| `AlarmManager` alarms, seeded from the derived times | The reminders themselves | **Strong.** `setExactAndAllowWhileIdle` when the user has allowed exact alarms — to the minute, through Doze. `setAndAllowWhileIdle` when they have not: still escapes Doze, but the OS may batch it, and in deep Doze that can be several minutes late |
+| `WorkManager` periodic sync, 15 min | Keeping the cache and the widget current | **Weak, and best-effort.** Fifteen minutes is a floor, not a schedule. In Doze it is deferred to maintenance windows, hours apart on an idle phone overnight; OEM battery management (ColorOS, which this is tested on, among the stricter) can defer or drop it until the app is next opened |
+| The foreground poll | The screen you are looking at | Exact, and irrelevant the moment the app is backgrounded |
+
+So **nothing the user must hear depends on the periodic work.** It is a freshener. The things
+that must arrive are alarms, which is a much stronger promise, and they are re-seeded on every
+poll, on `BOOT_COMPLETED`, on a timezone change and on `MY_PACKAGE_REPLACED` — all four of
+which clear what the OS was holding.
+
+`SCHEDULE_EXACT_ALARM` is declared; `USE_EXACT_ALARM` is **not**, and will not be. The latter
+cannot be revoked and is reserved by policy for alarm clocks and calendars; a habit tracker
+claiming it is what gets an app flagged. On the Android 16 test device exact alarms are **not**
+granted by default, so the inexact path is the one that actually runs — Settings →
+Notifications says so in words and links to the screen that grants it. There is no foreground
+service and no persistent notification.
 
 ### Two rules the code enforces structurally
 
@@ -135,6 +216,15 @@ by construction, and `DayBuckets` buckets only what the partition handed it. A t
 both halves: nothing appears in both lists, and together they are exactly what
 `Predicates.scheduled` returns.
 
+Milestone 3 added three surfaces that could each have grown their own copy of a rule, and
+did not: the notification layer's "needs you" **is** `Predicates.needsYou` (a notification
+about a review Day does not list is the same bug with a sound on it), the widget's next-up
+**is** the server's own agenda order, and the widget's ribbon **is** `Ribbon.segments`,
+quantised. It also removed a copy that had already appeared: the status strip's quiet-hours
+comparison was hand-written in `LifeOsRoot` and the notifier was about to write a second one,
+so both now call `domain/QuietHours` — which is the comparison that wraps past midnight, and
+therefore exactly the kind nobody wants two of.
+
 ---
 
 ## Isolation contract
@@ -155,6 +245,8 @@ This folder is a **standalone Gradle build**. The contract from
   | `packages/shared/src/{growth,journey}.ts` | `domain/Growth.kt`, `ui/theme/GrowthTokens` | `GrowthGeometryTest` |
   | `packages/shared/src/agenda.ts` (`compareAgenda`), `tasks.ts` (`isPinned`) | `domain/Predicates.kt` | `OverlayAndEpochTest` |
   | `mobile-frontend/app/lib/theme.ts` (`ACTIVITY_COLORS`) | `ui/theme/ActivityColors` | — |
+  | `packages/shared/src/schedule.ts` (`notifyAt`, `isWithinQuietHours`) | `domain/Reminders.kt` | `RemindersTest` |
+  | `apps/web/src/lib/notify.ts` (the five note tables) | `scripts/build-sounds.mjs` → `res/raw/*.wav` | `WidgetAndSoundsTest` |
 
   Change the TypeScript and these tests fail, which is the whole point: a drifted copy makes
   the phone and the desktop different objects.
@@ -186,11 +278,29 @@ browser. `adb logcat | findstr /i cleartext` prints the real error.
 (`GET /api/v1/protocol` → `{"protocol":3,"minProtocol":3}`). UI_SPEC §7.7's "protocol 2" is
 likewise stale. `protocol.ts` is the source of truth and this app sends 3.
 
-**The token is never logged.** It lives in Keystore-backed `EncryptedSharedPreferences`, is
-mirrored in memory only so the OkHttp interceptor does not hit the Keystore per request, and
-there is deliberately **no logging interceptor at any build type** — one would print the
-`Authorization` header. Backup and device-transfer are excluded in
+**The token is never logged — and never handed to the keyboard.** It lives in Keystore-backed
+`EncryptedSharedPreferences`, is mirrored in memory only so the OkHttp interceptor does not hit
+the Keystore per request, and there is deliberately **no logging interceptor at any build
+type** — one would print the `Authorization` header. Backup and device-transfer are excluded in
 `res/xml/data_extraction_rules.xml` so it cannot leave the device that way either.
+
+The second half of that was a real leak, found by typing into the field on a phone. The token
+field masked correctly, so it looked right, but the IME's **suggestion strip displayed the
+token in plaintext** as it was typed — which means the keyboard had the value, could show it
+to anyone looking at the screen, and could add it to its personalised dictionary. The fix is
+`KeyboardType.Password`: `VisualTransformation` is a drawing concern and buys none of this.
+Verified on the device rather than assumed — `adb shell dumpsys input_method` reports
+`inputType=0x81` (`TYPE_CLASS_TEXT or TYPE_TEXT_VARIATION_PASSWORD`) for that field and the
+suggestion strip is gone. It stays `Password` even while "show" is on: revealing the
+characters to the *user* is not a reason to hand them to the keyboard.
+
+Honest limit: `imeOptions` reports `0x2000006` (`NO_FULLSCREEN or ACTION_DONE`), so
+`IME_FLAG_NO_PERSONALIZED_LEARNING` is **not** set — Compose's `KeyboardOptions` has no way to
+add an arbitrary IME flag. The password variation is the platform's own mechanism for "do not
+learn this" and every mainstream IME honours it, so this is belt without braces rather than a
+hole. The audit found no other field that can hold a secret: the address is not one (it gets
+`autoCorrectEnabled = false` for correctness, since autocorrect mangles `192.168.29.131`), and
+the study sheet's two fields are a title and a number.
 
 **Kotlin nests block comments.** `/*` inside a KDoc opens a nested comment. Writing
 `` `/api/v1/*` `` in a doc comment swallows the rest of the file and produces a baffling
@@ -203,7 +313,7 @@ there is deliberately **no logging interceptor at any build type** — one would
 
 ## Tests
 
-`.\gradlew test` — 118 unit tests, no device and no server. They cover the parts worth
+`.\gradlew test` — 172 unit tests, no device and no server. They cover the parts worth
 testing:
 
 | File | Covers |
@@ -216,10 +326,16 @@ testing:
 | `PaletteContrastTest` | 4.5:1 for body text and 3:1 for large text and the nav indicator across all eight palettes, the shared half really being shared, and nothing light in the tree |
 | `AddressInputTest` | Address normalisation (a real bug found here: `http://` became `http://http:/`) and the Stale→Unreachable thresholds |
 | `DayModelTest` | Day's bucketing by **life-day** (01:30 is still "Today"), the No-time bucket that is never dropped and is always last, past dates drawn first rather than lost, in-bucket time order, weekday labels past a week; the Needs-you/Scheduled partition being disjoint and complete; the ribbon's fractions, clamping, now-marker, legend de-duplication and the planned-day shape |
-| `AnalyticsAndCelebrationTest` | The four ranges and their wire values, an axis that is never zero, a target that cannot fall outside its own chart, a 130% day that is not clipped, percentage-**points** formatting; the celebration queue's rung-over-goal choice, oldest-debt-first stable ordering, one-at-a-time, and the dismissed set that stops the dialog reappearing before the refetch; goal ordering and the rarity ladder's rungs |
+| `AnalyticsAndCelebrationTest` | The four ranges and their wire values, an axis that is never zero, **the y-domain rule** — a reachable target riding the same axis, a far-off target going off-scale rather than flattening the week onto the floor, a 130% day that is not clipped — percentage-**points** formatting; the celebration queue's rung-over-goal choice, oldest-debt-first stable ordering, one-at-a-time, and the dismissed set that stops the dialog reappearing before the refetch; goal ordering and the rarity ladder's rungs |
+| `RemindersTest` | The derived notification time in all its forms (`remindAt` wins outright, `eventAt - lead` otherwise, a clamped negative lead, a malformed instant costing one notification and not the screen); the window an item leaves whether or not it was completed; the plan's alarm seeding, ordering, past-and-horizon exclusions and its needs-you agreeing with `Predicates`; the once-only filter; quiet hours wrapping past midnight, start-equal-to-end meaning *none*, and a malformed time never meaning permanent silence; channel ids carrying their sound, the id/group names being pinned against a rename, sound resolution through user → server → type, and a new sound choice adding exactly one channel and migrating none |
+| `WidgetAndSoundsTest` | The tier rule at every threshold, the smallest tier having no tick at all, and width winning over height; the quantised ribbon's cell count, colours, lived/planned/done treatment, and a now-marker that stays in range at both ends of the day; `upNext` taking the server's order; and the committed WAVs — present, 16-bit mono 44.1kHz PCM with a truthful data size, and as long as their note tables say |
+| `ServerColorTest` | Every colour form the server really sends, including the `rgba()` one that was falling back to the accent and drawing *unrecorded* time as the loudest colour on the screen; out-of-range clamping; and null for anything unparseable so callers keep their fallback |
 
-Nothing in the suite writes to `data/lifeos.db`. The only contact with a live instance during
-development was a read-only `GET /health`.
+Nothing in the suite writes to `data/lifeos.db`. Milestone 3's on-device verification ran
+entirely against a **seeded sandbox instance** on its own port with its own database; the
+production instance was never written to and never restarted. The dev app was reinstalled
+fresh and pointed at the sandbox before it was allowed to poll anything, precisely because
+the notification layer's first act on a due reminder is to `POST /tasks/:id/notified`.
 
 ### Lint
 
@@ -231,6 +347,7 @@ development was a read-only `GET /health`.
 | `AndroidGradlePluginVersion` | 3 | AGP 9.x requires Gradle 9, and AGP 8.x must not run on Gradle 9. Moving is a deliberate migration, not a nit. |
 | `OldTargetApi` | 1 | targetSdk 35 is the proven combination; 36 is available and untested here. |
 | `InsecureBaseConfiguration` | 1 | **This is the feature.** Cleartext on the base config is what makes a LAN server reachable; see above. |
+| `UnusedAttribute` | 2 | `targetCellWidth`/`targetCellHeight` on the widget are API 31+. They are the modern way to say "4×2", and `minWidth`/`minHeight` are the pre-31 fallback sitting right beside them. Both are needed. |
 
 `lint` is configured with `abortOnError = false` so it reports rather than gates.
 
@@ -299,18 +416,77 @@ development was a read-only `GET /health`.
   so the two layouts cannot drift.
 - **§3.5 Settings** — the index, Appearance (palette + reduced motion), **The day** (reset
   time, planned wake, planned sleep, reminder lead, read-only timezone — all through the
-  write queue), Connection, the pending-write list, Widget, About, and an honest
-  Notifications page.
+  write queue), Connection, the pending-write list, Widget, About, and a real
+  **Notifications** page: per-type sound pickers, quiet hours and DND (server-backed, so the
+  website honours them too), a link out to the OS's own channel screen for each type, an
+  honest exact-alarms state, and an "Android is blocking notifications" path that is a link
+  rather than a dead end.
+- **§8.1–§8.4 Notifications** — five types, one channel per sound created up front, the five
+  committed WAVs, `AlarmManager` seeding from the derived times, re-seeding on boot/timezone/
+  update, the durable once-only claim, `/notified` posted even under DND, **Done** and
+  **Snooze 10m** actions that work offline, and tap handling through both the cold-start
+  intent and `onNewIntent`. `POST_NOTIFICATIONS` is requested in context — the first time the
+  day actually has something scheduled in it, and on opening Settings → Notifications — never
+  on first launch cold.
+- **§8.5 The widget** — Glance, three content tiers picked from the real dp box, the growth
+  ring with its ghosted 100%, `efficiencyPct`, `dailyXp/target`, the pulse word (replaced by a
+  small hollow dot when the cache is stale), the quantised ribbon with its now-marker, the
+  next one or two things with 48dp tick targets, and up to three manual activity chips. Ticks
+  and chips go through the same write queue, so they work with the app closed. It never
+  fetches: it reads the same Room snapshot and is refreshed by the same sync.
+- **Background sync** — a 15-minute `WorkManager` periodic job that drains the queue, refetches,
+  reconciles the alarms and refreshes the widget. See
+  [what it actually guarantees](#what-background-delivery-actually-guarantees); it is a
+  freshener, not a delivery mechanism.
+- **A shared scaffold for every secondary screen** — `SecondaryScaffold` applies `safeDrawing`
+  insets and gives each one a top app bar with a working back control, so the eleventh such
+  screen cannot forget to.
+
+### Fixed in this milestone, found on hardware
+
+Three bugs the user found by driving milestone 2 on a real phone, and two more found by
+driving milestone 3 on it.
+
+1. **Secondary screens ignored window insets — systemic.** On `server` and on the Settings
+   index the first row of content drew *behind the status bar*: "Appearance" sat under the
+   clock. Today/Day/You were fine, which is why it went unnoticed — they have an app bar
+   inside a `Scaffold`, which consumes the inset, while the secondary screens were composed
+   straight into the `NavHost`. Fixed as a pattern: `SecondaryScaffold` for the eleven
+   non-tab destinations and `BlockScaffold` for the three terminal ones. Settings also had
+   **no visible back control at all** — it was navigable by gesture and by nothing else.
+2. **The API token leaked to the keyboard.** See
+   [Things that will bite you](#things-that-will-bite-you).
+3. **Dead space in the Last 7 days chart.** The y-domain was `max(data, target)`, so against
+   a 200-XP target a 25-XP morning drew flat on the floor under a dashed line on the ceiling,
+   two thirds of the box empty. Now the data owns the domain and the target is a guest —
+   see the rule below.
+4. **The widget's ribbon drew as one solid bar.** Two Glance facts, both found by looking at
+   the thing on a home screen: a container holds at most ten children (24 cells were silently
+   truncated, so the ribbon is chunked into four groups of six), and a child with both
+   `width=match_parent` and a weight makes `LinearLayout` distribute *negative* excess, so the
+   first cell took the whole row.
+5. **`rgba()` colours fell back to the accent.** The server sends its "Unlogged" timeline
+   block as `rgba(255,255,255,0.05)`, and the app's only colour parser was hex-only. Every
+   caller fell back to `palette.accent`, so the part of the day that had **not** been recorded
+   drew in the brightest colour in the theme — on the new widget *and* on Day's ribbon, where
+   it had been wrong since that screen shipped. There is now one parser, `ui/theme/serverColor`,
+   which handles every form the server sends, and a test for it.
 
 ### Stubbed or not built
 
-- **§3.5 Notifications** is a page that states why it is not built: a channel's sound is
-  fixed at creation and the OS owns it from then on (§8.2), so the picker and the delivery
-  layer have to ship together. A sound picker in front of no channels is the old app's dead
-  control again. Out of scope this milestone, as briefed.
-- **§8.1–8.4 notifications**, **§8.5 the widget** (its settings page says so), background
-  polling beyond foreground sync, and **§7.3 QR pairing** (a stub route that falls through
-  to manual entry, which is a complete path) are later milestones.
+- **§7.3 QR pairing** — still a stub route that falls through to manual entry, which is a
+  complete path.
+- **No widget preview image.** The launcher's picker shows the app icon rather than a
+  rendered preview, because there is no `previewImage`/`previewLayout`. It is a first
+  impression and it is not a good one; it needs a static preview layout, which is a small
+  piece of work this milestone did not get to.
+- **The widget is not verified at 2×2.** The tier rule is unit-tested at every threshold and
+  the 4×2 and 4×3 boxes were checked on the device; `COMPACT` has only been exercised by
+  tests.
+- **Snooze diverges from other clients by design** (open question #5): it is a purely local
+  re-alarm, `notifiedAt` is already set, and the web client will not chime again.
+- **No `svg` rendering**, no properties history curves, no task undo, and `constellation` /
+  `ascent` growth styles — all unchanged from milestone 2.
 - **Agent `svg`** is still not rendered, on Today or in any sheet. It is untrusted and needs
   a sandbox; the agenda sheet says so where artwork exists rather than drawing it.
 - **No `properties` history curves.** The analytics payload carries a `series` per property;
@@ -356,6 +532,38 @@ development was a read-only `GET /health`.
    day; a wheel picker returning 07:13 would store a precision nobody meant. A value the
    server holds that is not on our list is still shown, and shown as selected.
 8. **Settings is a second request** (see Architecture). §7.1 implies one read.
-9. **Database version 2.** A hand-written `MIGRATION_1_2` adds `server_settings`. There is
-   still no `fallbackToDestructiveMigration`: `pending_writes` holds writes the user believes
-   they made, and dropping them to save writing six lines of SQL is not a trade.
+9. **Database version 3.** Hand-written `MIGRATION_1_2` (`server_settings`) and
+   `MIGRATION_2_3` (`fired_notifications`). There is still no
+   `fallbackToDestructiveMigration`: `pending_writes` holds writes the user believes they
+   made, and dropping them to save writing six lines of SQL is not a trade.
+10. **The chart's y-domain is sized to the data, not to the target.** UI_SPEC says the target
+    rides the same axis as the actual, and against a reachable target it still does. But taken
+    literally it produced the dead-space bug above, so the rule is now
+    `axisMax = max(dataMax, min(target, 2 × dataMax)) × 1.15`: the target may raise the domain
+    only as far as twice the data, past which it is **off-scale** — the dashed line is pinned
+    just inside the ceiling, drawn dimmer and longer-dashed so it reads as a boundary rather
+    than a value, and the caption underneath prints the figure and says it is above the chart.
+    The target is never silently dropped and never silently rescaled, and a day that exceeds
+    its target is inside the limit by construction, so a 130% day is still not clipped.
+    Percentage series (consistency) keep a fixed 0–100 domain, because a quiet week must look
+    like a quiet week.
+11. **Per-type notification sounds are device-local; quiet hours and DND are not.** The server
+    has one `notificationSound`, which this app reads as the *default* for Reminder and
+    Due-now so the phone agrees with the dashboard out of the box. A per-type choice is bound
+    to an Android channel and therefore to this install, so writing it back would describe one
+    phone's channels to every client and the web client has no channels at all. Same reasoning
+    as the palette (§9.1). Quiet hours and DND go the other way — they are statements about
+    *you*, the website honours them, so they stay server settings and are patched through the
+    write queue like everything else.
+12. **The widget's chips get a higher threshold than the ribbon.** §8.5 gives one ("below
+    ~150dp tall, drop the ribbon and the chips"). Measured on the device, a 4×2 box is
+    366 × 203dp and everything above the chips comes to about 180dp of it, so at 4×2 the
+    chips had nowhere to go and were being dropped by the `Column` overflowing — the right
+    outcome reached by accident. They are now a separate `TALL` tier at 230dp, so it is a
+    decision with a test rather than a clip.
+13. **The widget's ribbon is quantised into 24 equal cells.** Glance has `defaultWeight()` but
+    no *fractional* weight, so a segment that is 7% of the day cannot be given 7% of the row,
+    and §8.5 forbids a computed pixel width outright. So `Ribbon.cells` maps the same
+    fractional segments Day draws onto equal cells — hourly resolution, which is honest for
+    something the size of a launcher cell, and the two ribbons cannot disagree about the shape
+    of the day because they read the same function.

@@ -18,6 +18,7 @@ retrofit = "2.11.0"
 serialization = "1.8.0"
 retrofitSerialization = "1.0.0"
 work = "2.10.0"
+glance = "1.1.1"
 datastore = "1.1.3"
 securityCrypto = "1.1.0-alpha06"
 coroutines = "1.10.1"
@@ -51,6 +52,13 @@ androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+
+# Glance is the native replacement for the old app's react-native-android-widget.
+# An app widget is RemoteViews, not Compose: Glance compiles a composition down
+# to RemoteViews, which is why its modifier vocabulary is much narrower than
+# Compose's (no weights with a fraction, no Canvas) — see widget/.
+androidx-glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
+androidx-glance-material3 = { module = "androidx.glance:glance-material3", version.ref = "glance" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 
