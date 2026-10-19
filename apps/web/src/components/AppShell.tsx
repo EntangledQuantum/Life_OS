@@ -7,10 +7,10 @@ import {
   Settings,
   Target,
 } from "lucide-react";
-import { isWithinQuietHours } from "@life-os/shared";
+import { isTimelineTask, isWithinQuietHours } from "@life-os/shared";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { asset } from "@/lib/deploy";
+import { asset, LANDING_PATH } from "@/lib/deploy";
 import { useUiStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
@@ -45,7 +45,7 @@ export function AppShell() {
    * now. What is landing in the next few minutes is already the top of the
    * Quick log, and a number on the tab you are looking at says nothing.
    */
-  const pending = data?.tasks.filter((t) => t.status === "active").length ?? 0;
+  const pending = data?.tasks.filter(isTimelineTask).length ?? 0;
   const silenced = Boolean(
     settings &&
       (settings.doNotDisturb ||
@@ -66,9 +66,12 @@ export function AppShell() {
 
       <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[oklch(7%_0.01_260_/_0.85)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3.5">
-          {/* Doubles as the way back out to the landing page. */}
+          {/*
+            The way back out to the landing page, which is no longer what `/`
+            opens on a self-hosted instance. See lib/deploy.ts.
+          */}
           <Link
-            to="/"
+            to={LANDING_PATH}
             className="group flex items-center gap-3.5 rounded-xl transition-opacity hover:opacity-80"
             title="Back to the Life OS home page"
           >

@@ -14,6 +14,18 @@ import { withBase } from "./base";
 export const IS_PAGES = import.meta.env.VITE_DEPLOY_TARGET === "pages";
 
 /**
+ * Where the landing page lives in each build.
+ *
+ * On the public site it *is* the site, so it keeps the root. On a self-hosted
+ * instance the root opens the product instead — someone who reached their own
+ * server is there to use it, not to read the pitch — so the landing page moves
+ * to `/home` and is reached from the logo in the app header.
+ *
+ * A route path, not a URL: the router's basename adds the `/lifeos` prefix.
+ */
+export const LANDING_PATH = IS_PAGES ? "/" : "/home";
+
+/**
  * Resolve a file in `public/` against the base path. Pages serves the site
  * from `/<repo>/` and the gateway from `/lifeos/`, so a bare `/icon.png` 404s.
  */

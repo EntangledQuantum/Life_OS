@@ -4,12 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Bell, Calendar, Check, ExternalLink, Repeat } from "lucide-react";
-import {
-  isAgentStatus,
-  isPinned,
-  type Task,
-  type TimelineBlock,
-} from "@life-os/shared";
+import { isTimelineTask, type Task, type TimelineBlock } from "@life-os/shared";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -82,13 +77,7 @@ export function TimelinePage() {
    */
   const needsYou = useMemo(
     () =>
-      open.filter(
-        (t) =>
-          !t.eventAt &&
-          !t.remindAt &&
-          !isPinned(t) &&
-          !isAgentStatus(t),
-      ),
+      open.filter((t) => !t.eventAt && !t.remindAt && isTimelineTask(t)),
     [open],
   );
 
@@ -96,9 +85,7 @@ export function TimelinePage() {
   const groups = useMemo(() => {
     const byDay = new Map<string, Task[]>();
     for (const task of open) {
-      // A pinned card is drawn as a card. Listing it here as well is the same
-      // thing twice on one screen, with two places to tick it.
-      if (isPinned(task) || isAgentStatus(task)) continue;
+      if (!isTimelineTask(task)) continue;
       const when = task.eventAt ?? task.remindAt;
       if (!when) continue;
       const key = dayKey(new Date(when));
@@ -124,11 +111,7 @@ export function TimelinePage() {
       open
         .filter(
           (t) =>
-            t.eventAt &&
-            dayKey(new Date(t.eventAt)) === today &&
-            // Cards are shown as cards, here as everywhere else.
-            !isPinned(t) &&
-            !isAgentStatus(t),
+            t.eventAt && dayKey(new Date(t.eventAt)) === today && isTimelineTask(t),
         )
         .sort((a, b) => (a.eventAt ?? "").localeCompare(b.eventAt ?? "")),
     [open, today],

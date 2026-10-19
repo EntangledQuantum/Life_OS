@@ -191,6 +191,23 @@ export function isAgentStatus(task: Pick<Task, "meta">): boolean {
 }
 
 /**
+ * Does this open task appear on the Timeline page?
+ *
+ * Timeline lists everything that is active except the pinned cards and the
+ * agent status strip — those are drawn as cards on the front page, and listing
+ * them again would be the same thing twice with two places to tick it.
+ *
+ * The nav badge counts exactly this. It used to count every active task, so a
+ * day whose only open work was two pinned cards showed a badge of "2" over a
+ * page saying "Nothing scheduled". One rule, one place.
+ */
+export function isTimelineTask(
+  task: Pick<Task, "slot" | "meta" | "status">,
+): boolean {
+  return task.status === "active" && !isPinned(task) && !isAgentStatus(task);
+}
+
+/**
  * Does this task carry enough presentation to be worth drawing as a card
  * rather than a list row? A title alone is a row; a body, an image or a
  * control is a card.

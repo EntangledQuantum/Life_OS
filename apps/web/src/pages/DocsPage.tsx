@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import { Check, Copy, FileText, Github, Menu, Search, X } from "lucide-react";
-import { asset, REPO_URL } from "@/lib/deploy";
+import { asset, LANDING_PATH, REPO_URL } from "@/lib/deploy";
 import { cn } from "@/lib/utils";
 import {
   DOC_GROUPS,
@@ -86,7 +86,7 @@ export function DocsPage() {
           >
             <Menu className="h-4 w-4" />
           </button>
-          <Link to="/" className="flex shrink-0 items-center gap-2.5">
+          <Link to={LANDING_PATH} className="flex shrink-0 items-center gap-2.5">
             <img src={asset("icon.png?v=3")} alt="" className="h-8 w-8" />
             <span className="text-base font-bold tracking-tight">LIFE OS</span>
           </Link>
@@ -95,7 +95,7 @@ export function DocsPage() {
             Docs
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <Link to="/" className="btn px-3 py-2 text-sm">
+            <Link to={LANDING_PATH} className="btn px-3 py-2 text-sm">
               Home
             </Link>
             <a
