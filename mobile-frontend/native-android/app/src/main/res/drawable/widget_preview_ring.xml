@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The widget's progress ring, for the picker preview only.
+
+  A still of what `WidgetArt.ring` draws at 68% in the default (bloom) palette.
+  It is deliberately a fixed value rather than live data: the picker is shown
+  before the widget exists, so there is no snapshot to read and an empty ring
+  would advertise an empty product.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="40"
+    android:viewportHeight="40">
+    <!-- The track: the ghosted 100% state, always behind (UI_SPEC §4.3). -->
+    <path
+        android:strokeColor="#F6F4F8"
+        android:strokeAlpha="0.14"
+        android:strokeWidth="4"
+        android:fillColor="#00000000"
+        android:pathData="M20,3 a17,17 0 1,1 -0.01,0" />
+    <!-- The live arc: 68% of the way round, from twelve o'clock, clockwise. -->
+    <path
+        android:strokeColor="#FF5FA2"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M20,3 A17,17 0 1,1 7.1,31.1" />
+</vector>

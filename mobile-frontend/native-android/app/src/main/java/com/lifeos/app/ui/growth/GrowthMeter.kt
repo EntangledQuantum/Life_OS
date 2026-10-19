@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,7 +47,6 @@ import com.lifeos.app.ui.theme.Palette
 import com.lifeos.app.ui.theme.serverColor
 import com.lifeos.app.ui.theme.Spacing
 import com.lifeos.app.ui.theme.palette
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /** The styles this build ships. `constellation` and `ascent` are postponed. */
@@ -119,12 +119,31 @@ fun GrowthMeter(
 
     val complete = efficiencyPct >= 100.0
 
-    BoxWithConstraints(modifier = modifier) {
-        val side = min(maxWidth.value, min(maxHeight.value, maxSize.value)).dp
+    /*
+     * Two centred children, and both halves of that sentence are load-bearing.
+     *
+     * **Centred**, because `BoxWithConstraints` aligns at `TopStart` by default
+     * and the figure is a fixed square inside a full-width card: on a 1080px
+     * device the flower's centre sat at 27% across instead of 50%.
+     *
+     * **Two**, because the halo needs a bigger node than the figure. A draw
+     * modifier clips to its own bounds, so a halo of radius `0.78 · side` drawn
+     * into the figure's own `side`-sized node was cut off by a hard rectangle
+     * at every edge. The halo gets `HALO_BOX · side` and is allowed to overflow
+     * the meter's box vertically; the figure keeps the box's size, so every
+     * style — and the sprout's deliberately right-aligned readout (§4.3) — is
+     * laid out exactly as before, only in the middle of the card.
+     */
+    BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
+        val side = Growth.figureSide(maxWidth.value, maxHeight.value, maxSize.value).dp
+
+        Halo(
+            complete = complete,
+            palette = p,
+            modifier = Modifier.requiredSize(Growth.haloBoxSide(side.value).dp),
+        )
 
         Box(modifier = Modifier.size(side), contentAlignment = Alignment.Center) {
-            Halo(complete = complete, palette = p, modifier = Modifier.fillMaxSize())
-
             when (style) {
                 GrowthStyle.SPROUT -> Sprout(fill, complete, p)
                 GrowthStyle.ORB -> Orb(fill, complete, p)
@@ -177,6 +196,11 @@ fun GrowthMeter(
  * It breathes, and goes loud only when the target is actually met. One of the
  * two infinite animations the app allows (the other is the orb's crests), and
  * only while the meter is on screen.
+ *
+ * **Its node is `HALO_BOX` times the figure, not the figure.** The radius below
+ * is half of its own node, which is `GrowthTokens.HALO_RADIUS` of the figure by
+ * construction — see `Growth.haloBoxSide`. Hand this a node the size of the
+ * figure and the gradient is clipped into a rectangle.
  */
 @Composable
 private fun Halo(complete: Boolean, palette: Palette, modifier: Modifier) {
@@ -202,7 +226,7 @@ private fun Halo(complete: Boolean, palette: Palette, modifier: Modifier) {
     val alpha = base + breath * swing
 
     Canvas(modifier = modifier) {
-        val radius = size.minDimension * 0.78f
+        val radius = size.minDimension / 2f
         drawCircle(
             brush = Brush.radialGradient(
                 0.35f to palette.accent.copy(alpha = 0.34f * alpha),

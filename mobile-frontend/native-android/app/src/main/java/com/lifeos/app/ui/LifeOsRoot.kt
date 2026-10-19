@@ -1,6 +1,7 @@
 package com.lifeos.app.ui
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.core.net.toUri
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -27,6 +28,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -109,6 +112,17 @@ fun LifeOsRoot(
         factory = LifeOsViewModel.factory(container, context.applicationContext),
     )
 
+    /*
+     * Which of the three pages is showing, hoisted above the NavHost.
+     *
+     * Above it, because a notification tap or a Needs-you link has to be able
+     * to land on Day from anywhere — including from Settings, where the shell
+     * is not even composed — and because the pager's position must survive a
+     * trip into a settings screen and back.
+     */
+    val tabs = rememberHomeTabsState()
+    val reduced = LocalReducedMotion.current
+
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val prefsFlow = remember { container.preferences.prefs }
     val prefs by prefsFlow.collectAsStateWithLifecycle(
@@ -154,12 +168,21 @@ fun LifeOsRoot(
     val tap by viewModel.notificationTap.collectAsStateWithLifecycle()
     LaunchedEffect(tap) {
         val current = tap ?: return@LaunchedEffect
-        val destination = when (current.type) {
-            com.lifeos.app.domain.NotificationType.NEEDS_YOU -> Routes.DAY
-            com.lifeos.app.domain.NotificationType.SYNC_PROBLEM -> Routes.SETTINGS_PENDING
-            else -> Routes.TODAY
+        when (current.type) {
+            // A sync problem is the one tap that lands outside the shell.
+            com.lifeos.app.domain.NotificationType.SYNC_PROBLEM ->
+                navController.navigate(Routes.SETTINGS_PENDING) { launchSingleTop = true }
+
+            else -> {
+                val tab = if (current.type == com.lifeos.app.domain.NotificationType.NEEDS_YOU) {
+                    HomeTab.DAY
+                } else {
+                    HomeTab.TODAY
+                }
+                navController.navigate(Routes.TODAY) { launchSingleTop = true }
+                tabs.jumpTo(tab, reduced)
+            }
         }
-        navController.navigate(destination) { launchSingleTop = true }
         viewModel.consumeNotificationTap(current)
     }
 
@@ -167,17 +190,15 @@ fun LifeOsRoot(
         navController = navController,
         startDestination = if (prefs.baseUrl.isNullOrBlank()) Routes.CONNECT else Routes.TODAY,
     ) {
-        /* ---- the three top-level destinations, inside the shell ---- */
-        listOf(Routes.TODAY, Routes.DAY, Routes.YOU).forEach { route ->
-            composable(route) {
-                AppShell(
-                    route = route,
-                    navController = navController,
-                    viewModel = viewModel,
-                    container = container,
-                    prefs = prefs,
-                )
-            }
+        /* ---- the three top-level destinations: one route, three pages ---- */
+        composable(Routes.TODAY) {
+            AppShell(
+                tabs = tabs,
+                navController = navController,
+                viewModel = viewModel,
+                container = container,
+                prefs = prefs,
+            )
         }
 
         /* ---- the three that work without the shell ---- */
@@ -375,20 +396,29 @@ fun LifeOsRoot(
 /**
  * The navigation shell (§2.4, §5.4).
  *
- * `NavigationSuiteScaffold` picks bar-vs-rail from `currentWindowAdaptiveInfo()`,
- * never from a device-type check, because Android resizes the app while it runs.
+ * Bar-vs-rail still comes from `currentWindowAdaptiveInfo()`, never from a
+ * device-type check, because Android resizes the app while it runs.
  *
- * **The bottom bar does not move.** The old app animated a critically-damped
- * pill the full width of five tabs, at the exact bottom edge where the thumb
- * already draws attention, carrying no information about the content that
- * changed. Here there are three items, the label is always visible so nothing
- * appears or disappears, and the icon cross-fades outlined → filled **in place**.
- * Total on-screen movement at the bottom edge per navigation: zero pixels.
+ * **The bottom bar still does not travel on its own.** The old app animated a
+ * critically-damped pill the full width of five tabs at the exact bottom edge
+ * where the thumb already draws attention, carrying no information about the
+ * content that changed. A tap here moves the pages instantly and the indicator
+ * cross-fades in place: zero pixels of travel, as before.
+ *
+ * What is new in milestone 4 is that a **swipe** moves the pages under the
+ * finger, and the indicator goes with them — continuously, as they move. That
+ * is not the same thing as the old pill: there the chrome animated by itself
+ * after a tap; here the user is dragging it. §5.4 now says so explicitly.
+ *
+ * The compact bar is `TrackingNavigationBar` rather than a standard item list,
+ * because a `NavigationBarItem` cannot be told where to put its indicator. The
+ * rail keeps the standard items — there is no horizontal page to track against
+ * a vertical rail, and the swipe still works underneath it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppShell(
-    route: String,
+    tabs: HomeTabsState,
     navController: NavHostController,
     viewModel: LifeOsViewModel,
     container: AppContainer,
@@ -411,59 +441,78 @@ private fun AppShell(
      * Android resizes the app while it runs (split screen, free-form,
      * unfolding), so this is read per composition rather than decided once.
      */
-    val expanded = currentWindowAdaptiveInfo().windowSizeClass.windowWidthSizeClass ==
+    val adaptiveInfo = currentWindowAdaptiveInfo()
+    val expanded = adaptiveInfo.windowSizeClass.windowWidthSizeClass ==
         WindowWidthSizeClass.EXPANDED
 
-    // The poll belongs to the destination, and there is only ever one of it.
-    LaunchedEffect(route) {
+    val suiteType = NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo)
+    val bottomBar = suiteType == NavigationSuiteType.NavigationBar
+
+    val route = tabs.current
+
+    /*
+     * The poll belongs to the destination, and there is only ever one of it.
+     *
+     * Keyed to the **settled** page rather than the nearest one, or a single
+     * swipe across the app would start and stop three polls on its way.
+     */
+    LaunchedEffect(tabs.settled) {
         viewModel.startPolling(
-            when (route) {
-                Routes.DAY -> PollIntervals.DAY_MS
-                Routes.YOU -> PollIntervals.YOU_MS
+            when (tabs.settled) {
+                HomeTab.DAY -> PollIntervals.DAY_MS
+                HomeTab.YOU -> PollIntervals.YOU_MS
                 else -> PollIntervals.TODAY_MS
             },
         )
     }
 
+    // Back from a page is back to Today, which is what the old
+    // `popUpTo(TODAY) { saveState }` navigation produced. On Today it is not
+    // handled here at all, so back leaves the app as it always did.
+    BackHandler(enabled = route != HomeTab.TODAY) {
+        tabs.jumpTo(HomeTab.TODAY, reduced)
+    }
+
     NavigationSuiteScaffold(
+        // On a phone the bar is ours (it has to track the gesture); the rail
+        // for wider windows is the standard one.
+        layoutType = if (bottomBar) NavigationSuiteType.None else suiteType,
         navigationSuiteItems = {
-            NavItem(
-                route = Routes.TODAY,
-                current = route,
-                label = "Today",
-                selectedIcon = Icons.Filled.WbSunny,
-                unselectedIcon = Icons.Outlined.WbSunny,
-                navController = navController,
-                reduced = reduced,
-            )
-            NavItem(
-                route = Routes.DAY,
-                current = route,
-                label = "Day",
-                selectedIcon = Icons.Filled.CalendarToday,
-                unselectedIcon = Icons.Outlined.CalendarToday,
-                navController = navController,
-                reduced = reduced,
-            )
-            NavItem(
-                route = Routes.YOU,
-                current = route,
-                label = "You",
-                selectedIcon = Icons.Filled.Person,
-                unselectedIcon = Icons.Outlined.Person,
-                navController = navController,
-                reduced = reduced,
-            )
+            if (!bottomBar) {
+                HomeTab.all.forEach { tab ->
+                    RailItem(
+                        tab = tab,
+                        current = route,
+                        reduced = reduced,
+                        onSelect = { tabs.jumpTo(tab, reduced) },
+                    )
+                }
+            }
         },
         containerColor = p.bg,
         contentColor = p.text,
     ) {
         Scaffold(
             containerColor = p.bg,
+            bottomBar = {
+                if (bottomBar) {
+                    TrackingNavigationBar(
+                        state = tabs,
+                        reduced = reduced,
+                        icon = { tab, filled ->
+                            Icon(
+                                imageVector = tabIcon(tab, filled),
+                                contentDescription = tab.label,
+                            )
+                        },
+                        onSelect = { tabs.jumpTo(it, reduced) },
+                    )
+                }
+            },
             topBar = {
                 TopAppBar(
                     title = {
-                        if (route == Routes.TODAY) {
+                        if (route == HomeTab.TODAY) {
                             // The date in mono, small — it is a figure, not a heading.
                             com.lifeos.app.ui.components.Mono(
                                 text = LocalDate.now().format(DATE_LABEL),
@@ -472,7 +521,7 @@ private fun AppShell(
                             )
                         } else {
                             Text(
-                                text = if (route == Routes.DAY) "Day" else "You",
+                                text = route.label,
                                 style = LifeOsType.screenTitle,
                                 color = p.text,
                             )
@@ -529,16 +578,21 @@ private fun AppShell(
                     },
                 )
 
-                // Content cross-fades on a destination change; the chrome above
-                // and below does not move.
-                Crossfade(
-                    targetState = route,
-                    animationSpec = tween(if (reduced) Motion.REDUCED else Motion.MEDIUM),
-                    label = "destination",
+                /*
+                 * The three pages.
+                 *
+                 * A tap still cross-fades them with the chrome standing still
+                 * (§5.3). A swipe moves them under the finger instead, and the
+                 * bar's indicator goes with them (§5.4). Both live in
+                 * `HomeTabPager`.
+                 */
+                HomeTabPager(
+                    state = tabs,
+                    reduced = reduced,
                     modifier = Modifier.fillMaxSize(),
                 ) { current ->
                     when (current) {
-                        Routes.TODAY -> TodayScreen(
+                        HomeTab.TODAY -> TodayScreen(
                             state = state,
                             refreshLineVisible = refreshLine,
                             emptyCacheTimedOut = emptyTimedOut,
@@ -547,7 +601,7 @@ private fun AppShell(
                             onTick = viewModel::tick,
                             onOpenItem = { viewModel.openSheet(AppSheet.Agenda(it.id)) },
                             onOpenMeterDetail = { viewModel.openSheet(AppSheet.MeterDetail) },
-                            onOpenNeedsYou = { navController.navigate(Routes.DAY) },
+                            onOpenNeedsYou = { tabs.jumpTo(HomeTab.DAY, reduced) },
                             onStartSessionPicker = {
                                 viewModel.openSheet(AppSheet.SessionPicker)
                             },
@@ -557,7 +611,7 @@ private fun AppShell(
                             onArmEmptyTimeout = viewModel::armEmptyCacheTimeout,
                         )
 
-                        Routes.DAY -> DayScreen(
+                        HomeTab.DAY -> DayScreen(
                             state = state,
                             refreshLineVisible = refreshLine,
                             emptyCacheTimedOut = emptyTimedOut,
@@ -572,7 +626,7 @@ private fun AppShell(
                             onArmEmptyTimeout = viewModel::armEmptyCacheTimeout,
                         )
 
-                        Routes.YOU -> YouScreen(
+                        HomeTab.YOU -> YouScreen(
                             state = state,
                             analytics = analytics,
                             refreshLineVisible = refreshLine,
@@ -697,48 +751,48 @@ private fun SheetHost(
 }
 
 /**
- * One navigation item.
+ * The icon for a tab, filled or outlined.
  *
- * `alwaysShowLabel = true` so nothing appears or disappears on selection, and the
- * icon is a `Crossfade` between the outlined and filled variants so the swap
- * happens in place with no travel and no spring.
+ * One mapping, read by the bottom bar and the rail, so the two cannot end up
+ * showing different pictures of the same destination.
  */
-private fun androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScope.NavItem(
-    route: String,
-    current: String,
-    label: String,
-    selectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
-    unselectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
-    navController: NavHostController,
+private fun tabIcon(tab: HomeTab, filled: Boolean) = when (tab) {
+    HomeTab.TODAY -> if (filled) Icons.Filled.WbSunny else Icons.Outlined.WbSunny
+    HomeTab.DAY -> if (filled) Icons.Filled.CalendarToday else Icons.Outlined.CalendarToday
+    HomeTab.YOU -> if (filled) Icons.Filled.Person else Icons.Outlined.Person
+}
+
+/**
+ * One rail item, for windows wide enough to get a rail instead of a bar.
+ *
+ * `alwaysShowLabel = true` so nothing appears or disappears on selection, and
+ * the icon is a `Crossfade` between the outlined and filled variants so the
+ * swap happens in place with no travel and no spring. The rail does not track
+ * the swipe: it is vertical, and there is nothing sideways for it to follow.
+ */
+private fun androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScope.RailItem(
+    tab: HomeTab,
+    current: HomeTab,
     reduced: Boolean,
+    onSelect: () -> Unit,
 ) {
-    val selected = route == current
+    val selected = tab == current
     item(
         selected = selected,
-        onClick = {
-            if (!selected) {
-                navController.navigate(route) {
-                    // Switching destinations must not stack them: Today → Day →
-                    // Today is one entry, not three.
-                    popUpTo(Routes.TODAY) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            }
-        },
+        onClick = { if (!selected) onSelect() },
         icon = {
             Crossfade(
                 targetState = selected,
                 animationSpec = tween(if (reduced) Motion.REDUCED else Motion.SHORT),
-                label = "nav-icon-$route",
+                label = "nav-icon-${tab.name}",
             ) { isSelected ->
                 Icon(
-                    imageVector = if (isSelected) selectedIcon else unselectedIcon,
-                    contentDescription = label,
+                    imageVector = tabIcon(tab, isSelected),
+                    contentDescription = tab.label,
                 )
             }
         },
-        label = { Text(label, style = LifeOsType.label) },
+        label = { Text(tab.label, style = LifeOsType.label) },
         alwaysShowLabel = true,
     )
 }

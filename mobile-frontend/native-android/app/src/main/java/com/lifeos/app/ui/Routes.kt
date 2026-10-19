@@ -13,9 +13,16 @@ package com.lifeos.app.ui
  *    needed five slots and why the five looked crowded (§2.1).
  */
 object Routes {
+    /**
+     * Home: Today, Day and You.
+     *
+     * One route for all three since milestone 4. They are pages of a single
+     * destination (`HomeTab`), not three destinations, because a swipe has to
+     * show two of them at once under the finger and a navigation graph can only
+     * be at one destination at a time. Going to Day is now picking a tab, not
+     * navigating — see `HomeTabsState.jumpTo`.
+     */
     const val TODAY = "today"
-    const val DAY = "day"
-    const val YOU = "you"
 
     const val CONNECT = "connect"
     const val PAIR = "connect/pair"
@@ -40,7 +47,4 @@ object Routes {
      * keeps polling. They are state on the view model (`AppSheet`), dismissed
      * by the sheet's own back handling, which includes predictive back.
      */
-
-    /** The three that get a navigation item. Nothing else does. */
-    val topLevel = listOf(TODAY, DAY, YOU)
 }

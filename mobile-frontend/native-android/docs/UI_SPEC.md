@@ -202,13 +202,14 @@ Everything else is a leaf or an overlay, reached by tap, closed by back:
 ### 2.4 Window size classes
 
 `NavigationSuiteScaffold` from `material3-adaptive-navigation-suite` picks the shape; we
-pick the content columns. Derive from `currentWindowAdaptiveInfo()`, never from a
+pick the content columns. The one exception is the compact bottom bar, which is ours
+because it has to track the swipe (§5.4) — the suite still decides *that* it is a bar. Derive from `currentWindowAdaptiveInfo()`, never from a
 device-type check — Android resizes the app while it runs (split screen, free-form,
 unfolding).
 
 | Class | Width | Navigation | Content |
 |---|---|---|---|
-| Compact | < 600dp | Navigation **bar**, bottom | One column, content max 560dp, centred |
+| Compact | < 600dp | Navigation **bar**, bottom (ours — it tracks the swipe, §5.4) | One column, content max 560dp, centred |
 | Medium | 600–839dp | Navigation **rail**, left | One column, centred |
 | Expanded | ≥ 840dp | Navigation rail (optionally with headers) | Two columns on Today and Day |
 
@@ -446,6 +447,16 @@ the viewBox is empty at every growth level.
 Below/beside it, in mono: `69%` and `138/200 XP`. Nothing else. `efficiencyPct > 100` shows
 the real figure; only the fill is clamped.
 
+**The figure is centred in its container at every width**, including the second column of
+the Expanded layout. And the halo is drawn into a node `2 × 0.78 = 1.56` times the figure's
+side, not the figure's own: a draw modifier clips to its node, so a glow of radius
+`0.78 · side` drawn into a `side` box loses everything past the halfway point and ends in a
+hard rectangular edge. The figure's size is therefore capped by the width the halo needs
+(`width / 1.56`) as well as by the height; vertically the halo is allowed to bleed past the
+meter's box, where it falls on page background and fades out, rather than on a screen edge
+where a cut would show. The arithmetic is `Growth.figureSide` / `Growth.haloBoxSide` and is
+unit-tested.
+
 **Tapping the meter** opens a bottom sheet with everything cut from Today:
 `improvementPct` (signed, as percentage **points**), `yesterdayEfficiencyPct`, the five
 `vsYesterday` figures, and lifetime XP in small mono at the bottom. One tap, no tab.
@@ -580,7 +591,7 @@ more time, it is doing too much.
 | **Tick** | Ring → fill, 100ms, with a single `spring.snap` scale 1.0 → 1.12 → 1.0. The check path draws in 120ms. This is the app's signature micro-interaction and it is allowed to be crisp. |
 | **Card → done** | Alpha and border colour over `medium`. No size change, no position change. |
 | **Meter** | `animateFloatAsState` over `long` from the previous value. Leaves reveal as thresholds are crossed; the bloom at 1.0 is a one-shot arrival, because 100% must not look like a brighter 99%. |
-| **Destination change** | Content cross-fades + 4% scale-in over `medium` (M3 "top level transition"). The navigation bar itself does not move, re-layout, or animate its background. |
+| **Destination change** | By tap: content cross-fades + 4% scale-in over `medium` (M3 "top level transition"), and the navigation bar does not move, re-layout, or animate its background. By swipe: the pages follow the finger and the bar's indicator tracks them continuously, settling in `short` (§5.4). |
 | **Drill-in (sheet, detail, settings)** | Shared-axis Z: incoming scales 92%→100% with fade, outgoing 100%→104% with fade, `medium`. Predictive back drives it in reverse under the user's finger (`PredictiveBackHandler`). |
 | **Status strip** | Expand/collapse height + fade, `short`. It appears once per state change, not per poll. |
 | **Pending-write count** | Cross-fades the number. Never spins, never bounces. |
@@ -597,11 +608,50 @@ information about the content that just changed. It was tuned (`mass .55, dampin
 stiffness 420`) because it overshot; a thing that needs critical damping to stop wobbling
 across five tabs is a thing that should not be travelling.
 
-**Replacement:** a standard M3 `NavigationBar`, three items, and the active indicator
-**does not travel**. It cross-fades out at the old item and in at the new one over 200ms,
-while the icon swaps outlined → filled in place. Nothing slides. Nothing springs. The label
-is always visible (`alwaysShowLabel = true`) so nothing appears or disappears either. Total
-on-screen movement per navigation at the bottom edge: zero pixels.
+**Replacement:** three items, and the active indicator **never travels on its own**. On a
+tap it cross-fades out at the old item and in at the new one over 200ms, while the icon
+swaps outlined → filled in place. Nothing slides. Nothing springs. The label is always
+visible (`alwaysShowLabel = true`) so nothing appears or disappears either. Total
+on-screen movement at the bottom edge from a tap: zero pixels.
+
+#### The rule, stated precisely
+
+The original rule here said "zero pixels of travel", full stop. That was aimed at a pill
+that **animated itself after a tap** — chrome moving on its own, telling the user nothing
+about the content that had already changed. Milestone 4 added a swipe between the three
+destinations, and a swipe is a different thing: the user's own finger is on the pages, and
+an indicator that ignored them until the gesture ended would be *less* honest, not more.
+So the rule is:
+
+- **No self-animating travel on navigation.** Nothing in the navigation bar may move of its
+  own accord — not after a tap, not on arrival, not because data came in. A tap is still
+  zero pixels of travel.
+- **Continuous tracking during a gesture is required.** While a horizontal swipe is moving
+  the pages, the active indicator moves with them, frame for frame, in real time. It is
+  direct manipulation, not decoration: it stops when the finger stops and it goes back when
+  the finger goes back. Label and icon states interpolate with it rather than flipping at
+  the halfway point.
+- **The settle is the gesture finishing, not an animation starting.** When the finger lifts,
+  the pages and the indicator run to the nearest committed page in `short` (200ms,
+  decelerate) — a fixed duration, never a spring. The old bar needed critical damping to
+  stop wobbling; nothing here is allowed to need that.
+- With reduced motion the gesture still works and still tracks — it is the user's finger —
+  but the settle is immediate and the change reads as a cross-fade (§5.6).
+
+Mechanically this means the compact bar is ours rather than a stock `NavigationBarItem`,
+whose indicator cannot be told where to be. Each item draws its own indicator at that
+item's `selectedness`, offset by how far the pages are from it; mid-gesture two of them
+coincide and read as one pill under the finger, and at rest exactly one is visible and
+un-offset. The navigation rail (Medium/Expanded) keeps the stock items: a vertical rail has
+no sideways travel to track, and the swipe still works underneath it.
+
+**Gesture ownership.** The swipe only takes a drag that is past the touch slop *and* twice
+as horizontal as vertical. Inherited from the Expo app and kept deliberately: the screen
+under this gesture is a scrolling agenda, and losing a scroll to a page turn is far worse
+than losing a page turn to a scroll. Nothing is consumed until that test passes, so a
+vertical scroll never sees this gesture at all. One swipe moves one tab, whatever the
+velocity; a slow drag under 35% of a page snaps back, and a flick past 400dp/s commits
+however short it was. The rules live in `domain/TabSwipe` and are unit-tested.
 
 Also banned:
 

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the launcher's widget picker shows before the widget is placed.
+
+  The picker used to show the app icon, which told the user nothing about what
+  they were about to add. This is a still of the real 4×2 (`FULL`) tier: the
+  ring and its two figures, the pulse word, the ribbon, and the next two things.
+  Static by necessity — there is no snapshot to read before the widget exists —
+  and in the default `bloom` palette, which is the product's identity rather
+  than an alphabetical accident.
+
+  Keep it in step with `WidgetBody`. It is a sales pitch for a layout, so a
+  pitch for a layout the widget no longer has is worse than none.
+-->
+<!--
+  `HardcodedText` is suppressed for the whole file on purpose. Every string in
+  here is sample content standing in for a value the widget reads from the
+  cache — it is never shown to a user as text they can act on, and pulling it
+  into `strings.xml` would offer it for translation and for reuse somewhere it
+  would be a lie.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_preview_card"
+    android:padding="12dp"
+    tools:ignore="HardcodedText">
+
+    <!-- The meter, the figures, the pulse word. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/widget_preview_ring"
+            android:importantForAccessibility="no" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="68%"
+                android:textColor="#F6F4F8"
+                android:textSize="20sp"
+                android:fontFamily="monospace" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="136/200 XP"
+                android:textColor="#A8A3B4"
+                android:textSize="12sp"
+                android:fontFamily="monospace" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Improving"
+            android:textColor="#FFA0C9"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- The ribbon: the day's shape, in the seven activity colours. Those seven
+         are not part of any palette (§6.2) — they mean the same thing on the
+         phone, on the widget and on the web. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="10dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="3"
+            android:background="#5C6BC0" />
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="2"
+            android:background="#6EA8FF" />
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#4ADE80" />
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="3"
+            android:background="#B57BFF" />
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#FBBF24" />
+        <View
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="2"
+            android:background="#FF7A9C" />
+    </LinearLayout>
+
+    <!-- The next two things. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <View
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:background="@drawable/widget_preview_tile" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="Read one chapter"
+            android:textColor="#F6F4F8"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="16:30"
+            android:textColor="#A8A3B4"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <View
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:background="@drawable/widget_preview_tile" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="Move for 45 minutes"
+            android:textColor="#F6F4F8"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="19:00"
+            android:textColor="#A8A3B4"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+</LinearLayout>

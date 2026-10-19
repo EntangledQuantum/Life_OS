@@ -161,6 +161,27 @@ object GrowthTokens {
     /** Each leaf unfurls across the 0.09 of progress after its threshold. */
     const val LEAF_UNFURL_SPAN = 0.09f
 
+    /**
+     * The halo's radius, as a fraction of the figure's side.
+     *
+     * Deliberately larger than `0.5`: the glow is supposed to reach well past
+     * the figure. Which is exactly why it **cannot** be drawn into a node the
+     * size of the figure — see `HALO_BOX`.
+     */
+    const val HALO_RADIUS = 0.78f
+
+    /**
+     * The halo's drawing node, as a multiple of the figure's side.
+     *
+     * `2 × HALO_RADIUS`: the smallest square whose centre-to-edge distance is
+     * the halo's own radius. A draw modifier clips to its node's bounds, so a
+     * halo of radius `0.78 · side` drawn into a `side`-sized node loses
+     * everything past `0.5 · side` — which is the hard rectangular edge that
+     * was visible around the glow until milestone 4. Give it this much room and
+     * the gradient reaches zero alpha inside its own node.
+     */
+    const val HALO_BOX = 2f * HALO_RADIUS
+
     const val CORE_MIN = 26f
     const val CORE_MAX = 44f
     const val PETAL_INNER = 52f

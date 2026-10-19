@@ -14,6 +14,15 @@
 
   `resizeHorizontal|vertical`, because the whole point of the tier rule is that
   a resize is a normal thing the user does.
+
+  `previewImage` is what the launcher's picker shows before anything is placed.
+  Milestone 3 shipped without one and the picker fell back to the app icon,
+  which says nothing about what you are about to add to your home screen. From
+  API 31 there is something better — `previewLayout`, in `res/xml-v31/`, which
+  has the system lay out the real thing — so this drawable is the fallback for
+  older launchers (and for OEM pickers that prefer a drawable at any API
+  level). It is rendered by `scripts/build-widget-preview.py` and committed; the
+  two previews are kept in step by hand.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="140dp"
@@ -26,4 +35,5 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:widgetCategory="home_screen"
+    android:previewImage="@drawable/widget_preview"
     android:description="@string/widget_description" />

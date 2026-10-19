@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget's own surface: bloom's `bg` at the 20dp card radius (§6.6). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#0D0910" />
+    <corners android:radius="20dp" />
+</shape>

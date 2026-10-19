@@ -98,6 +98,29 @@ object Growth {
     }
 
     /**
+     * The side of the meter's figure, in dp, for the box the meter was handed.
+     *
+     * Three caps, and the third one is the whole of the milestone-4 fix: the
+     * figure must also be small enough for its **halo** to fit across the
+     * width, because the glow is drawn `HALO_BOX` times wider than the figure
+     * and a draw modifier clips to its own node. Without this cap the figure
+     * took the full height and the halo was sliced off at the sides.
+     *
+     * Height is deliberately *not* capped the same way. The halo is allowed to
+     * bleed above and below the figure, where it falls on the page background
+     * and fades out; horizontally it would fall on the screen edge, where a
+     * cut is both visible and unavoidable.
+     */
+    fun figureSide(maxWidthDp: Float, maxHeightDp: Float, capDp: Float): Float =
+        minOf(capDp, maxHeightDp, maxWidthDp / GrowthTokens.HALO_BOX).coerceAtLeast(0f)
+
+    /**
+     * The square the halo must be drawn into, in dp, so its gradient is not
+     * clipped. One definition, used by the meter and asserted by the tests.
+     */
+    fun haloBoxSide(figureSideDp: Float): Float = figureSideDp * GrowthTokens.HALO_BOX
+
+    /**
      * The `bloom` figure: a petal per habit around a core, rings behind for the
      * weeks already kept.
      *

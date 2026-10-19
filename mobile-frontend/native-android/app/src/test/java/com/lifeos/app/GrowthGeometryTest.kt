@@ -203,6 +203,61 @@ class GrowthGeometryTest {
         assertNotEquals(Growth.bloomScale(0.99f), Growth.bloomScale(1.0f))
     }
 
+    /* ---------------------------------------------- the figure and its halo */
+
+    /*
+     * The milestone-4 bug, as arithmetic.
+     *
+     * The meter used to take the whole height for its figure and draw the halo
+     * into that same square. The halo's radius is 0.78 of the figure, so 0.28
+     * of it fell outside the node it was drawn into and a draw modifier clips
+     * to its node: hence the hard rectangular edge the user saw just above
+     * "Improving". These tests pin the relationship both ways round.
+     */
+
+    @Test
+    fun `the halo does not fit in a node the size of the figure`() {
+        // The premise of the bug. If this ever stops being true the extra box
+        // below is dead weight and should go.
+        assertTrue("halo radius must exceed half the figure", GrowthTokens.HALO_RADIUS > 0.5f)
+    }
+
+    @Test
+    fun `the halo box is exactly big enough to contain the halo`() {
+        val figure = 200f
+        val box = Growth.haloBoxSide(figure)
+        assertEquals(312f, box, epsilon)
+        // Centre-to-edge of the box == the halo's radius. Not more (wasted
+        // layout), not less (a clipped glow).
+        assertEquals(figure * GrowthTokens.HALO_RADIUS, box / 2f, epsilon)
+    }
+
+    @Test
+    fun `the figure takes the height it is given when the halo fits across`() {
+        // The real device: 1080px at 408dpi is 423.5dp wide, less two 16dp
+        // gutters, and the meter's box is 200dp high.
+        assertEquals(200f, Growth.figureSide(391.5f, 200f, 240f), epsilon)
+        // …and the halo it then asks for still fits across that width.
+        assertTrue(Growth.haloBoxSide(200f) <= 391.5f)
+    }
+
+    @Test
+    fun `a narrow box shrinks the figure rather than clipping the halo`() {
+        val width = 250f
+        val side = Growth.figureSide(width, 200f, 240f)
+        assertEquals(width / GrowthTokens.HALO_BOX, side, epsilon)
+        assertTrue("the figure shrank", side < 200f)
+        assertEquals("and the halo now fits exactly", width, Growth.haloBoxSide(side), 0.01f)
+    }
+
+    @Test
+    fun `the figure never exceeds its cap, and never goes negative`() {
+        assertEquals(240f, Growth.figureSide(10_000f, 10_000f, 240f), epsilon)
+        // An unbounded height is what a Column hands a child; the cap holds.
+        assertEquals(240f, Growth.figureSide(10_000f, Float.POSITIVE_INFINITY, 240f), epsilon)
+        assertEquals(0f, Growth.figureSide(0f, 0f, 240f), epsilon)
+    }
+
     /* ------------------------------------------------------------- the paths */
 
     @Test
