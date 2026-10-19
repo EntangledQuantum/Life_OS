@@ -10,14 +10,19 @@ import com.lifeos.app.data.LifeOsRepository
 import com.lifeos.app.data.PollIntervals
 import com.lifeos.app.data.TodayView
 import com.lifeos.app.data.api.AgendaItemDto
+import com.lifeos.app.data.api.AnalyticsDto
 import com.lifeos.app.data.sync.SyncWorker
 import com.lifeos.app.domain.AgendaEpoch
+import com.lifeos.app.domain.AnalyticsRange
+import com.lifeos.app.domain.Celebration
+import com.lifeos.app.domain.Celebrations
 import com.lifeos.app.domain.PendingWrite
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -34,6 +39,50 @@ data class TodayUiState(
     val showRefreshLine: Boolean = false,
     /** An empty cache that has been empty for 6 seconds becomes an error panel. */
     val emptyCacheTimedOut: Boolean = false,
+)
+
+/**
+ * The overlays reached by tap and closed by back (§2.3).
+ *
+ * Held as state on the view model rather than as `NavHost` destinations, which
+ * is a stated divergence: `navigation-compose` has no bottom-sheet destination,
+ * and a `ModalBottomSheet` is an overlay over the screen underneath rather than
+ * a place you go — the screen behind it keeps polling and keeps its scroll.
+ * Back closes it through the sheet's own dismissal, including predictive back.
+ */
+sealed interface AppSheet {
+    /** `agenda/{id}` — tapping a card's body. */
+    data class Agenda(val id: String) : AppSheet
+
+    /** `task/{id}` — a Day row or a Needs-you row. */
+    data class Task(val id: String) : AppSheet
+
+    /** The meter's vsYesterday sheet: everything cut from Today. */
+    data object MeterDetail : AppSheet
+
+    /** `session/picker` — the seven activity chips. */
+    data object SessionPicker : AppSheet
+
+    /** `study/log` — Day's FAB. */
+    data object StudyLog : AppSheet
+}
+
+/**
+ * The 5-second undo snackbar after a tick (§4.6).
+ *
+ * Only for habits: `POST /habits/:id/undo` exists and there is no task
+ * equivalent, so offering Undo on a task would be a button that cannot work.
+ */
+data class UndoPrompt(val item: AgendaItemDto, val shownAt: Long)
+
+/** You's lower half. One request per range the user asks for, never polled. */
+data class AnalyticsState(
+    val range: AnalyticsRange = AnalyticsRange.D7,
+    val loading: Boolean = false,
+    val payload: AnalyticsDto? = null,
+    val error: String? = null,
+    /** Collapsed by default (§3.3): the 7-day XP chart and nothing else. */
+    val expanded: Boolean = false,
 )
 
 /**
@@ -73,6 +122,107 @@ class LifeOsViewModel(
     val refreshLineVisible: StateFlow<Boolean> = refreshLine
     val emptyCacheTimedOut: StateFlow<Boolean> = emptyTimedOut
 
+    /* ------------------------------------------------------------- overlays */
+
+    private val _sheet = MutableStateFlow<AppSheet?>(null)
+    val sheet: StateFlow<AppSheet?> = _sheet
+
+    fun openSheet(sheet: AppSheet) {
+        _sheet.value = sheet
+    }
+
+    fun closeSheet() {
+        _sheet.value = null
+    }
+
+    /* ---------------------------------------------------------------- undo */
+
+    private val _undoPrompt = MutableStateFlow<UndoPrompt?>(null)
+    val undoPrompt: StateFlow<UndoPrompt?> = _undoPrompt
+
+    /**
+     * Rows already offered an undo in this epoch.
+     *
+     * "It does not reappear on a second tick of the same row" — a user who ticks,
+     * undoes and re-ticks has made their point, and a snackbar that returns every
+     * time becomes a thing to dismiss rather than a safety net.
+     */
+    private val undoOffered = HashSet<String>()
+
+    fun dismissUndoPrompt() {
+        _undoPrompt.value = null
+    }
+
+    /* ----------------------------------------------------------- analytics */
+
+    private val _analytics = MutableStateFlow(AnalyticsState())
+    val analytics: StateFlow<AnalyticsState> = _analytics
+
+    fun toggleAnalytics() {
+        _analytics.value = _analytics.value.copy(expanded = !_analytics.value.expanded)
+    }
+
+    /**
+     * Pick a range.
+     *
+     * `7d` is served from the snapshot the whole app already has, so it costs no
+     * request and works offline; the other three are one `GET /api/v1/analytics`
+     * each. A failure here is reported in place and never changes the connection
+     * state — the rest of You is still correct.
+     */
+    fun selectRange(range: AnalyticsRange) {
+        val current = _analytics.value
+        if (current.range == range && (range.fromSnapshot || current.payload != null)) return
+        _analytics.value = current.copy(range = range, error = null, payload = null)
+        if (range.fromSnapshot) return
+        viewModelScope.launch {
+            _analytics.value = _analytics.value.copy(loading = true)
+            val result = repository.analytics(range)
+            // A range the user has since changed away from must not land.
+            if (_analytics.value.range != range) return@launch
+            _analytics.value = result.fold(
+                onSuccess = { _analytics.value.copy(loading = false, payload = it, error = null) },
+                onFailure = {
+                    _analytics.value.copy(
+                        loading = false,
+                        payload = null,
+                        error = it.message ?: "Couldn't load that range",
+                    )
+                },
+            )
+        }
+    }
+
+    /* --------------------------------------------------------- celebration */
+
+    /**
+     * Keys the user has pressed **Nice** on.
+     *
+     * The `celebration-seen` write is queued like everything else, so the next
+     * poll still reports the goal pending for a moment. Without this the dialog
+     * would reappear the instant it closed — and §3.4 forbids anything that
+     * makes the celebration feel like it is fighting the user.
+     */
+    private val celebrationsDismissed = MutableStateFlow<Set<String>>(emptySet())
+
+    val celebration: StateFlow<Celebration?> =
+        combine(repository.today, celebrationsDismissed) { view, dismissed ->
+            Celebrations.next(view.data?.pendingCelebrations ?: emptyList(), dismissed)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * The only path to `celebration-seen` — a real dismissal, never a render and
+     * never a timer.
+     */
+    fun dismissCelebration(celebration: Celebration) {
+        celebrationsDismissed.value = celebrationsDismissed.value + celebration.key
+        viewModelScope.launch {
+            repository.markCelebrationSeen(celebration.goalId)
+            SyncWorker.request(appContext)
+            refresh()
+        }
+    }
+
     init {
         // A cold start fires a fetch immediately; the cached snapshot is already
         // on screen by the time it lands.
@@ -95,6 +245,8 @@ class LifeOsViewModel(
         val lifeDay = data.lifeDay.lifeDay.ifBlank { data.date }
         val current = epoch
         val active = if (current == null || current.lifeDayDate != lifeDay) {
+            // A new epoch is also a new day's worth of undo offers.
+            undoOffered.clear()
             AgendaEpoch.from(lifeDay, data.agenda).also { epoch = it }
         } else {
             current
@@ -175,15 +327,86 @@ class LifeOsViewModel(
             // up in well under a second on a LAN.
             refresh()
         }
+        // Undo exists for habits only, and once per row per epoch.
+        if (item.source == "habit" && !item.done && undoOffered.add(item.refId)) {
+            _undoPrompt.value = UndoPrompt(item, System.currentTimeMillis())
+        }
     }
 
     fun undo(item: AgendaItemDto) {
+        _undoPrompt.value = null
         viewModelScope.launch {
             if (item.source == "habit") {
                 repository.undoHabit(item.refId)
                 SyncWorker.request(appContext)
                 refresh()
             }
+        }
+    }
+
+    /* -------------------------------------------- the rest of the actions */
+
+    /** Needs you: complete. Same endpoint a Day row's tick uses. */
+    fun completeTask(taskId: String) {
+        viewModelScope.launch {
+            repository.complete("task", taskId)
+            SyncWorker.request(appContext)
+            refresh()
+        }
+    }
+
+    /** Needs you: put it away without doing it. Day-independent. */
+    fun dismissTask(taskId: String) {
+        viewModelScope.launch {
+            repository.dismissTask(taskId)
+            SyncWorker.request(appContext)
+            refresh()
+        }
+    }
+
+    fun startSession(activity: String) {
+        closeSheet()
+        viewModelScope.launch {
+            repository.startSession(activity)
+            SyncWorker.request(appContext)
+            refresh()
+        }
+    }
+
+    fun stopSession() {
+        viewModelScope.launch {
+            repository.stopSession()
+            SyncWorker.request(appContext)
+            refresh()
+        }
+    }
+
+    fun logStudy(title: String, minutes: Int, qualityFlag: String) {
+        closeSheet()
+        viewModelScope.launch {
+            repository.logStudy(title, minutes, qualityFlag)
+            SyncWorker.request(appContext)
+            refresh()
+        }
+    }
+
+    /**
+     * A server-backed setting, through the same queue as everything else, so a
+     * control moves instantly offline and syncs later (§3.5).
+     */
+    fun patchSetting(key: String, value: String) {
+        viewModelScope.launch {
+            repository.patchSettings(key, value)
+            SyncWorker.request(appContext)
+            refresh()
+        }
+    }
+
+    fun patchSetting(key: String, value: Int) {
+        viewModelScope.launch {
+            repository.patchSettings(key, value)
+            SyncWorker.request(appContext)
+            refresh()
         }
     }
 

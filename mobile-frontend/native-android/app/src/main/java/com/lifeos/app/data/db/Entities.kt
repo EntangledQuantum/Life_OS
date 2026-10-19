@@ -39,6 +39,25 @@ data class SnapshotEntity(
 }
 
 /**
+ * The server's settings, cached in one row beside the snapshot.
+ *
+ * Its own table rather than a column on `snapshot` because the two arrive from
+ * two different requests and either can fail on its own: a settings fetch that
+ * fails must not discard a dashboard that succeeded, and an app that has never
+ * reached `/settings` still has to draw Today.
+ */
+@Entity(tableName = "server_settings")
+data class ServerSettingsEntity(
+    @PrimaryKey val id: Int = SINGLETON_ID,
+    @ColumnInfo(name = "payload_json") val payloadJson: String,
+    @ColumnInfo(name = "fetched_at") val fetchedAt: Long,
+) {
+    companion object {
+        const val SINGLETON_ID = 1
+    }
+}
+
+/**
  * `pending_writes` (§7.5).
  *
  * `lifeDayDate` is stamped when the user taps, not when the worker runs. That

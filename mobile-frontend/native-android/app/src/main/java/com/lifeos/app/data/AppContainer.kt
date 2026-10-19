@@ -40,6 +40,7 @@ class AppContainer(private val context: Context) {
     val repository by lazy {
         LifeOsRepository(
             snapshots = database.snapshots(),
+            settingsStore = database.serverSettings(),
             writes = database.pendingWrites(),
             prefs = preferences,
             tokens = tokens,

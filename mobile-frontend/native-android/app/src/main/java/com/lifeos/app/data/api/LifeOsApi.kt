@@ -7,6 +7,7 @@ import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 import retrofit2.http.Url
 
 /**
@@ -45,6 +46,24 @@ interface LifeOsApi {
     /** The primary read. Everything on every screen comes from this one call. */
     @GET("api/v1/dashboard/today")
     suspend fun today(): Response<DashboardTodayDto>
+
+    /**
+     * The settings the app is allowed to read and write.
+     *
+     * A second read rather than a field on the dashboard, because the dashboard
+     * does not carry one. Fetched beside it on the same poll.
+     */
+    @GET("api/v1/settings")
+    suspend fun settings(): Response<SettingsDto>
+
+    /**
+     * The only screen-specific network read in the app (§3.3).
+     *
+     * `7d` comes off the dashboard snapshot, so this is reached only when the
+     * user asks for 30d, 90d or all — one request per choice, never polled.
+     */
+    @GET("api/v1/analytics")
+    suspend fun analytics(@Query("range") range: String): Response<AnalyticsDto>
 
     /** `200` ok · `404` unknown · `409` already done today, which is success. */
     @POST("api/v1/habits/{id}/complete")

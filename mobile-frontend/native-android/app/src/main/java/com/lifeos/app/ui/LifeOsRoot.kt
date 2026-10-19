@@ -20,17 +20,21 @@ import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.window.core.layout.WindowWidthSizeClass
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -43,24 +47,36 @@ import com.lifeos.app.data.AppContainer
 import com.lifeos.app.data.ConnectionState
 import com.lifeos.app.data.PollIntervals
 import com.lifeos.app.data.api.ApiClient
+import com.lifeos.app.domain.CelebrationIntensity
+import com.lifeos.app.ui.celebration.CelebrationOverlay
 import com.lifeos.app.ui.components.PendingCountBadge
 import com.lifeos.app.ui.components.StatusStrip
+import com.lifeos.app.ui.components.UndoSnackbar
 import com.lifeos.app.ui.connect.ConnectScreen
 import com.lifeos.app.ui.connect.PairStubScreen
+import com.lifeos.app.ui.day.DayScreen
 import com.lifeos.app.ui.outdated.OutdatedScreen
-import com.lifeos.app.ui.placeholders.PlaceholderScreen
 import com.lifeos.app.ui.server.ServerScreen
 import com.lifeos.app.ui.server.ServerViewModel
 import com.lifeos.app.ui.settings.AboutScreen
 import com.lifeos.app.ui.settings.AppearanceScreen
 import com.lifeos.app.ui.settings.ConnectionSettingsScreen
+import com.lifeos.app.ui.settings.DaySettingsScreen
+import com.lifeos.app.ui.settings.NotificationsSettingsScreen
 import com.lifeos.app.ui.settings.PendingWritesScreen
 import com.lifeos.app.ui.settings.SettingsIndexScreen
+import com.lifeos.app.ui.settings.WidgetSettingsScreen
+import com.lifeos.app.ui.sheets.AgendaDetailSheet
+import com.lifeos.app.ui.sheets.MeterDetailSheet
+import com.lifeos.app.ui.sheets.SessionPickerSheet
+import com.lifeos.app.ui.sheets.StudyLogSheet
+import com.lifeos.app.ui.sheets.TaskSheet
 import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.LocalReducedMotion
 import com.lifeos.app.ui.theme.Motion
 import com.lifeos.app.ui.theme.palette
 import com.lifeos.app.ui.today.TodayScreen
+import com.lifeos.app.ui.you.YouScreen
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -89,6 +105,8 @@ fun LifeOsRoot(container: AppContainer) {
     val prefs by prefsFlow.collectAsStateWithLifecycle(
         initialValue = com.lifeos.app.data.AppPrefs(),
     )
+    val rootState by viewModel.state.collectAsStateWithLifecycle()
+    val celebration by viewModel.celebration.collectAsStateWithLifecycle()
 
     /*
      * `426` and `401` are reactive: they can arrive on any poll, so the gate is
@@ -184,16 +202,33 @@ fun LifeOsRoot(container: AppContainer) {
                 onOpen = { page ->
                     when (page) {
                         "appearance" -> navController.navigate(Routes.SETTINGS_APPEARANCE)
+                        "notifications" -> navController.navigate(Routes.SETTINGS_NOTIFICATIONS)
+                        "day" -> navController.navigate(Routes.SETTINGS_DAY)
                         "connection" -> navController.navigate(Routes.SETTINGS_CONNECTION)
+                        "widget" -> navController.navigate(Routes.SETTINGS_WIDGET)
                         "about" -> navController.navigate(Routes.SETTINGS_ABOUT)
-                        // Notifications, the day and the widget are later
-                        // milestones; their rows say so rather than opening an
-                        // empty screen.
                         else -> Unit
                     }
                 },
             )
         }
+
+        composable(Routes.SETTINGS_DAY) {
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            DaySettingsScreen(
+                settings = state.view?.settings
+                    ?: com.lifeos.app.data.api.SettingsDto(),
+                onPatchString = viewModel::patchSetting,
+                onPatchInt = viewModel::patchSetting,
+            )
+        }
+
+        // Notifications owns the channel strategy, so the page ships with the
+        // delivery layer it configures. The row opens an honest statement of
+        // that rather than a control that does nothing.
+        composable(Routes.SETTINGS_NOTIFICATIONS) { NotificationsSettingsScreen() }
+
+        composable(Routes.SETTINGS_WIDGET) { WidgetSettingsScreen() }
 
         composable(Routes.SETTINGS_APPEARANCE) {
             val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -245,6 +280,23 @@ fun LifeOsRoot(container: AppContainer) {
             )
         }
     }
+
+    /*
+     * The celebration (§3.4): **global**, outside the NavHost.
+     *
+     * Outside, not inside a screen, for two reasons. It must fire on Today, on
+     * Day, on You, in Settings and on cold start — anywhere the user happens to
+     * be when the goal lands. And it must cover the navigation bar: a
+     * celebration with a reachable nav item behind it would let the user leave a
+     * goal unwitnessed, and the goal is not finished until they have seen it.
+     */
+    celebration?.let {
+        CelebrationOverlay(
+            celebration = it,
+            intensity = CelebrationIntensity.of(rootState.view?.settings?.celebrationIntensity),
+            onDismiss = viewModel::dismissCelebration,
+        )
+    }
 }
 
 /**
@@ -277,6 +329,17 @@ private fun AppShell(
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val refreshLine by viewModel.refreshLineVisible.collectAsStateWithLifecycle()
     val emptyTimedOut by viewModel.emptyCacheTimedOut.collectAsStateWithLifecycle()
+    val analytics by viewModel.analytics.collectAsStateWithLifecycle()
+    val sheet by viewModel.sheet.collectAsStateWithLifecycle()
+    val undoPrompt by viewModel.undoPrompt.collectAsStateWithLifecycle()
+
+    /*
+     * §2.4: the content columns come from the window, not from a device check —
+     * Android resizes the app while it runs (split screen, free-form,
+     * unfolding), so this is read per composition rather than decided once.
+     */
+    val expanded = currentWindowAdaptiveInfo().windowSizeClass.windowWidthSizeClass ==
+        WindowWidthSizeClass.EXPANDED
 
     // The poll belongs to the destination, and there is only ever one of it.
     LaunchedEffect(route) {
@@ -358,7 +421,8 @@ private fun AppShell(
                 )
             },
         ) { padding ->
-            Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 // One strip, on every screen, directly under the app bar. It
                 // participates in layout and pushes content down.
                 StatusStrip(
@@ -386,37 +450,155 @@ private fun AppShell(
                             refreshLineVisible = refreshLine,
                             emptyCacheTimedOut = emptyTimedOut,
                             address = prefs.baseUrl,
+                            expanded = expanded,
                             onTick = viewModel::tick,
-                            onOpenItem = { /* detail sheet: later milestone */ },
-                            onOpenMeterDetail = { /* vsYesterday sheet: later milestone */ },
+                            onOpenItem = { viewModel.openSheet(AppSheet.Agenda(it.id)) },
+                            onOpenMeterDetail = { viewModel.openSheet(AppSheet.MeterDetail) },
                             onOpenNeedsYou = { navController.navigate(Routes.DAY) },
-                            onStartSessionPicker = { /* session picker: later milestone */ },
-                            onStopSession = { /* session stop: later milestone */ },
+                            onStartSessionPicker = {
+                                viewModel.openSheet(AppSheet.SessionPicker)
+                            },
+                            onStopSession = viewModel::stopSession,
                             onRetry = viewModel::refresh,
                             onChangeServer = { navController.navigate(Routes.SERVER) },
                             onArmEmptyTimeout = viewModel::armEmptyCacheTimeout,
                         )
 
-                        Routes.DAY -> PlaceholderScreen(
-                            title = "Day",
-                            willHold = "The ribbon, Needs you, and everything the agent has " +
-                                "queued, bucketed Today · Tomorrow · weekday · No time.",
-                            liveFact = state.view?.data?.let {
-                                "${com.lifeos.app.domain.Predicates.needsYouCount(it)} need you · " +
-                                    "${it.timeline.size} timeline blocks"
-                            },
+                        Routes.DAY -> DayScreen(
+                            state = state,
+                            refreshLineVisible = refreshLine,
+                            emptyCacheTimedOut = emptyTimedOut,
+                            address = prefs.baseUrl,
+                            expanded = expanded,
+                            onOpenTask = { viewModel.openSheet(AppSheet.Task(it.id)) },
+                            onCompleteTask = viewModel::completeTask,
+                            onDismissTask = viewModel::dismissTask,
+                            onLogStudy = { viewModel.openSheet(AppSheet.StudyLog) },
+                            onRetry = viewModel::refresh,
+                            onChangeServer = { navController.navigate(Routes.SERVER) },
+                            onArmEmptyTimeout = viewModel::armEmptyCacheTimeout,
                         )
 
-                        Routes.YOU -> PlaceholderScreen(
-                            title = "You",
-                            willHold = "Goals, the last seven days, and vs. yesterday.",
-                            liveFact = state.view?.data?.let {
-                                "${it.goals.size} goals · ${it.xpSeries7.size} days of XP"
-                            },
+                        Routes.YOU -> YouScreen(
+                            state = state,
+                            analytics = analytics,
+                            refreshLineVisible = refreshLine,
+                            emptyCacheTimedOut = emptyTimedOut,
+                            address = prefs.baseUrl,
+                            onToggleAnalytics = viewModel::toggleAnalytics,
+                            onSelectRange = viewModel::selectRange,
+                            onRetry = viewModel::refresh,
+                            onChangeServer = { navController.navigate(Routes.SERVER) },
+                            onArmEmptyTimeout = viewModel::armEmptyCacheTimeout,
                         )
                     }
                 }
             }
+
+            /*
+             * The 5-second undo snackbar (§4.6) — the only transient surface on
+             * Today. It insets above the navigation bar rather than covering it.
+             */
+            val prompt = undoPrompt
+            UndoSnackbar(
+                visible = prompt != null,
+                message = prompt?.let { "${it.item.title} done" } ?: "",
+                promptKey = prompt?.item?.refId,
+                onUndo = { prompt?.let { viewModel.undo(it.item) } },
+                onTimeout = viewModel::dismissUndoPrompt,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+            }
+        }
+    }
+
+    /* ---- the sheets, hosted once for all three destinations ---- */
+
+    SheetHost(
+        sheet = sheet,
+        state = state,
+        viewModel = viewModel,
+        onOpenLink = { openUrl(context, it) },
+    )
+}
+
+/**
+ * The five sheets of §2.3, hosted once.
+ *
+ * One host rather than one per screen, because `agenda/{id}` opens from Today,
+ * `task/{id}` opens from Day *and* from a Needs-you row *and* (later) from a
+ * notification tap, and three copies of the same sheet is three places for it
+ * to drift.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SheetHost(
+    sheet: AppSheet?,
+    state: TodayUiState,
+    viewModel: LifeOsViewModel,
+    onOpenLink: (String) -> Unit,
+) {
+    if (sheet == null) return
+    val data = state.view?.data ?: return
+    val p = palette
+
+    ModalBottomSheet(
+        onDismissRequest = viewModel::closeSheet,
+        containerColor = p.surface,
+        contentColor = p.text,
+        scrimColor = p.scrim,
+    ) {
+        when (sheet) {
+            is AppSheet.Agenda -> {
+                val item = data.agenda.firstOrNull { it.id == sheet.id }
+                    ?: data.anytime.firstOrNull { it.id == sheet.id }
+                if (item == null) {
+                    viewModel.closeSheet()
+                } else {
+                    AgendaDetailSheet(
+                        item = item,
+                        habit = com.lifeos.app.domain.Predicates.habitFor(data, item),
+                        task = data.tasks.firstOrNull { it.id == item.refId },
+                        streaksEnabled = state.view.settings.streaksEnabled,
+                        onUndo = {
+                            viewModel.undo(item)
+                            viewModel.closeSheet()
+                        },
+                        onComplete = {
+                            viewModel.tick(item)
+                            viewModel.closeSheet()
+                        },
+                        onOpenLink = onOpenLink,
+                    )
+                }
+            }
+
+            is AppSheet.Task -> {
+                val task = data.tasks.firstOrNull { it.id == sheet.id }
+                if (task == null) {
+                    viewModel.closeSheet()
+                } else {
+                    TaskSheet(
+                        task = task,
+                        timezone = data.lifeDay.timezone,
+                        onComplete = {
+                            viewModel.completeTask(task.id)
+                            viewModel.closeSheet()
+                        },
+                        onDismiss = {
+                            viewModel.dismissTask(task.id)
+                            viewModel.closeSheet()
+                        },
+                        onOpenLink = onOpenLink,
+                    )
+                }
+            }
+
+            AppSheet.MeterDetail -> MeterDetailSheet(data = data)
+
+            AppSheet.SessionPicker -> SessionPickerSheet(onPick = viewModel::startSession)
+
+            AppSheet.StudyLog -> StudyLogSheet(onLog = viewModel::logStudy)
         }
     }
 }
@@ -476,7 +658,7 @@ private fun androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteS
  * is why the comparison is not a naive `start <= now <= end`.
  */
 private fun silencedUntil(state: TodayUiState): String? {
-    val settings = state.view?.data?.settings ?: return null
+    val settings = state.view?.settings ?: return null
     if (settings.doNotDisturb) return "you turn it back on"
     if (!settings.quietHoursSilent) return null
     val now = java.time.LocalTime.now()

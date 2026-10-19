@@ -40,6 +40,7 @@ class WriteQueueTest {
         now: Long = 10_000L,
     ) = LifeOsRepository(
         snapshots = snapshots,
+        settingsStore = FakeServerSettingsDao(),
         writes = writes,
         prefs = FakeConfig(),
         tokens = FakeToken(),
@@ -137,6 +138,7 @@ class WriteQueueTest {
         var clock = 10_000L
         val repository = LifeOsRepository(
             snapshots = snapshots,
+            settingsStore = FakeServerSettingsDao(),
             writes = writes,
             prefs = FakeConfig(),
             tokens = FakeToken(),
@@ -241,6 +243,7 @@ class WriteQueueTest {
         val writes = FakePendingWriteDao()
         val repository = LifeOsRepository(
             snapshots = FakeSnapshotDao(snapshot()),
+            settingsStore = FakeServerSettingsDao(),
             writes = writes,
             prefs = FakeConfig(url = null),
             tokens = FakeToken(),

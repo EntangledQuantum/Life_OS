@@ -33,6 +33,7 @@ import com.lifeos.app.ui.components.Mono
 import com.lifeos.app.ui.components.PageBody
 import com.lifeos.app.ui.components.SectionHeader
 import com.lifeos.app.ui.components.SkeletonBlock
+import com.lifeos.app.ui.components.TwoPane
 import com.lifeos.app.ui.growth.GrowthMeter
 import com.lifeos.app.ui.growth.GrowthStyle
 import com.lifeos.app.ui.growth.parseHex
@@ -62,6 +63,8 @@ fun TodayScreen(
     refreshLineVisible: Boolean,
     emptyCacheTimedOut: Boolean,
     address: String?,
+    /** ≥ 840dp: the agent's cards move to a second column (§2.4). */
+    expanded: Boolean,
     onTick: (AgendaItemDto) -> Unit,
     onOpenItem: (AgendaItemDto) -> Unit,
     onOpenMeterDetail: () -> Unit,
@@ -115,86 +118,138 @@ fun TodayScreen(
 
         val needsYou = Predicates.needsYouCount(data)
         val agentCards = Predicates.agentCards(data)
+        val streaksEnabled = state.view.settings.streaksEnabled
 
-        LazyColumn(
+        TwoPane(
+            expanded = expanded,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = Spacing.lg,
-                end = Spacing.lg,
-                top = Spacing.sm,
-                bottom = Spacing.xxxl,
-            ),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
-        ) {
-            item(key = "activity") {
-                ActivityLine(
-                    session = data.activeSession,
-                    onStart = onStartSessionPicker,
-                    onStop = onStopSession,
-                )
-            }
+            primary = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = Spacing.lg,
+                        end = Spacing.lg,
+                        top = Spacing.sm,
+                        bottom = Spacing.xxxl,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                ) {
+                    item(key = "activity") {
+                        ActivityLine(
+                            session = data.activeSession,
+                            onStart = onStartSessionPicker,
+                            onStop = onStopSession,
+                        )
+                    }
 
-            item(key = "meter") {
-                MeterBlock(data = data, onOpenDetail = onOpenMeterDetail)
-            }
+                    item(key = "meter") {
+                        MeterBlock(data = data, onOpenDetail = onOpenMeterDetail)
+                    }
 
-            item(key = "pulse") {
-                PulseBlock(pulse = data.pulse, explanation = data.pulseExplanation)
-            }
+                    item(key = "pulse") {
+                        PulseBlock(pulse = data.pulse, explanation = data.pulseExplanation)
+                    }
 
-            /*
-             * The one list. Already merged, already ordered, applied into the
-             * epoch so nothing moves. **Do not re-split it** into habits/tasks
-             * or Today/Anytime — `data.anytime` is a convenience subset, not a
-             * second section on this screen.
-             */
-            items(state.agenda, key = { it.id }) { item ->
-                AgendaCard(
-                    item = item,
-                    habit = Predicates.habitFor(data, item),
-                    pending = item.refId in (state.view.pendingTargets),
-                    streaksEnabled = data.settings.streaksEnabled,
-                    onTick = { onTick(item) },
-                    onOpen = { onOpenItem(item) },
-                )
-            }
+                    /*
+                     * The one list. Already merged, already ordered, applied
+                     * into the epoch so nothing moves. **Do not re-split it**
+                     * into habits/tasks or Today/Anytime — `data.anytime` is a
+                     * convenience subset, not a second section on this screen.
+                     */
+                    items(state.agenda, key = { it.id }) { item ->
+                        AgendaCard(
+                            item = item,
+                            habit = Predicates.habitFor(data, item),
+                            pending = item.refId in (state.view.pendingTargets),
+                            streaksEnabled = streaksEnabled,
+                            onTick = { onTick(item) },
+                            onOpen = { onOpenItem(item) },
+                        )
+                    }
 
-            if (state.agenda.isEmpty()) {
-                item(key = "empty") {
-                    Text(
-                        text = "Nothing on today. Ask your agent to set up some habits.",
-                        style = LifeOsType.body,
-                        color = p.muted,
-                    )
-                }
-            }
+                    if (state.agenda.isEmpty()) {
+                        item(key = "empty") {
+                            Text(
+                                text = "Nothing on today. Ask your agent to set up some habits.",
+                                style = LifeOsType.body,
+                                color = p.muted,
+                            )
+                        }
+                    }
 
-            if (needsYou > 0) {
-                item(key = "needs-you") {
-                    // The count and Day's list come from the same predicate, so
-                    // this link can never point at a page that renders nothing.
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(Radii.card))
-                            .clickable(onClick = onOpenNeedsYou)
-                            .padding(vertical = Spacing.md),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Needs you", style = LifeOsType.cardTitle, color = p.text)
-                        Mono(" · $needsYou", color = p.accent)
-                        Box(Modifier.weight(1f))
-                        Text("›", style = LifeOsType.cardTitle, color = p.muted)
+                    // One column: the agent's reading of the day comes after
+                    // the day, never before.
+                    if (!expanded) {
+                        agentSection(
+                            scope = this,
+                            needsYou = needsYou,
+                            agentCards = agentCards,
+                            onOpenNeedsYou = onOpenNeedsYou,
+                        )
                     }
                 }
-            }
-
-            if (agentCards.isNotEmpty()) {
-                item(key = "agent-header") { SectionHeader("From your agent") }
-                items(agentCards, key = { "agent-${it.id}" }) { task ->
-                    AgentCard(title = task.title, subtitle = task.subtitle, emoji = task.emoji)
+            },
+            secondary = {
+                if (expanded) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            end = Spacing.lg,
+                            top = Spacing.sm,
+                            bottom = Spacing.xxxl,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                    ) {
+                        agentSection(
+                            scope = this,
+                            needsYou = needsYou,
+                            agentCards = agentCards,
+                            onOpenNeedsYou = onOpenNeedsYou,
+                        )
+                    }
                 }
+            },
+        )
+    }
+}
+
+/**
+ * The agent's half of Today: the Needs-you link and the two pinned cards.
+ *
+ * One function, called from either column, so the two layouts cannot drift into
+ * showing different things.
+ */
+private fun agentSection(
+    scope: androidx.compose.foundation.lazy.LazyListScope,
+    needsYou: Int,
+    agentCards: List<com.lifeos.app.data.api.TaskDto>,
+    onOpenNeedsYou: () -> Unit,
+) {
+    if (needsYou > 0) {
+        scope.item(key = "needs-you") {
+            val p = palette
+            // The count and Day's list come from the same predicate, so this
+            // link can never point at a page that renders nothing.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.card))
+                    .clickable(onClick = onOpenNeedsYou)
+                    .padding(vertical = Spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Needs you", style = LifeOsType.cardTitle, color = p.text)
+                Mono(" · $needsYou", color = p.accent)
+                Box(Modifier.weight(1f))
+                Text("›", style = LifeOsType.cardTitle, color = p.muted)
             }
+        }
+    }
+
+    if (agentCards.isNotEmpty()) {
+        scope.item(key = "agent-header") { SectionHeader("From your agent") }
+        scope.items(agentCards, key = { "agent-${it.id}" }) { task ->
+            AgentCard(title = task.title, subtitle = task.subtitle, emoji = task.emoji)
         }
     }
 }

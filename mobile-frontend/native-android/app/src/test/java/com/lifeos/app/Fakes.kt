@@ -2,6 +2,8 @@ package com.lifeos.app
 
 import com.lifeos.app.data.ConnectionConfig
 import com.lifeos.app.data.TokenSource
+import com.lifeos.app.data.api.AnalyticsDailyDto
+import com.lifeos.app.data.api.AnalyticsDto
 import com.lifeos.app.data.api.AuthMeDto
 import com.lifeos.app.data.api.DashboardTodayDto
 import com.lifeos.app.data.api.HealthDto
@@ -9,9 +11,12 @@ import com.lifeos.app.data.api.LifeOsApi
 import com.lifeos.app.data.api.PairClaimRequest
 import com.lifeos.app.data.api.PairClaimResponse
 import com.lifeos.app.data.api.ProtocolDto
+import com.lifeos.app.data.api.SettingsDto
 import com.lifeos.app.data.api.SourceBody
 import com.lifeos.app.data.db.PendingWriteDao
 import com.lifeos.app.data.db.PendingWriteEntity
+import com.lifeos.app.data.db.ServerSettingsDao
+import com.lifeos.app.data.db.ServerSettingsEntity
 import com.lifeos.app.data.db.SnapshotDao
 import com.lifeos.app.data.db.SnapshotEntity
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +42,18 @@ class FakeSnapshotDao(initial: SnapshotEntity? = null) : SnapshotDao {
     override suspend fun get(): SnapshotEntity? = state.value
     override suspend fun put(snapshot: SnapshotEntity) {
         state.value = snapshot
+    }
+
+    override suspend fun clear() {
+        state.value = null
+    }
+}
+
+class FakeServerSettingsDao(initial: ServerSettingsEntity? = null) : ServerSettingsDao {
+    private val state = MutableStateFlow(initial)
+    override fun observe(): Flow<ServerSettingsEntity?> = state
+    override suspend fun put(settings: ServerSettingsEntity) {
+        state.value = settings
     }
 
     override suspend fun clear() {
@@ -149,10 +166,13 @@ class FakeToken(private val value: String? = "test-token") : TokenSource {
  */
 class FakeApi(
     private val today: DashboardTodayDto = DashboardTodayDto(),
+    private val settings: SettingsDto = SettingsDto(),
     /** Per-endpoint responses, keyed by the call name. */
     var habitCompleteCode: Int = 200,
     var taskCompleteCode: Int = 200,
     var throwOnHabitComplete: Boolean = false,
+    var analyticsCode: Int = 200,
+    var analyticsDaily: List<AnalyticsDailyDto> = emptyList(),
 ) : LifeOsApi {
 
     val calls = mutableListOf<String>()
@@ -187,6 +207,24 @@ class FakeApi(
     override suspend fun today(): Response<DashboardTodayDto> {
         calls += "today"
         return Response.success(today)
+    }
+
+    override suspend fun settings(): Response<SettingsDto> {
+        calls += "settings"
+        return Response.success(settings)
+    }
+
+    override suspend fun analytics(range: String): Response<AnalyticsDto> {
+        calls += "analytics:$range"
+        return if (analyticsCode == 200) {
+            Response.success(AnalyticsDto(range = range, daily = analyticsDaily))
+        } else {
+            Response.error(
+                analyticsCode,
+                """{"error":"scripted $analyticsCode"}"""
+                    .toResponseBody("application/json".toMediaType()),
+            )
+        }
     }
 
     override suspend fun completeHabit(id: String, body: SourceBody): Response<JsonObject> {

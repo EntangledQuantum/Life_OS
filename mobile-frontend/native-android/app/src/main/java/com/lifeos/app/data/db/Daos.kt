@@ -24,6 +24,18 @@ interface SnapshotDao {
 }
 
 @Dao
+interface ServerSettingsDao {
+    @Query("SELECT * FROM server_settings WHERE id = ${ServerSettingsEntity.SINGLETON_ID}")
+    fun observe(): Flow<ServerSettingsEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(settings: ServerSettingsEntity)
+
+    @Query("DELETE FROM server_settings")
+    suspend fun clear()
+}
+
+@Dao
 interface PendingWriteDao {
     @Query("SELECT * FROM pending_writes ORDER BY enqueued_at ASC, id ASC")
     fun observeAll(): Flow<List<PendingWriteEntity>>

@@ -1,14 +1,19 @@
 package com.lifeos.app.data
 
+import com.lifeos.app.data.api.AnalyticsDto
 import com.lifeos.app.data.api.ApiClient
 import com.lifeos.app.data.api.DashboardTodayDto
 import com.lifeos.app.data.api.LifeOsApi
 import com.lifeos.app.data.api.ProtocolMismatchDto
+import com.lifeos.app.data.api.SettingsDto
 import com.lifeos.app.data.api.SourceBody
 import com.lifeos.app.data.db.PendingWriteDao
 import com.lifeos.app.data.db.PendingWriteEntity
+import com.lifeos.app.data.db.ServerSettingsDao
+import com.lifeos.app.data.db.ServerSettingsEntity
 import com.lifeos.app.data.db.SnapshotDao
 import com.lifeos.app.data.db.SnapshotEntity
+import com.lifeos.app.domain.AnalyticsRange
 import com.lifeos.app.domain.LifeDayGuard
 import com.lifeos.app.domain.MAX_WRITE_ATTEMPTS
 import com.lifeos.app.domain.Overlay
@@ -32,6 +37,14 @@ import retrofit2.Response
 data class TodayView(
     /** The cached snapshot with the optimistic overlay applied. */
     val data: DashboardTodayDto?,
+    /**
+     * The server's settings, from their own cached row.
+     *
+     * Defaults until the first `GET /api/v1/settings` lands, which is honest:
+     * the app draws with the documented defaults rather than hiding a screen
+     * because a second request has not arrived.
+     */
+    val settings: SettingsDto,
     val fetchedAt: Long?,
     val connection: ConnectionState,
     /** `refId`s with an unsent completion — the row's static pending dot. */
@@ -57,6 +70,7 @@ data class StrandedNotice(val count: Int, val lifeDayDate: String)
  */
 class LifeOsRepository(
     private val snapshots: SnapshotDao,
+    private val settingsStore: ServerSettingsDao,
     private val writes: PendingWriteDao,
     private val prefs: ConnectionConfig,
     private val tokens: TokenSource,
@@ -77,9 +91,10 @@ class LifeOsRepository(
 
     val today: Flow<TodayView> = combine(
         snapshots.observe(),
+        settingsStore.observe(),
         writes.observeAll(),
         _connection,
-    ) { snapshot, queued, state ->
+    ) { snapshot, settingsRow, queued, state ->
         val pending = queued.map(::toDomain).filter { it.state == WriteState.PENDING }
         val parsed = snapshot?.let { decode(it.payloadJson) }
         val strandedUnnoticed = queued
@@ -88,6 +103,7 @@ class LifeOsRepository(
 
         TodayView(
             data = parsed?.let { Overlay.apply(it, pending) },
+            settings = settingsRow?.let { decodeSettings(it.payloadJson) } ?: SettingsDto(),
             fetchedAt = snapshot?.fetchedAt,
             connection = state,
             pendingTargets = Overlay.pendingTargets(pending),
@@ -148,6 +164,12 @@ class LifeOsRepository(
                     ).also { _connection.value = it }
                 } else {
                     store(body, base)
+                    // Best-effort, and deliberately after the snapshot is
+                    // stored: a settings fetch that fails must not discard a
+                    // dashboard that succeeded, and it must not move the
+                    // connection state — the screen the user is looking at is
+                    // already drawn and correct.
+                    refreshSettings(api)
                     consecutiveFailures = 0
                     ConnectionState.Online.also { _connection.value = it }
                 }
@@ -195,6 +217,38 @@ class LifeOsRepository(
         )
     }
 
+    private suspend fun refreshSettings(api: LifeOsApi) {
+        val response = runCatching { api.settings() }.getOrNull() ?: return
+        val body = response.body().takeIf { response.isSuccessful } ?: return
+        settingsStore.put(
+            ServerSettingsEntity(
+                payloadJson = json.encodeToString(SettingsDto.serializer(), body),
+                fetchedAt = now(),
+            ),
+        )
+    }
+
+    /**
+     * Analytics for a range (§3.3) — the only screen-specific read.
+     *
+     * Not cached in Room and not polled: it is a question the user asked once by
+     * tapping a range chip. `7d` never reaches here at all, because the
+     * dashboard snapshot already carries it and therefore works offline.
+     */
+    suspend fun analytics(range: AnalyticsRange): Result<AnalyticsDto> {
+        val base = prefs.baseUrl()
+        if (base.isNullOrBlank() || !tokens.hasToken()) {
+            return Result.failure(IllegalStateException("Not connected"))
+        }
+        val response = runCatching { apiFactory(base).analytics(range.wire) }
+            .getOrElse { return Result.failure(it) }
+        val body = response.body()
+        return when {
+            response.isSuccessful && body != null -> Result.success(body)
+            else -> Result.failure(IllegalStateException("HTTP ${response.code()}"))
+        }
+    }
+
     /**
      * The server's current life-day, from the last snapshot.
      *
@@ -211,6 +265,7 @@ class LifeOsRepository(
             existing.baseUrl != newBaseUrl
         ) {
             snapshots.clear()
+            settingsStore.clear()
         }
         prefs.setBaseUrl(newBaseUrl)
         consecutiveFailures = 0
@@ -258,6 +313,57 @@ class LifeOsRepository(
         kind = WriteKind.SETTINGS_PATCH,
         targetId = key,
         payload = JsonObject(mapOf(key to JsonPrimitive(value))),
+    )
+
+    suspend fun patchSettings(key: String, value: String): Long = enqueue(
+        kind = WriteKind.SETTINGS_PATCH,
+        targetId = key,
+        payload = JsonObject(mapOf(key to JsonPrimitive(value))),
+    )
+
+    suspend fun patchSettings(key: String, value: Int): Long = enqueue(
+        kind = WriteKind.SETTINGS_PATCH,
+        targetId = key,
+        payload = JsonObject(mapOf(key to JsonPrimitive(value))),
+    )
+
+    /** Put a task away without doing it. Day-independent, so never stranded. */
+    suspend fun dismissTask(taskId: String): Long = enqueue(WriteKind.TASK_DISMISS, taskId)
+
+    /**
+     * Set what you are doing now.
+     *
+     * `startedAt` is deliberately not sent: the server stamps it, and a phone
+     * with a drifting clock would otherwise write a session that started in the
+     * future. Not day-independent — a session belongs to the day it was in.
+     */
+    suspend fun startSession(activity: String): Long = enqueue(
+        kind = WriteKind.SESSION_START,
+        targetId = activity,
+        payload = JsonObject(mapOf("activity" to JsonPrimitive(activity))),
+    )
+
+    suspend fun stopSession(): Long = enqueue(WriteKind.SESSION_STOP, "active")
+
+    /**
+     * `POST /api/v1/study` — the one write that is genuinely the user's and has
+     * no row to hang off (§3.2).
+     *
+     * The quality flag is not cosmetic: `inspired`, `feynman` and `retrieval`
+     * carry XP multipliers, so sending the wrong one quietly mis-pays the day.
+     */
+    suspend fun logStudy(title: String, minutes: Int, qualityFlag: String): Long = enqueue(
+        kind = WriteKind.STUDY_LOG,
+        targetId = title,
+        payload = JsonObject(
+            mapOf(
+                "title" to JsonPrimitive(title),
+                "durationMinutes" to JsonPrimitive(minutes),
+                "qualityFlag" to JsonPrimitive(qualityFlag),
+                // How the agent tells its own writes from the person's.
+                "source" to JsonPrimitive("user"),
+            ),
+        ),
     )
 
     /**
@@ -393,6 +499,9 @@ class LifeOsRepository(
 
     private fun decode(payload: String): DashboardTodayDto? =
         runCatching { json.decodeFromString(DashboardTodayDto.serializer(), payload) }.getOrNull()
+
+    private fun decodeSettings(payload: String): SettingsDto? =
+        runCatching { json.decodeFromString(SettingsDto.serializer(), payload) }.getOrNull()
 
     private fun toDomain(e: PendingWriteEntity) = PendingWrite(
         id = e.id,

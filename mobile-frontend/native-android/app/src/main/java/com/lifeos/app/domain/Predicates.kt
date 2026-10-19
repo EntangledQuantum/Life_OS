@@ -16,6 +16,12 @@ import com.lifeos.app.data.api.TaskDto
  * screen needs a predicate that is not in this file, it goes in this file — it
  * does not get written inline "just for this one place".
  */
+/** Day's two lists: what wants an answer, and what is merely planned. */
+data class DayPartition(
+    val needsYou: List<TaskDto>,
+    val scheduled: List<TaskDto>,
+)
+
 object Predicates {
 
     /* ------------------------------------------------------------ tasks */
@@ -67,6 +73,28 @@ object Predicates {
     /** Every visible task on Day, excluding what Today already draws as a card. */
     fun scheduled(data: DashboardTodayDto): List<TaskDto> =
         data.tasks.filter { isOpen(it) && !isPinned(it) }
+
+    /**
+     * Day's two lists, split once.
+     *
+     * Day draws "Needs you" above "Scheduled". Computing the two independently
+     * is how a task ends up in both — a review with a time would appear twice,
+     * and an untimed one would be counted by the link on Today and listed under
+     * two headings on Day. So the split happens here, exactly once: Needs you
+     * wins, and Scheduled is everything visible that Needs you did not take.
+     *
+     * The pair is therefore **disjoint and complete** by construction, and a
+     * test asserts it: every task [scheduled] returns appears in exactly one of
+     * the two, and Today's `Needs you · N` is the length of [DayPartition.needsYou].
+     */
+    fun dayPartition(data: DashboardTodayDto): DayPartition {
+        val needs = needsYou(data)
+        val claimed = needs.mapTo(HashSet()) { it.id }
+        return DayPartition(
+            needsYou = needs,
+            scheduled = scheduled(data).filter { it.id !in claimed },
+        )
+    }
 
     /* ----------------------------------------------------------- agenda */
 
