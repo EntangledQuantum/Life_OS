@@ -8,3 +8,10 @@ captures/
 *.hprof
 
 # Room exports the schema on purpose (ksp room.schemaLocation) — keep schemas/.
+
+# Release signing. The keystore itself lives outside the repository; this file
+# holds its path and passwords. It was nearly committed once by a directory-wide
+# `git add` — an ignore rule is the only thing that reliably stops that.
+keystore.properties
+*.jks
+*.keystore
