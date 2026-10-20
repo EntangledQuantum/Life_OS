@@ -118,9 +118,23 @@ object ApiClient {
 /**
  * Normalise what a human types into an address.
  *
- * The realistic input is `192.168.1.4` or `192.168.1.4:8787` — people do not
- * type a scheme. Defaulting the scheme to `http` and the port to 8787 is what
- * makes the field forgiving without guessing anything the user did not mean.
+ * Two kinds of input, and they must not be treated the same way.
+ *
+ * **A bare host** — `192.168.1.4`, `192.168.1.4:8787`, `nas.local/lifeos` — is
+ * the LAN case. Nobody types a scheme for it, so `http` and port 8787 are
+ * filled in. That is the forgiving path.
+ *
+ * **An address with a scheme typed out** is a statement of intent, and is
+ * honoured exactly: its port, or the scheme's own default, and *its path*.
+ * `https://sunny.example.ts.net/lifeos` is a real deployment — the API serves
+ * the dashboard under a gateway prefix, which is what `X-Forwarded-Prefix`
+ * exists for — and it must survive this function untouched.
+ *
+ * Both halves of that were wrong here. The path was dropped on the floor, and
+ * `https://host/lifeos` came back as `https://host:8787`: a different port, a
+ * different origin, and the prefix gone. The app could not reach a tunnelled
+ * instance at all, which is the only way most people reach one from outside
+ * their own Wi-Fi.
  */
 object AddressInput {
     const val DEFAULT_PORT = 8787
@@ -140,9 +154,17 @@ object AddressInput {
         val url = withScheme.toHttpUrlOrNull() ?: return null
         // A scheme with nothing after it is not an address.
         if (url.host.isBlank()) return null
+
+        // Typed a scheme: take them at their word, port and path included.
+        if (hasScheme) return withScheme
+
         // `HttpUrl` fills in 80/443 from the scheme, so "no port was typed" has
-        // to be detected on the text rather than read back off the parse.
-        val hadExplicitPort = withScheme.substringAfter("://").contains(':')
-        return if (hadExplicitPort) withScheme else "${url.scheme}://${url.host}:$DEFAULT_PORT"
+        // to be detected on the text. Look only at the authority — a colon in a
+        // path or query is not a port.
+        val authority = withScheme.substringAfter("://").substringBefore('/')
+        if (authority.contains(':')) return withScheme
+
+        val path = url.encodedPath.removeSuffix("/").takeIf { it.isNotBlank() }.orEmpty()
+        return "${url.scheme}://${url.host}:$DEFAULT_PORT$path"
     }
 }

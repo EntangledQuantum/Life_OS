@@ -29,11 +29,35 @@ class AddressInputTest {
     }
 
     @Test
-    fun `https is never downgraded`() {
+    fun `a typed scheme is honoured exactly`() {
         assertEquals("https://life.example.com:443", AddressInput.normalise("https://life.example.com:443"))
-        // No port on an https host still gets 8787, because that is where Life OS
-        // listens; a user who means 443 types it.
-        assertEquals("https://life.example.com:8787", AddressInput.normalise("https://life.example.com"))
+        // No port means the scheme's own default. 8787 must NOT be forced on:
+        // a tunnelled instance answers on 443, and appending 8787 sends the app
+        // to a port nothing is listening on.
+        assertEquals("https://life.example.com", AddressInput.normalise("https://life.example.com"))
+        assertEquals("http://life.example.com", AddressInput.normalise("http://life.example.com"))
+    }
+
+    @Test
+    fun `a gateway path prefix survives`() {
+        // The real case this was failing on. The API serves the dashboard under
+        // a prefix behind a gateway (X-Forwarded-Prefix), so the path is part of
+        // the address and dropping it points the app at a different deployment.
+        assertEquals(
+            "https://sunny.tailf9037f.ts.net/lifeos",
+            AddressInput.normalise("https://sunny.tailf9037f.ts.net/lifeos"),
+        )
+        assertEquals(
+            "https://sunny.tailf9037f.ts.net/lifeos",
+            AddressInput.normalise("  https://sunny.tailf9037f.ts.net/lifeos/  "),
+        )
+        // A bare host still gets the LAN defaults, and keeps its prefix too.
+        assertEquals("http://nas.local:8787/lifeos", AddressInput.normalise("nas.local/lifeos"))
+    }
+
+    @Test
+    fun `a colon in the path is not mistaken for a port`() {
+        assertEquals("http://nas.local:8787/a:b", AddressInput.normalise("nas.local/a:b"))
     }
 
     @Test

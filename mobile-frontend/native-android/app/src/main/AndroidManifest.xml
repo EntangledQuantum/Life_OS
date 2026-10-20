@@ -63,13 +63,25 @@
 
             <!--
               QR pairing deep link. `android:autoVerify` is impossible for an
-              arbitrary user-chosen host, so the custom scheme is the one that
-              must work. The https App Link is best-effort for a public URL.
+              arbitrary user-chosen host — App Links need a verified domain and
+              this instance may answer on 192.168.x.x — so the custom scheme is
+              the only thing that can ever work, and it has to match exactly.
+
+              The server mints `lifeos://pair?...` (apps/api/src/services/
+              pairing.ts). This filter declared host "connect" and nothing else,
+              so the link the QR actually contains matched no filter at all:
+              scanning it in Google Lens or any camera offered nothing, and the
+              whole point of the QR — the phone's own camera opening the app —
+              was dead. `connect` is kept as an alias so older QRs still open.
+
+              Host-less schemes do not match by scheme alone on Android, so
+              every host the server can mint must be listed here.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lifeos" android:host="pair" />
                 <data android:scheme="lifeos" android:host="connect" />
             </intent-filter>
         </activity>
