@@ -45,6 +45,22 @@ object Sizes {
     val agendaCard: Dp = 88.dp
     val agendaCardWithStrip: Dp = 104.dp
     val iconTile: Dp = 48.dp
+
+    /** The mark beside an agent card's title — its SVG, its icon, or its emoji. */
+    val agentMark: Dp = 28.dp
+
+    /** A goal card's icon tile. Larger on the lead goal, which is the one thing. */
+    val goalIcon: Dp = 40.dp
+    val goalIconLead: Dp = 56.dp
+
+    /** A rarity rung's own picture, in place of the filled dot. */
+    val rungIcon: Dp = 18.dp
+
+    /** The celebration's medallion — the tier's picture, full and immediate. */
+    val celebrationIcon: Dp = 120.dp
+
+    /** A task's artwork in a detail sheet. 3:2 at the sheet's width, near enough. */
+    val sheetArtwork: Dp = 180.dp
     val tick: Dp = 44.dp
     val tickTouch: Dp = 48.dp
     val leadingRule: Dp = 4.dp

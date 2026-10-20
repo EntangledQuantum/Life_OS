@@ -3,6 +3,7 @@ package com.lifeos.app.data
 import android.content.Context
 import com.lifeos.app.data.api.ApiClient
 import com.lifeos.app.data.api.LifeOsApi
+import com.lifeos.app.data.art.ArtOrigin
 import com.lifeos.app.data.db.LifeOsDatabase
 import com.lifeos.app.notify.ReminderCoordinator
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,15 @@ class AppContainer(private val context: Context) {
     val tokens by lazy { TokenStore(context) }
     val preferences by lazy { AppPreferences(context) }
     val probe by lazy { ServerProbe(tokens) }
+
+    /**
+     * Which origin an image request may carry the token to.
+     *
+     * Kept in step with preferences by the process (see `LifeOsApp`) rather than
+     * read per request, because an OkHttp interceptor runs on a network thread
+     * and `AppPreferences.baseUrl()` is a suspend read of DataStore.
+     */
+    val artOrigin by lazy { ArtOrigin() }
 
     /**
      * Retrofit instances are cached per address.

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
@@ -20,14 +21,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lifeos.app.data.ConnectionState
 import com.lifeos.app.data.api.AgendaItemDto
 import com.lifeos.app.data.api.DashboardTodayDto
+import com.lifeos.app.domain.Art
 import com.lifeos.app.domain.PetalInput
 import com.lifeos.app.domain.Predicates
 import com.lifeos.app.ui.TodayUiState
+import com.lifeos.app.ui.art.ArtBackground
+import com.lifeos.app.ui.art.ArtIcon
+import com.lifeos.app.ui.art.ArtSvgImage
 import com.lifeos.app.ui.components.ErrorPanel
 import com.lifeos.app.ui.components.Mono
 import com.lifeos.app.ui.components.PageBody
@@ -249,7 +255,7 @@ private fun agentSection(
     if (agentCards.isNotEmpty()) {
         scope.item(key = "agent-header") { SectionHeader("From your agent") }
         scope.items(agentCards, key = { "agent-${it.id}" }) { task ->
-            AgentCard(title = task.title, subtitle = task.subtitle, emoji = task.emoji)
+            AgentCard(task = task)
         }
     }
 }
@@ -322,30 +328,90 @@ private fun PulseBlock(pulse: String, explanation: String) {
     }
 }
 
+/**
+ * A pinned agent card.
+ *
+ * The card's picture fills it, under a scrim — **one** arrangement, not the four
+ * the server's `layout` vocabulary allows. A banner or a side crop is a choice
+ * about how a picture looks; a wash under a scrim is the only one of the four
+ * that cannot end with the agent's own sentence sitting unreadable on a
+ * photograph, and that rule outranks the agent's preference (§4.5).
+ *
+ * The small tile beside the title takes, in order: the card's inline `svg`, its
+ * icon picture, then the emoji. The SVG first because an agent that drew itself
+ * a mark meant that mark — and it is drawn as a decoded bitmap, never as markup.
+ */
 @Composable
-private fun AgentCard(title: String, subtitle: String?, emoji: String?) {
+private fun AgentCard(task: com.lifeos.app.data.api.TaskDto) {
     val p = palette
-    Column(
+    val art = Art.of(task)
+    val svg = Art.svg(task.id, task.svg)
+    val accent = serverColor(task.themeColor) ?: p.accent
+    val shape = RoundedCornerShape(Radii.card)
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.card))
-            .background(p.surface)
-            .padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            .clip(shape)
+            .background(p.surface),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!emoji.isNullOrBlank()) {
-                Text(emoji, modifier = Modifier.padding(end = Spacing.sm))
+        ArtBackground(art = art, modifier = Modifier.matchParentSize())
+
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AgentMark(svg = svg, art = art, emoji = task.emoji, accent = accent)
+                Text(task.title, style = LifeOsType.cardTitle, color = p.text)
             }
-            Text(title, style = LifeOsType.cardTitle, color = p.text)
+            if (!task.subtitle.isNullOrBlank()) {
+                Text(task.subtitle, style = LifeOsType.bodySmall, color = p.muted)
+            }
         }
-        if (!subtitle.isNullOrBlank()) {
-            Text(subtitle, style = LifeOsType.bodySmall, color = p.muted)
-        }
-        // No `svg` rendering in this milestone: agent SVG is untrusted and must
-        // be sandboxed, which is a later milestone's job. Drawing it unsandboxed
-        // to look complete would be the wrong trade.
     }
+}
+
+/**
+ * The agent's mark: its SVG, else its icon picture, else its emoji, else
+ * nothing.
+ *
+ * "Else nothing" matters — a card with no mark at all must not reserve an empty
+ * square beside the title, because an empty slot reads as missing data.
+ */
+@Composable
+private fun AgentMark(
+    svg: com.lifeos.app.domain.ArtSvg?,
+    art: com.lifeos.app.domain.ResolvedArt,
+    emoji: String?,
+    accent: Color,
+) {
+    val mark = Modifier.padding(end = Spacing.sm)
+    when {
+        svg != null -> ArtSvgImage(
+            art = svg,
+            modifier = mark.size(Sizes.agentMark),
+            // A vector that will not decode falls back to the icon or the
+            // emoji rather than leaving a broken box on the card.
+            fallback = { AgentMark(svg = null, art = art, emoji = emoji, accent = accent) },
+        )
+
+        art.icon != null -> ArtIcon(
+            picture = art.icon,
+            size = Sizes.agentMark,
+            tint = accent.copy(alpha = 0.14f),
+            modifier = mark,
+            fallback = { EmojiMark(emoji) },
+        )
+
+        else -> EmojiMark(emoji, modifier = mark)
+    }
+}
+
+@Composable
+private fun EmojiMark(emoji: String?, modifier: Modifier = Modifier) {
+    if (emoji.isNullOrBlank()) return
+    Text(emoji, modifier = modifier)
 }
 
 private fun failureDetail(state: ConnectionState?): String? = when (state) {

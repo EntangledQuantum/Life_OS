@@ -489,7 +489,7 @@ Anatomy (height 88dp for a task, 104dp with a week strip):
 
 ```
  ┌─ 4dp leading rule, activityColor(activityTag) ── radius 20dp ────────┐
- │▌                                                                     │
+ │▌   ░ habit background picture, cover-cropped, under its scrim ░      │
  │▌  ┌────────┐   07:30 · in 12m                            +12 XP      │
  │▌  │  icon  │   Read 20 pages                                         │
  │▌  │  48dp  │   after I sit at my desk                   ╭─────╮      │
@@ -501,7 +501,8 @@ Anatomy (height 88dp for a task, 104dp with a week strip):
 | Slot | Content | Type |
 |---|---|---|
 | Leading rule | 4dp, full height, `activityColor(activityTag)` at 100%; the card border is the same colour at 18%. **No 3dp colour bar inside the card** — at three pixels it read as a divider. | — |
-| Icon tile | 48dp rounded-12dp tile. `iconImage` (already resolved server-side) if present, else `emoji` at 24sp, else the activity glyph. Never a photographic background behind text. | — |
+| Background | The habit's `backgroundImageUrl`/`backgroundImageData`, cover-cropped to fill the card, **always under a scrim** — `artOverlay` clamped to 0.35–0.92, default 0.58, drawn as the web client draws it: a vertical gradient from `rgba(7,8,12,overlay×0.86)` to `rgba(7,8,12,min(0.96,overlay+0.24))`. Nothing is drawn at all when there is no picture, which is the normal case. **Never a photographic background behind unreadable text** — the scrim is what makes that true, it has a floor, and an agent cannot turn it off. | — |
+| Icon tile | 48dp rounded-12dp tile. The resolved picture if there is one, else `emoji` at 24sp, else the activity glyph. The tile is 48dp square in all three cases, so gaining or losing a picture never re-lays-out the row; the activity tint stays under the picture, so an icon with transparency sits on colour rather than on a hole. | — |
 | Meta line | `at` as `HH:mm` plus a relative `in 12m` when within the lead window. Omitted entirely for `state: "anytime"`. | JetBrains Mono 12sp, `faint` |
 | Title | `title`, max 2 lines, ellipsised | Figtree SemiBold 17sp, `text` |
 | Sub | `subtitle` for a task; for a habit, the **anchor** ("after I sit at my desk") — it is why the habit sticks, so it is surfaced. Max 1 line. | Figtree 13sp, `muted` |
@@ -512,7 +513,23 @@ Anatomy (height 88dp for a task, 104dp with a week strip):
 The `AgendaItem` does not carry the habit's art or `history7`, by design — copying a `data:`
 URI onto every agenda item would resend the same picture every poll. The screen passes the
 habit in, looked up by `habitId` against `data.habits`, which the same payload already
-carries.
+carries. So a **habit** row draws the habit's two slots; a **task** row has only
+`iconImage`, which the server already resolved for it, and never a background. One
+function decides that — `Art.of(item, habit)` — because a card and the sheet behind it
+disagreeing about which picture is which is exactly how the two clients drifted.
+
+**The art is cached on a key, not on the picture.** `<item id>/<slot>/<length.hash>`. The
+payload arrives every 8 seconds with the base64 inline; keyed on the data itself, every row
+would hash hundreds of kilobytes per poll before the cache could say it already had the
+bitmap, and the request object would change identity and restart the load, which the user
+sees as a blink. Keyed on the fingerprint, an unchanged picture is the same request and
+nothing happens.
+
+**One arrangement, not four.** The server's `cardStyle.layout` offers `banner`, `background`,
+`side` and `plain`. This client always draws `background`. A banner or a side crop is a
+choice about how a picture looks; the wash under a scrim is the only one of the four that
+cannot end with the agent's own sentence sitting unreadable on a photograph, and on a phone
+that rule outranks the agent's preference.
 
 **Per-state treatment** (`AgendaState`):
 
@@ -526,7 +543,15 @@ carries.
 
 Tapping the card body (not the tick) opens the detail sheet: `body`, `purpose`,
 `resources` as link rows, streak and longest streak when `streaksEnabled`, repeat rule in
-words, the sandboxed `svg`/image if any, and a secondary **Undo** when done.
+words, the task's artwork if any, and a secondary **Undo** when done.
+
+Artwork in a sheet is drawn as *content* rather than as a background — there is no text over
+it to protect. An agent's inline `svg` is drawn there and on its card, decoded to a bitmap
+through the image loader's SVG decoder. That is safe for the same reason the web client's
+`<img>` is: the server sanitises the markup hard (`docs/API.md`, "SVG sanitizing") and
+nothing on this side can execute it, fetch from it or follow a link in it — there is no
+WebView anywhere in this app. A vector that will not decode falls back to the picture, then
+to the emoji; never a broken box.
 
 ### 4.6 Ticking a row
 

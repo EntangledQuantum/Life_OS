@@ -25,6 +25,14 @@ data class Celebration(
     val themeColor: String?,
     /** For ordering, and so a sheet can say when it was earned. */
     val metAt: String?,
+    /**
+     * The rung's art if the rung has any, else the goal's.
+     *
+     * Carried on the celebration rather than looked up by the overlay, for the
+     * same reason the title and the emoji are: a tier is the same goal at a
+     * different height, and *which* height decides every one of these together.
+     */
+    val art: ResolvedArt = ResolvedArt.NONE,
 ) {
     /**
      * What identifies this celebration while it is on screen.
@@ -75,6 +83,7 @@ object Celebrations {
             tierLabel = tier?.label?.takeIf { it.isNotBlank() },
             themeColor = tier?.themeColor ?: goal.themeColor,
             metAt = tier?.metAt ?: goal.conditionMetAt,
+            art = tier?.let(Art::of)?.takeIf { it.hasArt } ?: Art.of(goal),
         )
     }
 }
@@ -139,6 +148,9 @@ object GoalOrder {
                 reached = tier.metAt != null ||
                     (currentRank != null && tier.rank in 1..currentRank),
                 isNext = goal.nextTier?.id == tier.id,
+                // Resolved here rather than in the ladder, so the rung chip and
+                // the celebration cannot pick different pictures for one rung.
+                icon = Art.of(tier).icon,
             )
         }
     }
@@ -150,5 +162,7 @@ object GoalOrder {
         val progressPct: Double,
         val reached: Boolean,
         val isNext: Boolean,
+        /** The rung's own picture, drawn in place of the filled dot. */
+        val icon: ArtPicture? = null,
     )
 }

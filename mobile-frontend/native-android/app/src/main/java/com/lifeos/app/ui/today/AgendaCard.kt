@@ -33,6 +33,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lifeos.app.data.api.AgendaItemDto
 import com.lifeos.app.data.api.HabitWithTodayDto
+import com.lifeos.app.domain.Art
+import com.lifeos.app.domain.ResolvedArt
+import com.lifeos.app.ui.art.ArtBackground
+import com.lifeos.app.ui.art.ArtIcon
 import com.lifeos.app.ui.components.Mono
 import com.lifeos.app.ui.components.PendingDot
 import com.lifeos.app.ui.components.pulseBorder
@@ -105,7 +109,15 @@ fun AgendaCard(
 
     val hasStrip = habit != null && habit.history7.isNotEmpty()
 
-    Row(
+    /*
+     * The row's art, resolved once. A habit row takes the habit's two slots; a
+     * task row takes the single icon the server already resolved onto it. One
+     * call, so this card cannot disagree with the sheet behind it about which
+     * picture is which — see [Art].
+     */
+    val art = Art.of(item, habit)
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = if (hasStrip) Sizes.agendaCardWithStrip else Sizes.agendaCard)
@@ -122,26 +134,38 @@ fun AgendaCard(
                 }
             }
             .clickable(role = Role.Button, onClick = onOpen),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        /* 4dp leading rule, full height, the activity colour at 100%. There is
-         * no 3dp colour bar inside the card — at three pixels it read as a
-         * divider rather than as a mark. */
-        Box(
-            modifier = Modifier
-                .width(Sizes.leadingRule)
-                .fillMaxHeight()
-                .background(activity.copy(alpha = if (done) 0.30f else 1f)),
-        )
+        /*
+         * The habit's background picture, under its scrim. `matchParentSize` so
+         * the picture fills the card and the card's height is still decided by
+         * its text — §4.5's height is 88dp whatever the artwork is.
+         */
+        ArtBackground(art = art, modifier = Modifier.matchParentSize())
+
+        /* 4dp leading rule, full height, the activity colour at 100%. Drawn as
+         * the card's own sibling rather than as the first cell of the content
+         * row: it has to be as tall as the card however tall the card turns out,
+         * and it has to sit *over* the artwork. There is no 3dp colour bar
+         * inside the card — at three pixels it read as a divider rather than as
+         * a mark. */
+        Box(modifier = Modifier.matchParentSize()) {
+            Box(
+                modifier = Modifier
+                    .width(Sizes.leadingRule)
+                    .fillMaxHeight()
+                    .background(activity.copy(alpha = if (done) 0.30f else 1f)),
+            )
+        }
 
         Row(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxWidth()
+                .padding(start = Sizes.leadingRule)
                 .padding(horizontal = Spacing.md, vertical = Spacing.md),
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconTile(item = item, habit = habit, activity = activity)
+            IconTile(item = item, habit = habit, art = art, activity = activity)
 
             Column(
                 modifier = Modifier.weight(1f),
@@ -201,16 +225,24 @@ fun AgendaCard(
 
 /**
  * The 48dp icon tile: the resolved picture, else the emoji, else the activity
- * glyph. Never a photographic background behind text.
+ * glyph.
+ *
+ * All three cases are 48dp square and clipped to the tile radius, so a poll
+ * that adds or loses a picture changes what is *in* the tile and never the row's
+ * layout. The tint stays underneath the picture too — an icon with transparency
+ * then sits on the activity's colour rather than on a hole.
  */
 @Composable
-private fun IconTile(item: AgendaItemDto, habit: HabitWithTodayDto?, activity: Color) {
-    Box(
-        modifier = Modifier
-            .size(Sizes.iconTile)
-            .clip(RoundedCornerShape(Radii.tile))
-            .background(activity.copy(alpha = 0.14f)),
-        contentAlignment = Alignment.Center,
+private fun IconTile(
+    item: AgendaItemDto,
+    habit: HabitWithTodayDto?,
+    art: ResolvedArt,
+    activity: Color,
+) {
+    ArtIcon(
+        picture = art.icon,
+        size = Sizes.iconTile,
+        tint = activity.copy(alpha = 0.14f),
     ) {
         val emoji = item.emoji ?: habit?.emoji
         Text(

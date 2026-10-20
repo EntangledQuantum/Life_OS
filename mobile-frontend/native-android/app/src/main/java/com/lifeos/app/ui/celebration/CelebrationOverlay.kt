@@ -40,6 +40,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.lifeos.app.domain.Celebration
 import com.lifeos.app.domain.CelebrationIntensity
+import com.lifeos.app.ui.art.ArtBackground
+import com.lifeos.app.ui.art.ArtIcon
 import com.lifeos.app.ui.theme.serverColor
 import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.LocalReducedMotion
@@ -112,13 +114,32 @@ fun CelebrationOverlay(
                 .background(p.bg),
             contentAlignment = Alignment.Center,
         ) {
+            /*
+             * The rung's own background picture, full-screen, under its scrim.
+             *
+             * This is the one picture in the app that is wanted *immediately*:
+             * it is not on screen until the condition comes true, and at that
+             * moment it is the whole screen. The web client prefetches every
+             * tier's art on day load for exactly this reason; here the picture
+             * is already in the dashboard snapshot, so it is on the device
+             * before the goal is met.
+             */
+            ArtBackground(art = celebration.art, modifier = Modifier.fillMaxSize())
+
             // A soft halo in the goal's own colour, behind everything.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.radialGradient(
-                            colors = listOf(accent.copy(alpha = 0.18f), p.bg),
+                            colors = listOf(
+                                accent.copy(alpha = 0.18f),
+                                // Over a photograph the halo must not end in an
+                                // opaque disc of background: it fades to
+                                // nothing instead, and the scrim below keeps
+                                // the words readable.
+                                if (celebration.art.background != null) p.bg.copy(alpha = 0f) else p.bg,
+                            ),
                         ),
                     ),
             )
@@ -150,10 +171,28 @@ fun CelebrationOverlay(
                     )
                 }
 
-                Text(
-                    text = celebration.emoji.ifBlank { "✦" },
-                    style = LifeOsType.mono(48),
-                )
+                /*
+                 * The medallion: the rung's icon if it has one, else the emoji
+                 * at 48sp. Both occupy the same place above the title, so a
+                 * goal with no art celebrates exactly as it always did.
+                 */
+                val emoji: @Composable () -> Unit = {
+                    Text(
+                        text = celebration.emoji.ifBlank { "✦" },
+                        style = LifeOsType.mono(48),
+                    )
+                }
+                val icon = celebration.art.icon
+                if (icon == null) {
+                    emoji()
+                } else {
+                    ArtIcon(
+                        picture = icon,
+                        size = Sizes.celebrationIcon,
+                        tint = accent.copy(alpha = 0.18f),
+                        fallback = emoji,
+                    )
+                }
 
                 celebration.tierLabel?.let {
                     Text(it.uppercase(), style = LifeOsType.label, color = accent)

@@ -22,6 +22,11 @@ glance = "1.1.1"
 datastore = "1.1.3"
 securityCrypto = "1.1.0-alpha06"
 coroutines = "1.10.1"
+# Coil 3.2.0, released 2025-04-22 — pinned exactly, and old enough to have been
+# shipped by other people before it is shipped here. Coil 3 is the first version
+# whose network layer is pluggable, which is what lets this app point it at the
+# user's own OkHttp client and nowhere else.
+coil = "3.2.0"
 junit = "4.13.2"
 turbine = "1.2.0"
 
@@ -67,6 +72,16 @@ retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit
 retrofit-kotlinx-serialization = { module = "com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter", version.ref = "retrofitSerialization" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Coil: the only image library in the project. `coil-svg` is what makes an
+# agent's sanitised `svg` drawable as a *picture* — decoded to a bitmap, never
+# handed to anything that can execute, fetch or navigate. `coil-network-okhttp`
+# makes it reuse the app's own OkHttp client, so an image request carries the
+# same timeouts and the same auth rule as every other request and cannot reach
+# any host but the one the user configured.
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-svg = { module = "io.coil-kt.coil3:coil-svg", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }

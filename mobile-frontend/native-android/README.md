@@ -140,7 +140,7 @@ question the user asked by tapping a chip.
 | `data` | Room, Retrofit/OkHttp, the token store, preferences, the repository, the sync worker |
 | `notify` | Channels, posting, `AlarmManager` seeding, the three receivers, and the runner |
 | `widget` | The Glance app widget and its two actions |
-| `ui` | Compose. `theme` holds the palettes and the non-themed token objects |
+| `ui` | Compose. `theme` holds the palettes and the non-themed token objects; `art` holds the only image-drawing code there is |
 
 ### Notifications (§8.1–§8.4)
 
@@ -251,6 +251,7 @@ This folder is a **standalone Gradle build**. The contract from
   | `packages/shared/src/agenda.ts` (`compareAgenda`), `tasks.ts` (`isPinned`) | `domain/Predicates.kt` | `OverlayAndEpochTest` |
   | `mobile-frontend/app/lib/theme.ts` (`ACTIVITY_COLORS`) | `ui/theme/ActivityColors` | — |
   | `packages/shared/src/schedule.ts` (`notifyAt`, `isWithinQuietHours`) | `domain/Reminders.kt` | `RemindersTest` |
+  | `packages/shared/src/art.ts` (`resolveArt`, the overlay floor and default), `tasks.ts` (`cardImages`), `card-style.ts` (the card overlay default) | `domain/Art.kt` | `ArtTest` |
   | `apps/web/src/lib/notify.ts` (the five note tables) | `scripts/build-sounds.mjs` → `res/raw/*.wav` | `WidgetAndSoundsTest` |
 
   Change the TypeScript and these tests fail, which is the whole point: a drifted copy makes
@@ -335,6 +336,7 @@ testing:
 | `RemindersTest` | The derived notification time in all its forms (`remindAt` wins outright, `eventAt - lead` otherwise, a clamped negative lead, a malformed instant costing one notification and not the screen); the window an item leaves whether or not it was completed; the plan's alarm seeding, ordering, past-and-horizon exclusions and its needs-you agreeing with `Predicates`; the once-only filter; quiet hours wrapping past midnight, start-equal-to-end meaning *none*, and a malformed time never meaning permanent silence; channel ids carrying their sound, the id/group names being pinned against a rename, sound resolution through user → server → type, and a new sound choice adding exactly one channel and migrating none |
 | `WidgetAndSoundsTest` | The tier rule at every threshold, the smallest tier having no tick at all, and width winning over height; the quantised ribbon's cell count, colours, lived/planned/done treatment, and a now-marker that stays in range at both ends of the day; `upNext` taking the server's order; and the committed WAVs — present, 16-bit mono 44.1kHz PCM with a truthful data size, and as long as their note tables say |
 | `TabSwipeTest` | The swipe between the three destinations: the 2:1 rule that decides whether a drag is a page turn or a scroll, the settle (snap back under 35%, commit past it, a flick committing on a short drag, one tab per gesture, no wrap at the ends), and the `selectedness` the navigation bar's indicator reads — including that the three always sum to one, which is why two half-opacity indicators read as one pill |
+| `ArtTest` | Art resolution and the cache key: inline data beating a URL **per slot**, the two slots never crossing, blank not being a picture, the scrim's floor/ceiling/default and the card's darker default, all pinned against `art.ts`; a key that never contains the base64, is stable across polls, moves when the agent changes the picture, and separates the two slots of one item and two items sharing one; a row falling back to the server's pre-resolved icon; a celebration taking the rung's art whole or the goal's; and the token rule — the configured origin yes, a different port, host, scheme or lookalike no |
 | `ServerColorTest` | Every colour form the server really sends, including the `rgba()` one that was falling back to the accent and drawing *unrecorded* time as the loudest colour on the screen; out-of-range clamping; and null for anything unparseable so callers keep their fallback |
 
 Nothing in the suite writes to `data/lifeos.db`. Milestone 3's on-device verification ran
@@ -349,7 +351,7 @@ the notification layer's first act on a due reminder is to `POST /tasks/:id/noti
 
 | Warning | Count | Why not fixed |
 |---|---|---|
-| `GradleDependency` | 54 | The dependency set is a proven combination. Bumping any of it needs the build re-proven, which is not this milestone's job. |
+| `GradleDependency` | 60 | The dependency set is a proven combination. Bumping any of it needs the build re-proven, which is not this milestone's job. Coil is pinned at 3.2.0 for the same reason — an exact version, chosen old enough to have been shipped by other people first. |
 | `AndroidGradlePluginVersion` | 3 | AGP 9.x requires Gradle 9, and AGP 8.x must not run on Gradle 9. Moving is a deliberate migration, not a nit. |
 | `OldTargetApi` | 1 | targetSdk 35 is the proven combination; 36 is available and untested here. |
 | `InsecureBaseConfiguration` | 1 | **This is the feature.** Cleartext on the base config is what makes a LAN server reachable; see above. |
@@ -387,6 +389,14 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
   `lan` as four separate results. Save clears the cache when the address changes.
 - **§7.7 Outdated** — the full-screen `426` block, reactive on any poll.
 - **§7.8 Cleartext** — verified in the release APK.
+- **Artwork, everywhere the server offers it** — the icon slot and the background slot on
+  habits, tasks, goals and rarity tiers, and an agent card's inline `svg`. Coil 3 with its
+  SVG decoder, pointed at this app's own OkHttp so it reaches no host but the ones an agent
+  named, and carrying the bearer token to the configured server and to nothing else. Every
+  request is keyed on `<id>/<slot>/<length.hash>` rather than on the base64 itself, which is
+  what makes the 8-second poll free; the memory cache answers it, nothing re-decodes, and a
+  row with unchanged art is literally the same request object, so it cannot blink. No art is
+  the normal case and renders exactly as it did before: the emoji, then the activity glyph.
 - **§4 Today** — the activity line with a locally-ticked elapsed counter, the growth meter,
   the pulse, the single merged agenda list with the epoch ordering rule, the agenda card with
   all five state treatments, the week strip, the pending dot, the tick, the Needs-you link and
@@ -535,10 +545,12 @@ driving milestone 3 on it.
   tests.
 - **Snooze diverges from other clients by design** (open question #5): it is a purely local
   re-alarm, `notifiedAt` is already set, and the web client will not chime again.
-- **No `svg` rendering**, no properties history curves, no task undo, and `constellation` /
-  `ascent` growth styles — all unchanged from milestone 2.
-- **Agent `svg`** is still not rendered, on Today or in any sheet. It is untrusted and needs
-  a sandbox; the agenda sheet says so where artwork exists rather than drawing it.
+- **The widget draws no artwork.** A Glance widget is `RemoteViews`, not Compose, so it
+  cannot use the image loader the app uses; it keeps the emoji. The tiles it draws are
+  16dp, where a photograph says nothing the emoji does not.
+- **The card `layout` vocabulary is not implemented.** The server lets an agent choose
+  `banner`, `background`, `side` or `plain` for a card's picture; this client always draws
+  the `background` arrangement. See the note in §4.5.
 - **No `properties` history curves.** The analytics payload carries a `series` per property;
   You shows each property's current value and not its curve. A sparkline per counter is a
   second chart vocabulary for a block that is collapsed by default.

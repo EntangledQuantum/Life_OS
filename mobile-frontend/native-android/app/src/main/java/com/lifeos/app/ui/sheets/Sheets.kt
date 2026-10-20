@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,11 +39,15 @@ import com.lifeos.app.data.api.DashboardTodayDto
 import com.lifeos.app.data.api.HabitWithTodayDto
 import com.lifeos.app.data.api.TaskDto
 import com.lifeos.app.domain.AnalyticsModel
+import com.lifeos.app.domain.Art
+import com.lifeos.app.ui.art.ArtMedia
+import com.lifeos.app.ui.art.ArtSvgImage
 import com.lifeos.app.ui.components.Mono
 import com.lifeos.app.ui.components.SectionHeader
 import com.lifeos.app.ui.theme.ActivityColors
 import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.Radii
+import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
 import com.lifeos.app.ui.theme.palette
 import com.lifeos.app.ui.you.DeltaTile
@@ -57,9 +62,46 @@ import java.time.format.DateTimeFormatter
  * and nothing in a sheet waits on a socket — a sheet's action enqueues and
  * closes, exactly like a row's tick.
  *
- * `svg` is deliberately **not** rendered in any of them. The markup is untrusted
- * and must be sandboxed; drawing it to look finished would be the wrong trade.
+ * A task's artwork — its picture and its inline `svg` — is drawn by
+ * [TaskArtwork], in one place, so a sheet cannot show a different picture from
+ * the card that opened it.
  */
+
+/**
+ * A task's artwork at the foot of a sheet: the picture, or the vector.
+ *
+ * Drawn as *content* here rather than as a background, because a sheet has no
+ * text over it to protect — the rule about never putting a photograph behind
+ * unreadable text is satisfied by not putting anything over it at all.
+ *
+ * The SVG is safe for exactly the reason the web client's `<img>` is: the server
+ * sanitises the markup hard (`docs/API.md`, "SVG sanitizing") and this side
+ * decodes it to a bitmap. There is no renderer on the path that could execute
+ * it, fetch from it or follow a link in it.
+ */
+@Composable
+private fun TaskArtwork(task: TaskDto?) {
+    if (task == null) return
+    val art = Art.of(task)
+    val svg = Art.svg(task.id, task.svg)
+    if (svg == null && art.background == null) return
+
+    SectionHeader("Artwork")
+    if (svg != null) {
+        ArtSvgImage(
+            art = svg,
+            modifier = Modifier.fillMaxWidth().height(Sizes.sheetArtwork),
+            // A vector that will not decode shows the picture instead, and if
+            // there is no picture either, nothing. Never a broken box.
+            fallback = { ArtMedia(picture = art.background, modifier = Modifier.fillMaxWidth().height(Sizes.sheetArtwork)) },
+        )
+    } else {
+        ArtMedia(
+            picture = art.background,
+            modifier = Modifier.fillMaxWidth().height(Sizes.sheetArtwork),
+        )
+    }
+}
 
 /* ------------------------------------------------------------ agenda/{id} */
 
@@ -159,14 +201,7 @@ fun AgendaDetailSheet(
             Mono("repeats $it", color = p.faint, style = LifeOsType.mono11)
         }
 
-        if (task?.svg != null) {
-            Text(
-                text = "This item carries agent artwork. It is not drawn here yet: " +
-                    "untrusted markup needs a sandbox.",
-                style = LifeOsType.bodySmall,
-                color = p.faint,
-            )
-        }
+        TaskArtwork(task = task)
 
         if (item.done) {
             // Secondary, not filled: the thing is already done, and the one
@@ -252,6 +287,8 @@ fun TaskSheet(
         task.remindAt?.let {
             Mono("reminder ${clock(it, timezone)}", color = p.faint, style = LifeOsType.mono11)
         }
+
+        TaskArtwork(task = task)
 
         Button(
             onClick = onComplete,

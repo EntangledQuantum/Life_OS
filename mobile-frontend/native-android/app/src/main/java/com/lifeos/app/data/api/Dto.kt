@@ -48,7 +48,15 @@ data class AgendaItemDto(
     val streak: Int? = null,
     val habitId: String? = null,
     val themeColor: String? = null,
-    /** Already resolved server-side; a row wants the picture or the emoji. */
+    /**
+     * The row's **icon**, already resolved server-side (`agenda.ts`) to whichever
+     * of `iconImageData`/`iconImageUrl` the underlying row carried.
+     *
+     * There is deliberately no background here. A row is not a card, and
+     * copying a `data:` URI onto every agenda item would resend the same picture
+     * on every poll — the habit on `data.habits` carries it once, and the row
+     * points at it with `habitId`.
+     */
     val iconImage: String? = null,
 )
 
@@ -63,8 +71,17 @@ data class HabitWithTodayDto(
     val currentStreak: Int = 0,
     val longestStreak: Int = 0,
     val history7: List<Boolean> = emptyList(),
+    /*
+     * The four art slots and the scrim, as `ART_SPEC` defines them. Both slots
+     * empty is the normal case and renders as it always has — the emoji in a
+     * tinted square. Inline data wins over a URL per slot; see [Art].
+     */
     val iconImageUrl: String? = null,
     val iconImageData: String? = null,
+    val backgroundImageUrl: String? = null,
+    val backgroundImageData: String? = null,
+    /** 0.35–0.92. Null means "nobody chose" and takes the shared default. */
+    val artOverlay: Double? = null,
     val active: Boolean = true,
     val baseXp: Int = 0,
 )
@@ -91,6 +108,25 @@ data class TaskDto(
     val slot: Int? = null,
     val emoji: String? = null,
     val themeColor: String? = null,
+    /**
+     * The card's picture: what it is *about*. Drawn as the card's background,
+     * under a scrim.
+     */
+    val imageUrl: String? = null,
+    val imageData: String? = null,
+    /**
+     * The card's **icon**: what marks it in a list of cards. A separate slot on
+     * purpose — with one image field the layout had to decide whether a picture
+     * was the atmosphere or the icon, so an agent could never have both.
+     */
+    val iconImageUrl: String? = null,
+    val iconImageData: String? = null,
+    /** 0.35–0.92 over `imageUrl`/`imageData`. Null takes the card default. */
+    val artOverlay: Double? = null,
+    /**
+     * Inline vector art, sanitised server-side. Decoded to a bitmap and drawn as
+     * a picture — never handed to anything that can execute it. See `ArtSvg`.
+     */
     val svg: String? = null,
     val ctaLabel: String? = null,
     val ctaLink: String? = null,
@@ -166,6 +202,12 @@ data class GoalTierDto(
     val description: String? = null,
     val emoji: String? = null,
     val themeColor: String? = null,
+    /** A rung's own art, same two slots and dimensions as a goal's. */
+    val iconImageUrl: String? = null,
+    val iconImageData: String? = null,
+    val backgroundImageUrl: String? = null,
+    val backgroundImageData: String? = null,
+    val artOverlay: Double? = null,
     /** Progress toward this rung specifically, 0–100. */
     val progressPct: Double = 0.0,
     val metAt: String? = null,
@@ -182,6 +224,15 @@ data class GoalDto(
     val whyItMatters: String? = null,
     val emoji: String = "",
     val themeColor: String? = null,
+    /**
+     * Optional art, the same two slots and the same dimensions as a habit's —
+     * one picture works in either place, which is why the card shapes match.
+     */
+    val iconImageUrl: String? = null,
+    val iconImageData: String? = null,
+    val backgroundImageUrl: String? = null,
+    val backgroundImageData: String? = null,
+    val artOverlay: Double? = null,
     val progressPct: Double = 0.0,
     /** `active` becomes `achieved` only after the user has seen the celebration. */
     val status: String = "active",

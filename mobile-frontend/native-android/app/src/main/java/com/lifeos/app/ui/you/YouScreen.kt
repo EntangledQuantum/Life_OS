@@ -38,9 +38,12 @@ import com.lifeos.app.data.api.GoalDto
 import com.lifeos.app.data.api.SettingsDto
 import com.lifeos.app.domain.AnalyticsModel
 import com.lifeos.app.domain.AnalyticsRange
+import com.lifeos.app.domain.Art
 import com.lifeos.app.domain.GoalOrder
 import com.lifeos.app.ui.AnalyticsState
 import com.lifeos.app.ui.TodayUiState
+import com.lifeos.app.ui.art.ArtBackground
+import com.lifeos.app.ui.art.ArtIcon
 import com.lifeos.app.ui.components.AreaChart
 import com.lifeos.app.ui.components.ErrorPanel
 import com.lifeos.app.ui.components.Mono
@@ -53,6 +56,7 @@ import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.NEUTRAL_NEG
 import com.lifeos.app.ui.theme.POSITIVE
 import com.lifeos.app.ui.theme.Radii
+import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
 import com.lifeos.app.ui.theme.palette
 
@@ -259,8 +263,12 @@ fun YouScreen(
 }
 
 /**
- * A goal: emoji, title, `progressPct` as a thin determinate track, and the
- * rarity ladder's rungs where tiers exist.
+ * A goal: its art or its emoji, the title, `progressPct` as a thin determinate
+ * track, and the rarity ladder's rungs where tiers exist.
+ *
+ * A goal card and a habit card are deliberately the same shape — the same two
+ * art slots, the same dimensions, the same scrim — so one picture works in
+ * either place and an agent has one set of numbers to remember rather than two.
  *
  * Read-only, and that is a product decision rather than a missing feature: a
  * goal-editing UI moves the designing work back onto the user, which is the
@@ -272,28 +280,51 @@ private fun GoalCard(goal: GoalDto, lead: Boolean) {
     val accent = serverColor(goal.themeColor) ?: p.accent
     val rungs = remember(goal) { GoalOrder.rungs(goal) }
     val achieved = goal.status == "achieved"
+    val art = remember(goal) { Art.of(goal) }
+    val shape = RoundedCornerShape(Radii.card)
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.card))
+            .clip(shape)
             .background(p.surface)
-            .border(
-                1.dp,
-                accent.copy(alpha = if (lead) 0.32f else 0.14f),
-                RoundedCornerShape(Radii.card),
-            )
-            .padding(if (lead) Spacing.xl else Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            .border(1.dp, accent.copy(alpha = if (lead) 0.32f else 0.14f), shape),
     ) {
+        ArtBackground(art = art, modifier = Modifier.matchParentSize())
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(if (lead) Spacing.xl else Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Text(
-                text = goal.emoji.ifBlank { "◆" },
-                style = if (lead) LifeOsType.pulse else LifeOsType.screenTitle,
-            )
+            /*
+             * The picture if there is one, otherwise the bare emoji — not the
+             * emoji in a tinted tile. A goal with no art has to look exactly as
+             * it did before any of this existed, and giving it a square it never
+             * had would make "no art" a visibly second-rate state. The tile
+             * belongs to the picture, not to the slot.
+             */
+            val emoji: @Composable () -> Unit = {
+                Text(
+                    text = goal.emoji.ifBlank { "◆" },
+                    style = if (lead) LifeOsType.pulse else LifeOsType.screenTitle,
+                )
+            }
+            if (art.icon == null) {
+                emoji()
+            } else {
+                ArtIcon(
+                    picture = art.icon,
+                    size = if (lead) Sizes.goalIconLead else Sizes.goalIcon,
+                    tint = accent.copy(alpha = 0.14f),
+                    fallback = emoji,
+                )
+            }
             Column(modifier = Modifier.weight(1f)) {
                 goal.currentTier?.label?.takeIf { it.isNotBlank() }?.let {
                     // The rung already reached, named in the agent's own word.
@@ -332,6 +363,7 @@ private fun GoalCard(goal: GoalDto, lead: Boolean) {
         if (rungs.isNotEmpty()) {
             RarityLadder(rungs = rungs, accent = accent)
         }
+        }
     }
 }
 
@@ -343,6 +375,18 @@ private fun GoalCard(goal: GoalDto, lead: Boolean) {
  * comparison in this app is you versus yesterday, and a tier is the same goal
  * at a different height, not a position among other people.
  */
+/** Reached or not, when a rung brought no picture of its own. */
+@Composable
+private fun RungDot(reached: Boolean, accent: Color) {
+    val p = palette
+    Box(
+        modifier = Modifier
+            .size(6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(if (reached) accent else p.faint),
+    )
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RarityLadder(rungs: List<GoalOrder.Rung>, accent: Color) {
@@ -366,12 +410,22 @@ private fun RarityLadder(rungs: List<GoalOrder.Rung>, accent: Color) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(if (rung.reached) accent else p.faint),
-                )
+                /*
+                 * A rung's own picture where it has one, else the dot. Rarity
+                 * is supposed to be recognisable at a glance, and a tier that
+                 * was given its own art is saying what that glance should land
+                 * on; the dot only ever said "reached" or "not".
+                 */
+                if (rung.icon != null) {
+                    ArtIcon(
+                        picture = rung.icon,
+                        size = Sizes.rungIcon,
+                        tint = accent.copy(alpha = 0.18f),
+                        fallback = { RungDot(reached = rung.reached, accent = accent) },
+                    )
+                } else {
+                    RungDot(reached = rung.reached, accent = accent)
+                }
                 Text(
                     text = rung.label.ifBlank { "Tier ${rung.rank}" },
                     style = LifeOsType.label,
