@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -14,12 +16,45 @@ android {
         applicationId = "com.lifeos.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.5"
+        // 2.0.0, not 1.5: the Expo client was signed by a key held in EAS and
+        // this is a different one, so Android cannot update 1.4.0 in place —
+        // installing it requires an uninstall first. A release that existing
+        // users cannot take as an update is a break, and a break is what earns
+        // a whole integer. Everything lives on the user's own server, so an
+        // uninstall costs a re-pair and no data.
+        versionCode = 200
+        versionName = "2.0.0"
 
         // The protocol this app can read. Source of truth:
         // packages/shared/src/protocol.ts (PROTOCOL_VERSION). Copied, not imported.
         buildConfigField("int", "LIFEOS_PROTOCOL", "3")
+    }
+
+    /*
+     * Release signing. `keystore.properties` is gitignored and the keystore
+     * itself lives outside the repository, so a clone cannot sign — it builds
+     * an unsigned release instead of failing, which is what lets CI and other
+     * contributors run `assembleRelease` as a compile check.
+     */
+    val keystoreProperties = Properties().apply {
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    val canSign = keystoreProperties.getProperty("storeFile") != null
+
+    signingConfigs {
+        if (canSign) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = false
+            }
+        }
     }
 
     buildTypes {
@@ -31,6 +66,7 @@ android {
             resValue("string", "app_name", "Life OS dev")
         }
         release {
+            if (canSign) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false
             resValue("string", "app_name", "Life OS")
