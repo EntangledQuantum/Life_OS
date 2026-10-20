@@ -48,10 +48,9 @@ import com.lifeos.app.ui.theme.palette
  *
  * This route has two ways in and they share everything after the first line:
  *
- *  1. **The button.** The camera opens here, ML Kit decodes the QR, the code is
- *     claimed. 2.0.0 shipped a stub that said scanning was unavailable, which
- *     was a button advertising the absence of a capability the product's primary
- *     setup path depends on.
+ *  1. **The instructions.** No camera is opened here. The phone already scans
+ *     QR codes, so this screen's job is to say so — 2.0.0's bug was a button
+ *     announcing that scanning was unavailable, not a missing scanner.
  *  2. **The deep link.** The phone's own camera app, Google Lens or the
  *     dashboard's pair page fires `lifeos://pair?code=…&url=…` at the Activity,
  *     which parses it and hands the invite straight here — usually on a **cold
@@ -103,7 +102,6 @@ fun PairRoute(
         PairPhase.Paired -> Box(modifier = modifier.fillMaxSize())
 
         PairPhase.Scanning -> ScanningBlock(
-            onCode = { vm.onScanned(it) },
             onEnterManually = onEnterManually,
             modifier = modifier,
         )
@@ -111,94 +109,47 @@ fun PairRoute(
 }
 
 /**
- * The viewfinder, behind the camera permission.
+ * Waiting for the QR, which the phone's own camera scans.
  *
- * Asked **in context** — on arriving at the scanner, never at launch — and a
- * denial is never a dead end (§7.3). It falls through to two working routes:
- * manual entry, and the phone's own camera app, which now genuinely opens Life
- * OS because the deep link is handled. That second sentence was not honest
- * before 2.0.1 and is the reason it is allowed to be printed here.
+ * There is **no scanner in this app, on purpose.** 2.0.0 shipped a button
+ * saying scanning was unavailable, which was the bug: not a missing camera, but
+ * a screen that refused the job without naming the thing that does it. Android
+ * phones already scan QR codes in the camera app and in Lens, and the
+ * `lifeos://pair` deep link means doing so opens Life OS directly.
+ *
+ * Bundling CameraX and an ML Kit model to re-implement that added 24 MB to the
+ * APK and a camera permission, to duplicate a capability every one of these
+ * phones already has. It was removed. The honest sentence was always the whole
+ * fix.
  */
 @Composable
 private fun ScanningBlock(
-    onCode: (String) -> Unit,
     onEnterManually: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val p = palette
-
-    var granted by remember { mutableStateOf(hasCameraPermission(context)) }
-    // Survives a rotation, so turning the phone does not re-prompt after a
-    // denial — `configChanges` means that is a resize rather than a recreate,
-    // but a process death mid-permission is real and this is cheap.
-    var asked by rememberSaveable { mutableStateOf(false) }
-
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { result -> granted = result }
-
-    LaunchedEffect(granted, asked) {
-        if (!granted && !asked) {
-            asked = true
-            launcher.launch(Manifest.permission.CAMERA)
-        }
-    }
-
-    if (!granted) {
-        PairBlock(modifier = modifier) {
-            Text("Camera access is off", style = LifeOsType.cardTitle, color = p.text)
-            Text(
-                text = "Two ways round it, both of which work. Scan the QR with your phone's " +
-                    "own camera app and it will open Life OS — or type the address and token " +
-                    "in by hand.",
-                style = LifeOsType.bodySmall,
-                color = p.muted,
-            )
-            Button(
-                onClick = onEnterManually,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = p.accent,
-                    contentColor = p.bg,
-                ),
-            ) { Text("Enter the address") }
-            TextButton(onClick = { asked = false }) {
-                Text("Ask for the camera again", color = p.muted)
-            }
-        }
-        return
-    }
-
-    Column(
-        modifier = modifier.fillMaxSize().padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
-    ) {
-        PageBody {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.82f)
-                    .clip(RoundedCornerShape(Radii.card)),
-            ) {
-                QrScanner(onCode = onCode, modifier = Modifier.fillMaxSize())
-            }
-            Text(
-                text = "Point this at the QR on your dashboard — Settings → Pair a phone.",
-                style = LifeOsType.body,
-                color = p.muted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                TextButton(onClick = onEnterManually) {
-                    Text("Enter the address instead", color = p.muted)
-                }
-            }
-        }
+    PairBlock(modifier = modifier) {
+        Text("Scan the QR with your camera", style = LifeOsType.cardTitle, color = p.text)
+        Text(
+            text = "Open your phone's camera app and point it at the QR on your " +
+                "dashboard — Settings → Pair a phone. Tap the link it offers and " +
+                "Life OS opens here, already connected.",
+            style = LifeOsType.bodySmall,
+            color = p.muted,
+        )
+        Text(
+            text = "Google Lens works too, and so does the pair page on the dashboard.",
+            style = LifeOsType.bodySmall,
+            color = p.faint,
+        )
+        Button(
+            onClick = onEnterManually,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = p.accent,
+                contentColor = p.bg,
+            ),
+        ) { Text("Enter the address instead") }
     }
 }
 
