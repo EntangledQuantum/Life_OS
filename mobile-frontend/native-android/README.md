@@ -7,15 +7,21 @@ repository and keeps working as a fallback. Nothing here touches it.
 Product and interaction decisions live in [`docs/UI_SPEC.md`](docs/UI_SPEC.md). That file is
 the source of truth; this one is how to build and how the code is arranged.
 
-**Milestone 4** — three things the user asked for after living with the app on their phone,
-and the gap milestone 3 flagged: the growth meter is centred and its glow is no longer
-clipped, a horizontal swipe moves between Today · Day · You with the navigation bar's
-indicator tracking the finger, and the widget presents itself properly in the launcher's
-picker. What is and is not built is listed under [Status](#status).
+**2.0.1** — four things the user found by installing 2.0.0 on their phone. Scanning the
+pairing QR in any other app now actually opens and pairs Life OS (the manifest matched the
+link; nothing read it). The "Scan QR" button opens a real CameraX + ML Kit scanner instead
+of a screen saying scanning is unavailable. Secondary screens arrive on a shared-axis X
+rather than a cross-fade, and the navigation indicator **travels** between destinations
+instead of appearing to teleport. Cards, rows and presses got their craft back at the same
+information density — see
+[§6.3 and §5.4 in the spec](docs/UI_SPEC.md), both of which were amended, one of them
+reversing a decision I had made wrongly.
 
-Earlier: **milestone 3** — background reliability: notifications with per-type sounds and
-real channels, `AlarmManager`-seeded reminders, periodic background sync, and the Glance
-home screen widget.
+Earlier: **milestone 4** — the growth meter centred with its glow unclipped, the horizontal
+swipe between Today · Day · You, and the widget's launcher preview. **Milestone 3** —
+background reliability: notifications with per-type sounds and real channels,
+`AlarmManager`-seeded reminders, periodic background sync, and the Glance home screen
+widget.
 
 ---
 
@@ -32,6 +38,8 @@ The toolchain is pinned, and the combination matters: AGP 8.x must not run on Gr
 | Compose BOM | 2025.04.01 |
 | Room | 2.7.1 |
 | Glance (app widget) | 1.1.1 |
+| CameraX | 1.4.1 |
+| ML Kit barcode (bundled model) | 17.3.0 |
 | compileSdk / targetSdk / minSdk | 35 / 35 / 26 |
 
 ```powershell
@@ -76,9 +84,22 @@ installs **alongside** a release/Play build of `com.lifeos.app` instead of repla
 is deliberate: this app is tested on a daily-driver phone, and a dev install must not clobber
 the real one.
 
-On first launch: **Enter the address manually** → the address (e.g. `192.168.1.4` — the
-scheme and port `8787` are filled in for you) and the `API_TOKEN` from your Life OS `.env`
-→ **Test** → **Save**.
+On first launch, either way round:
+
+- **Scan the QR** — Life OS → Settings → Pair a phone. Tap **Scan the QR on your dashboard**
+  and point the camera at it; or scan the same QR with the phone's own camera app, Google
+  Lens or anything else, and the `lifeos://pair` link opens this app and pairs it. Nothing
+  to type: the code is traded for the real token over one request.
+- **Enter the address manually** → the address (e.g. `192.168.1.4` — the scheme and port
+  `8787` are filled in for you) and the `API_TOKEN` from your Life OS `.env` → **Test** →
+  **Save**.
+
+A pairing code lives five minutes and burns on first use, so a second scan of the same QR
+answers *"That code is no longer valid"* — that is the server being strict, not a bug. Mint
+another. Note that the dashboard's Android link names the package `com.lifeos.app`, so it
+opens a **release** build; a `.dev` debug build is reachable only by the scheme form, which
+is what `adb shell am start -a android.intent.action.VIEW -d "lifeos://pair?code=…&url=…"`
+sends.
 
 To see the server's address as the phone must reach it, run Life OS and read the boot banner,
 or `GET /api/v1/pair/reachability`. If **Test** reports `lan: false`, the server is bound to
@@ -319,8 +340,9 @@ the study sheet's two fields are a title and a number.
 
 ## Tests
 
-`.\gradlew test` — 192 unit tests, no device and no server. They cover the parts worth
-testing:
+`.\gradlew test` — 255 unit tests, no device and no server. (The figure in this README said
+192 for two milestones after it stopped being true; it is counted now rather than
+remembered.) They cover the parts worth testing:
 
 | File | Covers |
 |---|---|
@@ -335,7 +357,8 @@ testing:
 | `AnalyticsAndCelebrationTest` | The four ranges and their wire values, an axis that is never zero, **the y-domain rule** — a reachable target riding the same axis, a far-off target going off-scale rather than flattening the week onto the floor, a 130% day that is not clipped — percentage-**points** formatting; the celebration queue's rung-over-goal choice, oldest-debt-first stable ordering, one-at-a-time, and the dismissed set that stops the dialog reappearing before the refetch; goal ordering and the rarity ladder's rungs |
 | `RemindersTest` | The derived notification time in all its forms (`remindAt` wins outright, `eventAt - lead` otherwise, a clamped negative lead, a malformed instant costing one notification and not the screen); the window an item leaves whether or not it was completed; the plan's alarm seeding, ordering, past-and-horizon exclusions and its needs-you agreeing with `Predicates`; the once-only filter; quiet hours wrapping past midnight, start-equal-to-end meaning *none*, and a malformed time never meaning permanent silence; channel ids carrying their sound, the id/group names being pinned against a rename, sound resolution through user → server → type, and a new sound choice adding exactly one channel and migrating none |
 | `WidgetAndSoundsTest` | The tier rule at every threshold, the smallest tier having no tick at all, and width winning over height; the quantised ribbon's cell count, colours, lived/planned/done treatment, and a now-marker that stays in range at both ends of the day; `upNext` taking the server's order; and the committed WAVs — present, 16-bit mono 44.1kHz PCM with a truthful data size, and as long as their note tables say |
-| `TabSwipeTest` | The swipe between the three destinations: the 2:1 rule that decides whether a drag is a page turn or a scroll, the settle (snap back under 35%, commit past it, a flick committing on a short drag, one tab per gesture, no wrap at the ends), and the `selectedness` the navigation bar's indicator reads — including that the three always sum to one, which is why two half-opacity indicators read as one pill |
+| `TabSwipeTest` | The swipe between the three destinations: the 2:1 rule that decides whether a drag is a page turn or a scroll, the settle (snap back under 35%, commit past it, a flick committing on a short drag, one tab per gesture, no wrap at the ends), and the `selectedness` the navigation bar's indicator reads — including that the three always sum to one, which is why two half-opacity indicators read as one pill; plus the indicator's travel being **critically damped at exactly 1.0**, with §5.4's two reversals written into the test so the next person has to delete an explanation to undo it |
+| `PairingTest` | QR pairing end to end, minus the camera. The deep link as the server really mints it, the `connect` host alias, a tunnelled URL keeping its scheme and path prefix, an unencoded `url=`, a bare host taking the LAN defaults, a lower-case scan, either query order; and the rejections — another scheme, another host, a missing or malformed code, an address that does not normalise, and the web fallback's `#c=` fragment not being mistaken for a query. Then the claim: a good code returning the token and the server's own address, the QR's address used when the server names none, `401` as one sentence for expired-or-used, a refused connection as a *reachability* outcome rather than a bad code, `404` on a server with no pairing route, a `200` with no token refusing rather than saving a blank one — and that no failure message anywhere contains the code |
 | `ArtTest` | Art resolution, the measured scrim and the cache key: inline data beating a URL **per slot**, the two slots never crossing, blank not being a picture, the scrim's floor/ceiling/default and the card's darker default, all pinned against `art.ts`; a key that never contains the base64, is stable across polls, moves when the agent changes the picture, and separates the two slots of one item and two items sharing one; a row falling back to the server's pre-resolved icon; a celebration taking the rung's art whole or the goal's; the scrim maths against the WCAG definition, a blown-out picture being darkened far past the floor, the grey photograph that shipped unreadable now clearing 4.5:1, a dark picture left alone, `artOverlay` honoured as a floor and ignored as a cap; and the token rule — the configured origin yes, a different port, host, scheme or lookalike no |
 | `ServerColorTest` | Every colour form the server really sends, including the `rgba()` one that was falling back to the accent and drawing *unrecorded* time as the loudest colour on the screen; out-of-range clamping; and null for anything unparseable so callers keep their fallback |
 
@@ -347,11 +370,17 @@ the notification layer's first act on a due reminder is to `POST /tasks/:id/noti
 
 ### Lint
 
-`.\gradlew lint` reports **0 errors**. Four warning categories are left unfixed, on purpose:
+`.\gradlew lint` reports **0 errors** and 80 warnings. One warning category was *fixed* this
+release — `IntentFilterUniqueDataAttributes`, twice, by splitting `lifeos://pair` and
+`lifeos://connect` into one intent filter each: Android merges data attributes across tags
+within a filter, so two tags declared every scheme × every host. Harmless with one scheme,
+and a silent `https://pair` the day an App Link is added. The rest are left unfixed, on
+purpose:
 
 | Warning | Count | Why not fixed |
 |---|---|---|
-| `GradleDependency` | 60 | The dependency set is a proven combination. Bumping any of it needs the build re-proven, which is not this milestone's job. Coil is pinned at 3.2.0 for the same reason — an exact version, chosen old enough to have been shipped by other people first. |
+| `GradleDependency` | 72 | The dependency set is a proven combination. Bumping any of it needs the build re-proven, which is not this release's job. CameraX 1.4.1, ML Kit 17.3.0 and Coil 3.2.0 are pinned exactly for the same reason — exact versions, each chosen old enough to have been shipped by other people first. |
+| `UseKtx` | 1 | `Bitmap.createScaledBitmap` in `ArtImages`, where the scrim's mean luminance is measured. Pre-existing and left alone: the KTX extension is the same call, and this one sits in the one piece of image code with a unit test pinning its output. |
 | `AndroidGradlePluginVersion` | 3 | AGP 9.x requires Gradle 9, and AGP 8.x must not run on Gradle 9. Moving is a deliberate migration, not a nit. |
 | `OldTargetApi` | 1 | targetSdk 35 is the proven combination; 36 is available and untested here. |
 | `InsecureBaseConfiguration` | 1 | **This is the feature.** Cleartext on the base config is what makes a LAN server reachable; see above. |
@@ -387,6 +416,17 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
 - **§7.6 `server`** — a real top-level route that works with no token and no connection,
   reachable from all five entry points, with Test reporting reachability / protocol / auth /
   `lan` as four separate results. Save clears the cache when the address changes.
+- **§7.3 QR pairing, both halves.** The **deep link**: `lifeos://pair?code=…&url=…` (and
+  `connect` as an alias) is read on the cold-start intent *and* on `onNewIntent`, cleared off
+  the intent once read, parsed by one pure-Kotlin parser, and claimed through
+  `POST /api/v1/pair/claim` with no auth header. Scanning the dashboard's QR in any camera
+  app, Google Lens or the pair page opens this app and pairs it. The **scanner**: CameraX
+  with ML Kit's bundled barcode model, so it works on a first run with no network at all;
+  camera permission asked in context, a framed viewfinder, and a denial that falls through
+  to manual entry *and* to the camera-app route, which is only honest because the link works.
+  A refused code and an unreachable address are different outcomes with different buttons.
+  Nothing logs the code or the token, and `PairInvite.toString()` prints `code=***` so an
+  accident cannot either.
 - **§7.7 Outdated** — the full-screen `426` block, reactive on any poll.
 - **§7.8 Cleartext** — verified in the release APK.
 - **Artwork, everywhere the server offers it** — the icon slot and the background slot on
@@ -412,8 +452,19 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
   all five state treatments, the week strip, the pending dot, the tick, the Needs-you link and
   the agent cards.
 - **§4.3 / 4.6 / 5.x** — the ghosted 100% contract in all three styles, per-style readout
-  placement, the tick's spring punch, `medium` card-state transitions, the §5.5 pulse, zero
-  nav-bar travel, and reduced motion OR'd with the OS setting throughout.
+  placement, the tick's spring punch, `medium` card-state transitions, the §5.5 pulse, and
+  reduced motion OR'd with the OS setting throughout.
+- **§5.3 / §5.4 motion** — secondary screens on **shared axis X** (forward moves the world
+  left, back moves it right, predictive back scrubs it under the finger), a navigation
+  indicator that **travels** between destinations on a critically damped spring and tracks a
+  swipe frame for frame from the same single number, and a `short` arrival fade the one time
+  a fresh install's first payload replaces the skeletons.
+- **§6.3 surface craft** — a lit top edge on every card (a 0.022 tonal lift, ending at 62%
+  of its height; still no shadows anywhere but the FAB), press states that lift a card toward
+  the finger rather than darkening it, and M3's ripple provided once as `LocalIndication`
+  because Material 3 1.3 stopped providing it and the fallback was a flat black 30%
+  rectangle. All at the information density 2.0.0 reduced it to — nothing here adds a number,
+  a row or a control.
 - **§8 Growth meter** — `sprout`, `orb` (full-height translated liquid, per-period crests)
   and **`bloom`**, each with a distinct arrival at 100%.
 - **§2.4 Navigation shell** — `NavigationSuiteScaffold`, three destinations, window size
@@ -484,7 +535,60 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
   insets and gives each one a top app bar with a working back control, so the eleventh such
   screen cannot forget to.
 
-### Fixed in this milestone, found on hardware
+### Fixed in 2.0.1, reported by the user on 2.0.0
+
+Four complaints, from installing the release and using it. Two of them turned out to be one
+mistake of mine, and the third was a rule I had written.
+
+1. **The pairing QR did nothing.** Two faults in series, which is why it looked like the
+   feature had never existed. The manifest declared host `connect` while the server mints
+   `lifeos://pair`, so the link matched no filter at all and no camera app offered to open
+   Life OS; and once that was fixed, `MainActivity` still only read notification extras and
+   never looked at `intent.data`, so the app opened on Today and sat there. The user:
+   *"if you scan QR in any other app this automatically pointed to life os now it doesn't"*.
+   Both intent paths are handled now, cold start included — which is the common case here,
+   since the phone is opening *because* the link was tapped — and the data is cleared off
+   the intent once read, or every rotation re-claims a code that burns on first use.
+
+2. **The "Scan QR" button said scanning was unavailable.** It was a stub.
+   *"there is button to scan QR in the app where you say its not available when it is"* —
+   and they were right twice over: the server mints codes, the QR carries a working link,
+   and the only thing missing was this app. It is now CameraX + ML Kit's bundled barcode
+   model, which is what UI_SPEC §7.3 asked for and for the reason it gives: the model is in
+   the APK, so the first run of a fresh install scans with no network, and pairing is the
+   one moment the phone provably cannot reach Life OS yet.
+
+3. **Every press in the app was Compose's debug indication.** This is the one that explains
+   the general "feels cheap", and it was invisible in review because every call site looks
+   correct. Material 3 1.3 decoupled the ripple from the theme: `MaterialTheme` no longer
+   provides `LocalIndication`, and a `clickable` given no indication falls back to
+   Foundation's `DefaultDebugIndication` — a flat **black at 30%**. On a near-black theme
+   that darkens a surface *toward* the page, so a press read as the thing briefly
+   disappearing. One `LocalIndication provides ripple()` in `LifeOsTheme` fixes every card,
+   row and chip at once.
+
+4. **The app was flattened, and the density reduction was not the reason.** My error, and
+   it is recorded in UI_SPEC §6.3 as well as here. The original complaint about the old app
+   was *information overload*; I treated that as licence to reduce visual richness too, and
+   those are different axes. *"you stripped the app of its aesthetics now it looks too
+   simplistic"*. The density stays — nothing in 2.0.1 adds a number, a row or a control to
+   any screen — and the craft comes back: a lit top edge on every card so it reads as an
+   object rather than an outline, press states that lift toward the finger, an empty Today
+   that is a container rather than a floating grey sentence, skeletons with an edge, and a
+   fade rather than a cut when the first payload replaces them.
+
+5. **Settings opened on a cross-fade, and the nav indicator teleported.** Two motion bugs
+   with one cause: chrome and transitions had been told to do as little as possible.
+   *"opening new windows of settings it just fades in and out"* — a cross-fade has no
+   direction, so forward and back were identical and the back gesture did not feel like
+   going back; it is shared axis X now. And the indicator *"is weird, it's like spotlight
+   from one place to another"* — because §5.4 banned travel outright and the bar obeyed by
+   extinguishing one highlight and lighting another, which the eye cannot follow. It
+   travels, critically damped so it cannot overshoot, and the swipe tracking they already
+   liked is now the same single number rather than a second code path. **§5.4 is rewritten
+   and records both reversals**, because the first one was mine and was wrong.
+
+### Fixed in milestone 4, found on hardware
 
 Two of them are the same bug, reported as two symptoms by the user driving milestone 3 on a
 real phone.
@@ -548,8 +652,14 @@ driving milestone 3 on it.
 
 ### Stubbed or not built
 
-- **§7.3 QR pairing** — still a stub route that falls through to manual entry, which is a
-  complete path.
+- **The scanner's decode path has no automated test.** The parse and the claim are both
+  unit-tested (`PairingTest`); the camera between them is not, because testing it needs an
+  instrumented test on a device with a camera pointed at a generated QR. It was verified by
+  hand on the phone instead, which is recorded below.
+- **No `https` App Link for `/pair`.** §7.3 mentions one as a second filter.
+  `android:autoVerify` needs a domain you have proven you control and this instance may
+  answer on `192.168.x.x`, so an unverified `https` filter would only add a disambiguation
+  dialog. The scheme is the one that can work.
 - **The widget is not verified at 2×2.** The tier rule is unit-tested at every threshold and
   the 4×2 and 4×3 boxes were checked on the device; `COMPACT` has only been exercised by
   tests.
@@ -637,8 +747,8 @@ driving milestone 3 on it.
     route.** §5.4 said "zero pixels of travel", full stop. That rule was aimed at the old
     app's pill, which animated *itself* after a tap — chrome moving on its own, carrying no
     information. A gesture-driven indicator is a different thing: the user's own finger is
-    moving it. §5.4 is amended to say so precisely — no self-animating travel on navigation,
-    continuous tracking during a gesture required — and a tap is still zero pixels.
+    moving it. §5.4 was amended to say so — and then amended again in 2.0.1, because a tap
+    being zero pixels turned out to be the remaining half of the mistake; see item 15.
     Mechanically this costs two things. The compact bar is ours rather than a stock
     `NavigationBarItem`, whose indicator cannot be told where to be (the rail keeps the
     stock items; there is no sideways travel to track against a vertical rail). And Today,
@@ -653,3 +763,28 @@ driving milestone 3 on it.
     fractional segments Day draws onto equal cells — hourly resolution, which is honest for
     something the size of a launcher cell, and the two ribbons cannot disagree about the shape
     of the day because they read the same function.
+15. **The indicator travels, reversing item 13's "a tap is still zero pixels".** UI_SPEC
+    §5.4 has now been reversed twice and the section records both, which is why this entry
+    exists rather than a quiet edit. The Expo pill's faults were that it was slow, that it
+    was underdamped and wobbled, and that it crossed five slots; "it moved" was not one of
+    them. Banning travel outright left the bar cross-fading two indicators in place, which
+    the user described as the highlight teleporting — and that is a fair description of an
+    extinguished highlight and a lit one. The real rule is the one §5.4 now states: chrome
+    may not animate itself while carrying no information, and *which way you just went* is
+    information. The damping ratio is exactly 1.0, so the spring has no oscillating term and
+    cannot overshoot by construction; `TabSwipeTest` pins that number with the history
+    attached.
+16. **A card is a tonal gradient, not a flat container.** §6.3 said tonal elevation and no
+    shadows, which is still true and unchanged — but 2.0.0 read "tonal" as "flat", so every
+    card sat at exactly `surface` with a 1dp outline and nothing else. §6.3 now specifies the
+    lift (0.022 in straight RGB, ending at 62% of the card's height) and says why: it is a
+    lit top edge, which is how dark Material says "object" without a shadow. Two values out
+    of 255 — invisible as a gradient, decisive as an edge. The numbers live in
+    `ui/theme/Surfaces.kt`, which takes no palette, so §6.2 still holds: a theme cannot reach
+    the geometry.
+17. **Press feedback is provided once, at the theme.** Not a spec divergence so much as a
+    platform change the spec does not mention: Material 3 1.3 stopped providing
+    `LocalIndication`, so the whole app had been running on Foundation's debug indication —
+    flat black at 30% — since the rewrite began. `LifeOsTheme` provides `ripple()` now, and
+    the handful of surfaces that want a tone instead opt out explicitly with
+    `indication = null` plus `pressTone`.

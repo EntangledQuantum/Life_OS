@@ -3,6 +3,7 @@ package com.lifeos.app.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,7 +43,9 @@ import com.lifeos.app.ui.theme.Palettes
 import com.lifeos.app.ui.theme.Radii
 import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
+import com.lifeos.app.ui.theme.craftedSurface
 import com.lifeos.app.ui.theme.palette
+import com.lifeos.app.ui.theme.pressTone
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -73,11 +77,19 @@ fun SettingsIndexScreen(
 @Composable
 private fun SettingsRow(title: String, subtitle: String, onClick: () -> Unit) {
     val p = palette
+    /*
+     * A tone, not a ripple. These six rows are the whole screen and they sit
+     * directly on the page; a ripple spreading across a full-width row draws
+     * more attention to the tap than to the thing being opened — which is about
+     * to slide in from the right anyway (§5.3).
+     */
+    val interaction = remember { MutableInteractionSource() }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.tile))
-            .clickable(onClick = onClick)
+            .pressTone(interaction, RoundedCornerShape(Radii.tile))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(vertical = Spacing.md, horizontal = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -229,12 +241,17 @@ fun ConnectionSettingsScreen(
 
             HorizontalDivider(color = p.border)
 
+            val pendingInteraction = remember { MutableInteractionSource() }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radii.tile))
-                    .clickable(onClick = onOpenPendingWrites)
-                    .padding(vertical = Spacing.md),
+                    .pressTone(pendingInteraction, RoundedCornerShape(Radii.tile))
+                    .clickable(
+                        interactionSource = pendingInteraction,
+                        indication = null,
+                        onClick = onOpenPendingWrites,
+                    )
+                    .padding(vertical = Spacing.md, horizontal = Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Pending writes", style = LifeOsType.body, color = p.text)
@@ -299,8 +316,11 @@ fun PendingWritesScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = Sizes.dayRow)
-                        .clip(RoundedCornerShape(Radii.tile))
-                        .background(p.surface)
+                        .craftedSurface(
+                            shape = RoundedCornerShape(Radii.tile),
+                            border = null,
+                            pressShrink = false,
+                        )
                         .padding(Spacing.md),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

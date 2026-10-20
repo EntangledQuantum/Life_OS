@@ -34,6 +34,7 @@ import com.lifeos.app.ui.theme.Motion
 import com.lifeos.app.ui.theme.Radii
 import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
+import com.lifeos.app.ui.theme.craftedSurface
 import com.lifeos.app.ui.theme.palette
 
 /**
@@ -132,9 +133,7 @@ fun ErrorPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.card))
-            .background(p.surface)
-            .border(1.dp, p.border, RoundedCornerShape(Radii.card))
+            .craftedSurface(shape = RoundedCornerShape(Radii.card), pressShrink = false)
             .padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
@@ -158,15 +157,22 @@ fun ErrorPanel(
 /**
  * Skeleton placeholders matching the final layout — never a centred spinner, and
  * **no shimmer** (§5.4). Static placeholders at 6% alpha.
+ *
+ * The 6% is the fill; the 1dp border at 9% is new. A flat block of flat grey
+ * reads as a rendering failure, where a block with an edge reads as a card that
+ * has not arrived — which is what it is, and what the content replacing it will
+ * look like. Still completely still: a border is not an animation.
  */
 @Composable
 fun SkeletonBlock(height: Int, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(Radii.card)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(height.dp)
-            .clip(RoundedCornerShape(Radii.card))
-            .background(palette.text.copy(alpha = 0.06f)),
+            .clip(shape)
+            .background(palette.text.copy(alpha = 0.06f))
+            .border(1.dp, palette.text.copy(alpha = 0.09f), shape),
     )
 }
 

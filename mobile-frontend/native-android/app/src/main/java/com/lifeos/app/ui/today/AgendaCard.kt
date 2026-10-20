@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,8 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -45,6 +48,7 @@ import com.lifeos.app.ui.theme.Motion
 import com.lifeos.app.ui.theme.Radii
 import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
+import com.lifeos.app.ui.theme.craftedSurface
 import com.lifeos.app.ui.theme.palette
 import java.time.Duration
 import java.time.Instant
@@ -115,13 +119,23 @@ fun AgendaCard(
      */
     val art = Art.of(item, habit)
 
+    /*
+     * The card's own interaction source, so the surface and the ripple are
+     * driven by the same press rather than by two independent ones. The tone
+     * comes up to meet the finger in the `instant` 100ms of §5.2 — a card you
+     * can push, which is what a card is supposed to be.
+     */
+    val interaction = remember { MutableInteractionSource() }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = if (hasStrip) Sizes.agendaCardWithStrip else Sizes.agendaCard)
             .alpha(cardAlpha)
-            .clip(shape)
-            .background(p.surface)
+            // Tonal, never a shadow (§6.3): the top edge is lit by about two
+            // values out of 255, which is the difference between a card that
+            // reads as an object and an outline with text in it.
+            .craftedSurface(shape = shape, base = p.surface, border = null, interactionSource = interaction)
             .let { base ->
                 // `now` is the only card that pulses, and the pulse is the same
                 // one Needs-you uses — one implementation, two places.
@@ -131,7 +145,12 @@ fun AgendaCard(
                     base.border(1.dp, animatedBorder, shape)
                 }
             }
-            .clickable(role = Role.Button, onClick = onOpen),
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                role = Role.Button,
+                onClick = onOpen,
+            ),
     ) {
         /*
          * The habit's background picture, under its scrim. `matchParentSize` so
@@ -333,10 +352,21 @@ private fun Tick(done: Boolean, activity: Color, onTick: () -> Unit) {
         label = "tick-punch",
     )
 
+    val interaction = remember { MutableInteractionSource() }
+
     Box(
         modifier = Modifier
             .size(Sizes.tickTouch)
-            .clickable(role = Role.Checkbox, onClick = onTick),
+            .clickable(
+                interactionSource = interaction,
+                // Unbounded and sized to the touch target: a 44dp ring inside a
+                // 48dp target gets a circle of acknowledgement rather than a
+                // rectangle of one, which is the difference between a control
+                // and a region of the card that happens to respond.
+                indication = ripple(bounded = false, radius = Sizes.tickTouch / 2),
+                role = Role.Checkbox,
+                onClick = onTick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Box(

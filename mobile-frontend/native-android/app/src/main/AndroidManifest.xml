@@ -37,6 +37,22 @@
     <!-- Vibration is a channel property; without this the OS silently ignores it. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!--
+      The QR scanner (§7.3). Requested in context — the first time the user taps
+      "Scan the QR", never at launch — and a denial is a supported state: the
+      screen falls through to manual entry and to "scan it with your camera app",
+      which works because the `lifeos://pair` deep link below is handled.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+      `required="false"`: a phone with no camera (or a Chromebook) must still be
+      able to install this and pair by hand.
+    -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
     <application
         android:name=".LifeOsApp"
         android:allowBackup="false"
@@ -82,6 +98,21 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lifeos" android:host="pair" />
+            </intent-filter>
+
+            <!--
+              `connect` as its own filter rather than a second `<data>` tag in
+              the one above. Android merges attributes *across* data tags within
+              a filter, so two tags there declare every scheme × every host —
+              harmless while the scheme is the same in both, and a silent
+              `https://pair` the day someone adds an App Link. Lint's
+              `IntentFilterUniqueDataAttributes` says exactly this and it is
+              right. Two filters mean two literal links and no combinatorics.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lifeos" android:host="connect" />
             </intent-filter>
         </activity>

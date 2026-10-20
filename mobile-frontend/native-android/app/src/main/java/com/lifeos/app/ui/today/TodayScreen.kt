@@ -13,14 +13,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,7 +53,10 @@ import com.lifeos.app.ui.theme.Radii
 import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
 import com.lifeos.app.ui.theme.WARNING
+import com.lifeos.app.ui.theme.arrivalAlpha
+import com.lifeos.app.ui.theme.craftedSurface
 import com.lifeos.app.ui.theme.palette
+import com.lifeos.app.ui.theme.pressTone
 
 /**
  * The screen people look at. Everything else can be imperfect.
@@ -84,6 +90,18 @@ fun TodayScreen(
 ) {
     val data = state.view?.data
     val p = palette
+
+    /*
+     * Loading → loaded, as a 200ms fade rather than a cut.
+     *
+     * Read **above** the empty-cache branch on purpose: called inside it, the
+     * animation would be created already at its target and never run. A cold
+     * start with a cache is `1` on its first frame and nothing animates, which
+     * is the path that matters; this exists only for the first payload a fresh
+     * install ever receives, where a hard cut after six seconds of placeholders
+     * reads as the screen being swapped out from under you.
+     */
+    val arrival = arrivalAlpha(ready = data != null)
 
     LaunchedEffect(data == null) {
         if (data == null) onArmEmptyTimeout()
@@ -128,7 +146,7 @@ fun TodayScreen(
 
         TwoPane(
             expanded = expanded,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = arrival },
             primary = {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -175,10 +193,27 @@ fun TodayScreen(
 
                     if (state.agenda.isEmpty()) {
                         item(key = "empty") {
+                            /*
+                             * One sentence, in a container (§3.1).
+                             *
+                             * Not an illustration and not a paragraph — that is
+                             * still banned. But a lone line of grey text where
+                             * the agenda should be reads as a screen that failed
+                             * to load rather than as a day with nothing in it,
+                             * and the difference matters most on the first run,
+                             * when it is all there is.
+                             */
                             Text(
                                 text = "Nothing on today. Ask your agent to set up some habits.",
                                 style = LifeOsType.body,
                                 color = p.muted,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .craftedSurface(
+                                        shape = RoundedCornerShape(Radii.card),
+                                        pressShrink = false,
+                                    )
+                                    .padding(Spacing.lg),
                             )
                         }
                     }
@@ -236,12 +271,17 @@ private fun agentSection(
             val p = palette
             // The count and Day's list come from the same predicate, so this
             // link can never point at a page that renders nothing.
+            val interaction = remember { MutableInteractionSource() }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radii.card))
-                    .clickable(onClick = onOpenNeedsYou)
-                    .padding(vertical = Spacing.md),
+                    .pressTone(interaction, RoundedCornerShape(Radii.card))
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onClick = onOpenNeedsYou,
+                    )
+                    .padding(vertical = Spacing.md, horizontal = Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Needs you", style = LifeOsType.cardTitle, color = p.text)
@@ -272,11 +312,23 @@ private fun MeterBlock(data: DashboardTodayDto, onOpenDetail: () -> Unit) {
 
     val history = data.consistency7.map { it.pct }
 
+    /*
+     * The meter is a tap target and nothing says so — it is a picture, and §4.3
+     * puts everything cut from Today behind it. A press tone is the quietest
+     * possible answer: no chevron, no "tap for more", no new information on
+     * Today. It just responds, which is how the user finds out.
+     */
+    val interaction = remember { MutableInteractionSource() }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.card))
-            .clickable(onClick = onOpenDetail)
+            .pressTone(interaction, RoundedCornerShape(Radii.card))
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onOpenDetail,
+            )
             .padding(vertical = Spacing.sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -352,8 +404,16 @@ private fun AgentCard(task: com.lifeos.app.data.api.TaskDto) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(p.surface),
+            // The same lit top edge as an agenda card, and a border at the
+            // agent's own colour rather than the palette's: these two cards sit
+            // next to each other and a flat one beside a lit one reads as
+            // unfinished.
+            .craftedSurface(
+                shape = shape,
+                base = p.surface,
+                border = accent.copy(alpha = 0.14f),
+                pressShrink = false,
+            ),
     ) {
         ArtBackground(art = art, modifier = Modifier.matchParentSize())
 

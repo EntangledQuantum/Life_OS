@@ -1,6 +1,7 @@
 package com.lifeos.app
 
 import com.lifeos.app.domain.TabSwipe
+import com.lifeos.app.ui.HomeTabsState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -137,5 +138,27 @@ class TabSwipeTest {
     @Test
     fun `selectedness never goes negative two tabs away`() {
         assertEquals(0f, TabSwipe.selectedness(2f, 0), 0.0001f)
+    }
+
+    @Test
+    fun `the indicator's travel is critically damped, by construction`() {
+        /*
+         * This is a guard against the change being "fixed" back, in either
+         * direction, and it is worth a test because the history here is two
+         * reversals deep.
+         *
+         * The Expo app travelled a pill across five tabs on an underdamped
+         * spring (`mass .55, damping 30, stiffness 420`), it wobbled, and the
+         * rewrite banned travel outright — "zero pixels", §5.4. The bar then
+         * cross-faded two indicators in place, which the user described as the
+         * highlight teleporting, and they were right. So it travels again, and
+         * the thing that makes that safe is the damping ratio being exactly 1:
+         * at critical damping the spring's solution has no oscillating term, so
+         * it *cannot* overshoot and there is nothing to tune. Anything below 1
+         * brings the wobble back.
+         */
+        assertEquals(1f, HomeTabsState.INDICATOR_DAMPING, 0f)
+        // And quick: one slot in roughly 180ms at this stiffness.
+        assertTrue(HomeTabsState.INDICATOR_STIFFNESS >= 900f)
     }
 }

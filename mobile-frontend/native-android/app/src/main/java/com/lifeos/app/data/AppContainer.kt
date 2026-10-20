@@ -26,6 +26,15 @@ class AppContainer(private val context: Context) {
     val probe by lazy { ServerProbe(tokens) }
 
     /**
+     * The QR pairing claim.
+     *
+     * Not built from [apiFactory]: that cache is keyed on the address the app is
+     * *already* configured for and its clients carry the stored token, and a
+     * claim is unauthenticated against an address the app has never spoken to.
+     */
+    val pairClaim by lazy { PairClaim() }
+
+    /**
      * Which origin an image request may carry the token to.
      *
      * Kept in step with preferences by the process (see `LifeOsApp`) rather than

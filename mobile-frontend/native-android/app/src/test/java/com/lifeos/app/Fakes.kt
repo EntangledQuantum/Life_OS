@@ -173,9 +173,16 @@ class FakeApi(
     var throwOnHabitComplete: Boolean = false,
     var analyticsCode: Int = 200,
     var analyticsDaily: List<AnalyticsDailyDto> = emptyList(),
+    /* ---- pairing (§7.3). The claim is unauthenticated, so none of this needs a token. ---- */
+    var claimStatus: Int = 200,
+    var claimResponse: PairClaimResponse = PairClaimResponse(),
+    var throwOnClaim: Throwable? = null,
 ) : LifeOsApi {
 
     val calls = mutableListOf<String>()
+
+    /** Every code submitted, and the URL it was submitted to. */
+    val claims = mutableListOf<Pair<String, String>>()
 
     private fun ok(): Response<JsonObject> = Response.success(JsonObject(emptyMap()))
 
@@ -196,7 +203,15 @@ class FakeApi(
 
     override suspend fun claimPairing(url: String, body: PairClaimRequest): Response<PairClaimResponse> {
         calls += "claim"
-        return Response.success(PairClaimResponse())
+        claims += body.code to url
+        throwOnClaim?.let { throw it }
+        if (claimStatus != 200) {
+            return Response.error(
+                claimStatus,
+                """{"error":"scripted $claimStatus"}""".toResponseBody("application/json".toMediaType()),
+            )
+        }
+        return Response.success(claimResponse)
     }
 
     override suspend fun me(): Response<AuthMeDto> {

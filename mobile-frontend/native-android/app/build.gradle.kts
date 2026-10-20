@@ -22,8 +22,11 @@ android {
         // users cannot take as an update is a break, and a break is what earns
         // a whole integer. Everything lives on the user's own server, so an
         // uninstall costs a re-pair and no data.
-        versionCode = 200
-        versionName = "2.0.0"
+        // 2.0.1: the QR deep link and the scanner behind the button that claimed
+        // it, plus the motion the 2.0.0 flattening took out. No break, no new
+        // signing key, no re-pair — an ordinary patch on top of 2.0.0.
+        versionCode = 201
+        versionName = "2.0.1"
 
         // The protocol this app can read. Source of truth:
         // packages/shared/src/protocol.ts (PROTOCOL_VERSION). Copied, not imported.
@@ -138,6 +141,14 @@ dependencies {
     implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)
+
+    // The QR scanner (§7.3). ML Kit's barcode model is bundled, so the detector
+    // is in the APK and a first run needs no network at all.
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.mlkit.barcode.scanning)
 
     implementation(libs.coil.compose)
     implementation(libs.coil.svg)
