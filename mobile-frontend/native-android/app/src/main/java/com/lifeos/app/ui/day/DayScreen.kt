@@ -353,8 +353,13 @@ private fun BucketHeader(bucket: DayBucket) {
 }
 
 /**
- * One scheduled thing: 56dp, a 3dp activity-coloured leading rule, the time in
- * mono, the title, the duration, the XP as green text, a repeat badge and a bell.
+ * One scheduled thing: 56dp, the time in mono, the title, the duration, the XP
+ * as green text, a repeat badge and a bell.
+ *
+ * **No colour bar.** The 3px activity strip that used to lead this row is gone,
+ * for the reason `mobile-frontend/app/AGENTS.md` gives and the agenda card now
+ * obeys: at that width it reads as a divider between two rows rather than as a
+ * mark on one. The row's own outline carries the activity colour instead.
  *
  * No tick: ticking belongs to Today, where the day is. Tapping opens the sheet,
  * which is where completing a planned thing lives.
@@ -363,21 +368,17 @@ private fun BucketHeader(bucket: DayBucket) {
 private fun DayRow(task: TaskDto, timezone: String?, onOpen: () -> Unit) {
     val p = palette
     val activity = ActivityColors.of(task.activityTag, p.accent)
+    val shape = RoundedCornerShape(Radii.tile)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = Sizes.dayRow)
-            .clip(RoundedCornerShape(Radii.tile))
+            .clip(shape)
+            .border(1.dp, activity.copy(alpha = 0.18f), shape)
             .clickable(role = Role.Button, onClick = onOpen),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .fillMaxHeight()
-                .background(activity),
-        )
         Row(
             modifier = Modifier
                 .weight(1f)

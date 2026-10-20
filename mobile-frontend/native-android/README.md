@@ -336,7 +336,7 @@ testing:
 | `RemindersTest` | The derived notification time in all its forms (`remindAt` wins outright, `eventAt - lead` otherwise, a clamped negative lead, a malformed instant costing one notification and not the screen); the window an item leaves whether or not it was completed; the plan's alarm seeding, ordering, past-and-horizon exclusions and its needs-you agreeing with `Predicates`; the once-only filter; quiet hours wrapping past midnight, start-equal-to-end meaning *none*, and a malformed time never meaning permanent silence; channel ids carrying their sound, the id/group names being pinned against a rename, sound resolution through user → server → type, and a new sound choice adding exactly one channel and migrating none |
 | `WidgetAndSoundsTest` | The tier rule at every threshold, the smallest tier having no tick at all, and width winning over height; the quantised ribbon's cell count, colours, lived/planned/done treatment, and a now-marker that stays in range at both ends of the day; `upNext` taking the server's order; and the committed WAVs — present, 16-bit mono 44.1kHz PCM with a truthful data size, and as long as their note tables say |
 | `TabSwipeTest` | The swipe between the three destinations: the 2:1 rule that decides whether a drag is a page turn or a scroll, the settle (snap back under 35%, commit past it, a flick committing on a short drag, one tab per gesture, no wrap at the ends), and the `selectedness` the navigation bar's indicator reads — including that the three always sum to one, which is why two half-opacity indicators read as one pill |
-| `ArtTest` | Art resolution and the cache key: inline data beating a URL **per slot**, the two slots never crossing, blank not being a picture, the scrim's floor/ceiling/default and the card's darker default, all pinned against `art.ts`; a key that never contains the base64, is stable across polls, moves when the agent changes the picture, and separates the two slots of one item and two items sharing one; a row falling back to the server's pre-resolved icon; a celebration taking the rung's art whole or the goal's; and the token rule — the configured origin yes, a different port, host, scheme or lookalike no |
+| `ArtTest` | Art resolution, the measured scrim and the cache key: inline data beating a URL **per slot**, the two slots never crossing, blank not being a picture, the scrim's floor/ceiling/default and the card's darker default, all pinned against `art.ts`; a key that never contains the base64, is stable across polls, moves when the agent changes the picture, and separates the two slots of one item and two items sharing one; a row falling back to the server's pre-resolved icon; a celebration taking the rung's art whole or the goal's; the scrim maths against the WCAG definition, a blown-out picture being darkened far past the floor, the grey photograph that shipped unreadable now clearing 4.5:1, a dark picture left alone, `artOverlay` honoured as a floor and ignored as a cap; and the token rule — the configured origin yes, a different port, host, scheme or lookalike no |
 | `ServerColorTest` | Every colour form the server really sends, including the `rgba()` one that was falling back to the accent and drawing *unrecorded* time as the loudest colour on the screen; out-of-range clamping; and null for anything unparseable so callers keep their fallback |
 
 Nothing in the suite writes to `data/lifeos.db`. Milestone 3's on-device verification ran
@@ -397,6 +397,16 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
   what makes the 8-second poll free; the memory cache answers it, nothing re-decodes, and a
   row with unchanged art is literally the same request object, so it cannot blink. No art is
   the normal case and renders exactly as it did before: the emoji, then the activity glyph.
+- **A measured scrim.** The darkness over a background picture is computed from that
+  picture, not chosen: its mean luminance is read once in linear light and the scrim is
+  deepened until the palest text on the card clears 4.5:1. `artOverlay` is the floor of
+  that and never the cap. A fixed percentage was only ever correct by luck — 35% over a
+  blown-out photograph put white text on a white sky, which is exactly what the first
+  device pass found.
+- **No colour bar, anywhere.** The 4dp activity strip on the agenda card and the 3dp one on
+  Day's rows are both gone, per `mobile-frontend/app/AGENTS.md`: at any width it reads as a
+  divider between two rows rather than as a mark on one. The card's border carries the
+  activity colour, which is what the decision says should carry it.
 - **§4 Today** — the activity line with a locally-ticked elapsed counter, the growth meter,
   the pulse, the single merged agenda list with the epoch ordering rule, the agenda card with
   all five state treatments, the week strip, the pending dot, the tick, the Needs-you link and

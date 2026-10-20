@@ -63,7 +63,6 @@ object Sizes {
     val sheetArtwork: Dp = 180.dp
     val tick: Dp = 44.dp
     val tickTouch: Dp = 48.dp
-    val leadingRule: Dp = 4.dp
     val meter: Dp = 200.dp
     val ribbon: Dp = 56.dp
     val dayRow: Dp = 56.dp

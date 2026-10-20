@@ -106,6 +106,103 @@ object Art {
      */
     const val DEFAULT_CARD_OVERLAY = 0.62f
 
+    /* ------------------------------------------------- guaranteed contrast */
+
+    /**
+     * The palest thing we draw over a picture, as WCAG relative luminance.
+     *
+     * `muted` (`#A8A3B4`) — the sub-line. It is the hardest case on the card:
+     * the title is near-white and the XP is `#34D399`, and both have more room
+     * against a dark background than this does. Sizing the scrim for the
+     * weakest text means every other line clears the bar as a side effect.
+     */
+    const val WEAKEST_TEXT_LUMINANCE = 0.3779
+
+    /** WCAG AA for body text. Not 3:1 — the sub-line is 13sp, which is not large. */
+    const val TEXT_CONTRAST = 4.5
+
+    /**
+     * How far past the threshold the search actually aims.
+     *
+     * A bisection converges *onto* the line, and the panel then quantises the
+     * blend to 8 bits per channel, which costs a few thousandths of a ratio —
+     * enough to land a result computed at exactly 4.50 on 4.495 once it is
+     * drawn. Aiming slightly past it means the pixels a person looks at clear
+     * the bar, rather than the arithmetic clearing it.
+     */
+    private const val QUANTISATION_MARGIN = 0.1
+
+    /** `#07080C`, the scrim's own colour, as sRGB fractions. */
+    private val SCRIM = doubleArrayOf(7 / 255.0, 8 / 255.0, 12 / 255.0)
+
+    /** sRGB transfer function, 0–255 to linear light. */
+    fun toLinear(channel: Int): Double {
+        val v = channel.coerceIn(0, 255) / 255.0
+        return if (v <= 0.04045) v / 12.92 else Math.pow((v + 0.055) / 1.055, 2.4)
+    }
+
+    /** The inverse, linear light back to an sRGB fraction. */
+    private fun toSrgb(linear: Double): Double {
+        val v = linear.coerceIn(0.0, 1.0)
+        return if (v <= 0.0031308) v * 12.92 else 1.055 * Math.pow(v, 1 / 2.4) - 0.055
+    }
+
+    /** WCAG relative luminance from linear-light channels. */
+    fun luminance(rLinear: Double, gLinear: Double, bLinear: Double): Double =
+        0.2126 * rLinear + 0.7152 * gLinear + 0.0722 * bLinear
+
+    /**
+     * How dark the scrim over *this particular picture* has to be.
+     *
+     * A fixed percentage cannot promise anything. 35% over a dark photograph is
+     * more than enough and 35% over a blown-out one leaves white text on a white
+     * sky — which is what shipped, and it was only ever correct by luck. §4.5's
+     * rule is absolute, so this measures instead of hoping: take the picture's
+     * mean luminance, composite the scrim over it, and darken until the palest
+     * text on the card clears [TEXT_CONTRAST] against the result.
+     *
+     * [floor] is the agent's `artOverlay`. It is a **floor and never a cap**: an
+     * agent may ask for a darker picture than legibility requires, and may not
+     * ask for a lighter one. That asymmetry is the whole rule — an agent cannot
+     * see the device the text will be read on, and a row whose name cannot be
+     * read is broken however it was configured.
+     *
+     * Pure arithmetic on three numbers, so the thing that decides whether a card
+     * is readable is a thing a test can check.
+     */
+    fun scrimAlpha(meanLinear: DoubleArray, floor: Float): Float {
+        if (meanLinear.size < 3) return floor
+        val picture = DoubleArray(3) { toSrgb(meanLinear[it]) }
+        if (clears(picture, floor.toDouble())) return floor
+
+        // Monotonic in alpha — a darker scrim never lowers the contrast — so a
+        // bisection finds the lightest scrim that is still legible.
+        var light = floor.toDouble()
+        var dark = MAX_OVERLAY.toDouble()
+        if (!clears(picture, dark)) return MAX_OVERLAY
+        repeat(16) {
+            val mid = (light + dark) / 2
+            if (clears(picture, mid)) dark = mid else light = mid
+        }
+        return dark.toFloat().coerceIn(floor, MAX_OVERLAY)
+    }
+
+    private fun clears(picture: DoubleArray, alpha: Double): Boolean {
+        val composited = DoubleArray(3) { alpha * SCRIM[it] + (1 - alpha) * picture[it] }
+        val background = luminance(
+            toLinearFraction(composited[0]),
+            toLinearFraction(composited[1]),
+            toLinearFraction(composited[2]),
+        )
+        val ratio = (WEAKEST_TEXT_LUMINANCE + 0.05) / (background + 0.05)
+        return ratio >= TEXT_CONTRAST + QUANTISATION_MARGIN
+    }
+
+    private fun toLinearFraction(v: Double): Double {
+        val c = v.coerceIn(0.0, 1.0)
+        return if (c <= 0.04045) c / 12.92 else Math.pow((c + 0.055) / 1.055, 2.4)
+    }
+
     /* --------------------------------------------------------------- slots */
 
     const val SLOT_ICON = "icon"

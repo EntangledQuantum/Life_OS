@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -19,14 +22,21 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
+import android.graphics.Bitmap
+import coil3.BitmapImage
+import coil3.Image as CoilImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import com.lifeos.app.domain.Art
 import com.lifeos.app.domain.ArtPicture
 import com.lifeos.app.domain.ArtSvg
 import com.lifeos.app.domain.ResolvedArt
 import com.lifeos.app.ui.theme.Radii
 import com.lifeos.app.ui.theme.palette
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The two pictures a habit, a task, a goal or a tier can carry.
@@ -54,13 +64,23 @@ import com.lifeos.app.ui.theme.palette
  */
 private val SCRIM = Color(0xFF07080C)
 
-/** The web client's two stops: `overlay * 0.86` at the top, `overlay + 0.24` at the foot. */
-private const val SCRIM_TOP = 0.86f
-private const val SCRIM_BOTTOM_LIFT = 0.24f
-private const val SCRIM_BOTTOM_MAX = 0.96f
+/**
+ * The scrim deepens toward the foot of the card and never lightens.
+ *
+ * The web client's formula started its gradient at `overlay × 0.86`, which is
+ * *lighter* than the floor the floor exists to guarantee — fine on a tall card
+ * where the text sits low, wrong on an 88dp row where it sits in the middle.
+ * Here the measured alpha is the value at the top and the only direction is
+ * darker.
+ */
+private const val SCRIM_BOTTOM_LIFT = 0.12f
+private const val SCRIM_MAX = 0.96f
+
+/** The square the picture is averaged over. 64 pixels is plenty for a mean. */
+private const val SAMPLE = 8
 
 /**
- * The background layer: the picture, cover-cropped, under a vertical scrim.
+ * The background layer: the picture, cover-cropped, under a measured scrim.
  *
  * Draws **nothing at all** when there is no picture, which is the normal case.
  * Meant to be the first child of the card's `Box`, passed
@@ -68,16 +88,30 @@ private const val SCRIM_BOTTOM_MAX = 0.96f
  * to decide how big the card is — a 1200×800 picture measured as content would
  * make an 88dp row 800px tall.
  *
- * The scrim is not optional and it is what makes the title and the XP readable.
- * `Art.overlay` has already clamped it; this only draws it. A gradient rather
- * than a flat wash because the text sits low on these cards and a photograph's
- * own bright areas are usually at the top — a flat scrim dark enough for the
- * bottom line makes the whole picture mud.
+ * **The scrim is measured, not assumed.** A fixed percentage is only ever
+ * correct by luck: 35% over a dark photograph is more than it needs and 35% over
+ * a blown-out one leaves white text on a white sky. So the picture's own mean
+ * luminance is read once, and `Art.scrimAlpha` returns the lightest scrim that
+ * still clears 4.5:1 for the palest text on the card. The agent's `artOverlay`
+ * is the floor of that — it can ask for darker, never for lighter.
  */
 @Composable
 fun ArtBackground(art: ResolvedArt, modifier: Modifier = Modifier) {
     val picture = art.background ?: return
     val loaded = rememberArt(picture.source, picture.cacheKey, ContentScale.Crop)
+
+    /*
+     * Until the picture has been measured the scrim is the agent's floor, which
+     * is also what it stays at if the measurement cannot be made. Keyed on the
+     * cache key, so the eight-second poll re-measures nothing: the same picture
+     * keeps the alpha it was already given.
+     */
+    var scrim by remember(picture.cacheKey) { mutableFloatStateOf(art.overlay) }
+    LaunchedEffect(picture.cacheKey, loaded.ready) {
+        val bitmap = (loaded.image as? BitmapImage)?.bitmap ?: return@LaunchedEffect
+        val mean = withContext(Dispatchers.Default) { meanLinear(bitmap) } ?: return@LaunchedEffect
+        scrim = Art.scrimAlpha(mean, art.overlay)
+    }
 
     Box(modifier = modifier) {
         Image(
@@ -89,11 +123,11 @@ fun ArtBackground(art: ResolvedArt, modifier: Modifier = Modifier) {
         /*
          * The scrim only exists once the picture does.
          *
-         * Drawing it while the picture is loading, or after it has failed,
-         * would darken a card for no reason — which offline, with a URL that
-         * cannot be reached, would be every card with art, every time. The
-         * scrim is there to make text readable over a photograph; with no
-         * photograph there is nothing to make readable.
+         * Drawing it while the picture is loading, or after it has failed, would
+         * darken a card for no reason — which offline, with a URL that cannot be
+         * reached, would be every card with art, every time. The scrim is there
+         * to make text readable over a photograph; with no photograph there is
+         * nothing to make readable.
          */
         if (loaded.ready) {
             Box(
@@ -102,16 +136,47 @@ fun ArtBackground(art: ResolvedArt, modifier: Modifier = Modifier) {
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                SCRIM.copy(alpha = art.overlay * SCRIM_TOP),
-                                SCRIM.copy(
-                                    alpha = minOf(SCRIM_BOTTOM_MAX, art.overlay + SCRIM_BOTTOM_LIFT),
-                                ),
+                                SCRIM.copy(alpha = scrim),
+                                SCRIM.copy(alpha = minOf(SCRIM_MAX, scrim + SCRIM_BOTTOM_LIFT)),
                             ),
                         ),
                     ),
             )
         }
     }
+}
+
+/**
+ * The picture's mean colour, in linear light.
+ *
+ * Averaged in **linear** light rather than in sRGB: sRGB is a perceptual
+ * encoding, and averaging in it under-weights exactly the bright pixels that
+ * make text unreadable. An 8×8 downscale is enough for a mean and costs a
+ * fraction of a millisecond; it happens once per picture, off the main thread,
+ * never per frame and never per poll.
+ *
+ * Null when the bitmap cannot be read — a hardware bitmap has no pixels on the
+ * CPU side — and the caller then keeps the agent's floor.
+ */
+private fun meanLinear(bitmap: Bitmap): DoubleArray? {
+    if (bitmap.width <= 0 || bitmap.height <= 0) return null
+    val small = runCatching { Bitmap.createScaledBitmap(bitmap, SAMPLE, SAMPLE, true) }
+        .getOrNull() ?: return null
+    val pixels = IntArray(SAMPLE * SAMPLE)
+    val read = runCatching { small.getPixels(pixels, 0, SAMPLE, 0, 0, SAMPLE, SAMPLE) }.isSuccess
+    if (small !== bitmap) small.recycle()
+    if (!read) return null
+
+    var r = 0.0
+    var g = 0.0
+    var b = 0.0
+    for (pixel in pixels) {
+        r += Art.toLinear((pixel shr 16) and 0xFF)
+        g += Art.toLinear((pixel shr 8) and 0xFF)
+        b += Art.toLinear(pixel and 0xFF)
+    }
+    val n = pixels.size.toDouble()
+    return doubleArrayOf(r / n, g / n, b / n)
 }
 
 /**
@@ -201,8 +266,13 @@ fun ArtMedia(picture: ArtPicture?, modifier: Modifier = Modifier, shape: Shape =
 
 /* ------------------------------------------------------------------ plumbing */
 
-/** A painter and whether it has something to draw yet. */
-private class LoadedArt(val painter: AsyncImagePainter, val ready: Boolean)
+/** A painter, whether it has something to draw yet, and what it drew. */
+private class LoadedArt(
+    val painter: AsyncImagePainter,
+    val ready: Boolean,
+    /** The decoded image, for the one caller that has to measure it. */
+    val image: CoilImage?,
+)
 
 /**
  * One request per picture, built once per **cache key**, and always drawn.
@@ -234,11 +304,17 @@ private fun rememberArt(source: Any, cacheKey: String, contentScale: ContentScal
             // every poll before the cache can tell us it already had the bitmap.
             .memoryCacheKey(cacheKey)
             .diskCacheKey(cacheKey)
+            // The background's scrim is computed from the picture's own pixels,
+            // and a hardware bitmap has none on the CPU side. The images here
+            // are already decoded down to the box they are drawn in, so what
+            // this gives up is small beside a card that cannot be read.
+            .allowHardware(false)
             .build()
     }
     val painter = rememberAsyncImagePainter(model = request, contentScale = contentScale)
     val state by painter.state.collectAsState()
-    return LoadedArt(painter, state is AsyncImagePainter.State.Success)
+    val success = state as? AsyncImagePainter.State.Success
+    return LoadedArt(painter, success != null, success?.result?.image)
 }
 
 /**

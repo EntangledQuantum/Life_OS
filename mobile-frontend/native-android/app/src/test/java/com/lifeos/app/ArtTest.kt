@@ -376,6 +376,93 @@ class ArtTest {
         assertNotEquals(one, two)
     }
 
+    /* -------------------------------------------------- the measured scrim */
+
+    /** A flat colour, as the mean-linear triple `scrimAlpha` takes. */
+    private fun mean(r: Int, g: Int, b: Int) =
+        doubleArrayOf(Art.toLinear(r), Art.toLinear(g), Art.toLinear(b))
+
+    /** What the card's palest text actually gets against this picture and scrim. */
+    private fun contrast(r: Int, g: Int, b: Int, alpha: Float): Double {
+        val scrim = intArrayOf(7, 8, 12)
+        val composited = IntArray(3) { i ->
+            val picture = intArrayOf(r, g, b)[i]
+            Math.round(alpha * scrim[i] + (1 - alpha) * picture).toInt()
+        }
+        val background = Art.luminance(
+            Art.toLinear(composited[0]),
+            Art.toLinear(composited[1]),
+            Art.toLinear(composited[2]),
+        )
+        return (Art.WEAKEST_TEXT_LUMINANCE + 0.05) / (background + 0.05)
+    }
+
+    @Test
+    fun `a blown-out picture is darkened until the text clears`() {
+        /*
+         * The bug this replaced: a flat 35% over a near-white sky left white
+         * text on white. A fixed percentage is only ever correct by luck.
+         */
+        val alpha = Art.scrimAlpha(mean(236, 238, 240), floor = Art.MIN_OVERLAY)
+        assertTrue("expected far more than the floor, got $alpha", alpha > 0.6f)
+        assertTrue(contrast(236, 238, 240, alpha) >= Art.TEXT_CONTRAST)
+    }
+
+    @Test
+    fun `the grey photograph that shipped unreadable now clears`() {
+        // Roughly the mean of the gym picture on the Movement card.
+        val alpha = Art.scrimAlpha(mean(198, 202, 208), floor = Art.MIN_OVERLAY)
+        assertTrue(contrast(198, 202, 208, alpha) >= Art.TEXT_CONTRAST)
+    }
+
+    @Test
+    fun `a dark picture is left alone at the agent's floor`() {
+        // Nothing to fix, so nothing is taken away from the picture.
+        val alpha = Art.scrimAlpha(mean(18, 16, 24), floor = Art.MIN_OVERLAY)
+        assertEquals(Art.MIN_OVERLAY, alpha, 0.0001f)
+    }
+
+    @Test
+    fun `artOverlay is a floor and never a cap`() {
+        /*
+         * The asymmetry is the rule. An agent may ask for a darker picture than
+         * legibility needs; it may not ask for a lighter one, because it cannot
+         * see the device the text will be read on and a row whose name cannot be
+         * read is broken however it was configured.
+         */
+        val bright = mean(236, 238, 240)
+        val atFloor = Art.scrimAlpha(bright, floor = Art.MIN_OVERLAY)
+        val asked = Art.scrimAlpha(bright, floor = 0.40f)
+        assertEquals("the agent cannot lighten it", atFloor, asked, 0.0001f)
+
+        // Darker than legibility requires is honoured.
+        val dark = mean(18, 16, 24)
+        assertEquals(0.88f, Art.scrimAlpha(dark, floor = 0.88f), 0.0001f)
+    }
+
+    @Test
+    fun `the scrim never goes opaque`() {
+        val white = Art.scrimAlpha(mean(255, 255, 255), floor = Art.MIN_OVERLAY)
+        assertTrue(white <= Art.MAX_OVERLAY)
+    }
+
+    @Test
+    fun `it survives a measurement it cannot use`() {
+        assertEquals(0.5f, Art.scrimAlpha(doubleArrayOf(), floor = 0.5f), 0f)
+    }
+
+    @Test
+    fun `the luminance maths matches the WCAG definition`() {
+        // Sanity anchors: black is 0, white is 1, and sRGB mid-grey is ~0.2159.
+        assertEquals(0.0, Art.luminance(Art.toLinear(0), Art.toLinear(0), Art.toLinear(0)), 1e-9)
+        assertEquals(1.0, Art.luminance(Art.toLinear(255), Art.toLinear(255), Art.toLinear(255)), 1e-9)
+        assertEquals(
+            0.2159,
+            Art.luminance(Art.toLinear(128), Art.toLinear(128), Art.toLinear(128)),
+            0.001,
+        )
+    }
+
     /* ------------------------------------------------- where the token goes */
 
     /**

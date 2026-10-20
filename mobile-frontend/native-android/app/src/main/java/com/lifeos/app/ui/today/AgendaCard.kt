@@ -11,12 +11,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -142,25 +140,17 @@ fun AgendaCard(
          */
         ArtBackground(art = art, modifier = Modifier.matchParentSize())
 
-        /* 4dp leading rule, full height, the activity colour at 100%. Drawn as
-         * the card's own sibling rather than as the first cell of the content
-         * row: it has to be as tall as the card however tall the card turns out,
-         * and it has to sit *over* the artwork. There is no 3dp colour bar
-         * inside the card — at three pixels it read as a divider rather than as
-         * a mark. */
-        Box(modifier = Modifier.matchParentSize()) {
-            Box(
-                modifier = Modifier
-                    .width(Sizes.leadingRule)
-                    .fillMaxHeight()
-                    .background(activity.copy(alpha = if (done) 0.30f else 1f)),
-            )
-        }
-
+        /*
+         * **No colour bar.** Not 3dp, not 4dp, not a "rule" — the element is
+         * gone. `mobile-frontend/app/AGENTS.md` settled this: a strip of colour
+         * down the left of a card reads as a divider between two things rather
+         * than as a mark on one, whatever width it is given. The card's own
+         * border carries the activity colour, and the `now` pulse carries it
+         * louder; that is what is supposed to carry it.
+         */
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = Sizes.leadingRule)
                 .padding(horizontal = Spacing.md, vertical = Spacing.md),
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             verticalAlignment = Alignment.CenterVertically,

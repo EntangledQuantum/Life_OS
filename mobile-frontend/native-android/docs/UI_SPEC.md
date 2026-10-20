@@ -488,20 +488,20 @@ it is **not** a second section on this screen.
 Anatomy (height 88dp for a task, 104dp with a week strip):
 
 ```
- ┌─ 4dp leading rule, activityColor(activityTag) ── radius 20dp ────────┐
- │▌   ░ habit background picture, cover-cropped, under its scrim ░      │
- │▌  ┌────────┐   07:30 · in 12m                            +12 XP      │
- │▌  │  icon  │   Read 20 pages                                         │
- │▌  │  48dp  │   after I sit at my desk                   ╭─────╮      │
- │▌  └────────┘   ▪▪▫▪▪▪▫                                  │  ○  │      │
- │▌                                                        ╰─────╯      │
+ ┌─ card border, activityColor(activityTag) ── radius 20dp ─────────────┐
+ │    ░ habit background picture, cover-cropped, under its scrim ░      │
+ │   ┌────────┐   07:30 · in 12m                            +12 XP      │
+ │   │  icon  │   Read 20 pages                                         │
+ │   │  48dp  │   after I sit at my desk                   ╭─────╮      │
+ │   └────────┘   ▪▪▫▪▪▪▫                                  │  ○  │      │
+ │                                                         ╰─────╯      │
  └──────────────────────────────────────────────────────────────────────┘
 ```
 
 | Slot | Content | Type |
 |---|---|---|
-| Leading rule | 4dp, full height, `activityColor(activityTag)` at 100%; the card border is the same colour at 18%. **No 3dp colour bar inside the card** — at three pixels it read as a divider. | — |
-| Background | The habit's `backgroundImageUrl`/`backgroundImageData`, cover-cropped to fill the card, **always under a scrim** — `artOverlay` clamped to 0.35–0.92, default 0.58, drawn as the web client draws it: a vertical gradient from `rgba(7,8,12,overlay×0.86)` to `rgba(7,8,12,min(0.96,overlay+0.24))`. Nothing is drawn at all when there is no picture, which is the normal case. **Never a photographic background behind unreadable text** — the scrim is what makes that true, it has a floor, and an agent cannot turn it off. | — |
+| Edge | **No colour bar of any width.** `mobile-frontend/app/AGENTS.md` settled this and it holds here: a strip of colour down the left of a card reads as a divider between two rows rather than as a mark on one, at 3dp or at 4dp. The card's own 1dp border carries `activityColor(activityTag)` — 18% normally, 40% for `now` and `overdue`, 10% for `anytime` and `done` — and the `now` pulse carries it louder. Day's rows follow the same rule. | — |
+| Background | The habit's `backgroundImageUrl`/`backgroundImageData`, cover-cropped to fill the card, **always under a scrim**. The scrim is **measured, not assumed**: the picture's own mean luminance is read once (an 8×8 downscale, in linear light, off the main thread, once per cache key) and the scrim is darkened until the *palest* text on the card — the 13sp `muted` sub-line — clears **4.5:1**. A flat percentage cannot promise that: 35% over a dark photograph is more than it needs and 35% over a blown-out one leaves white text on a white sky, which is what shipped first and was only ever correct by luck. `artOverlay` is the **floor** of how dark it goes and never the cap — an agent may ask for darker, not for lighter, because it cannot see the device the text will be read on. A small vertical deepening (+0.12 toward the foot) and nothing that ever lightens. Nothing is drawn at all when there is no picture, which is the normal case. | — |
 | Icon tile | 48dp rounded-12dp tile. The resolved picture if there is one, else `emoji` at 24sp, else the activity glyph. The tile is 48dp square in all three cases, so gaining or losing a picture never re-lays-out the row; the activity tint stays under the picture, so an icon with transparency sits on colour rather than on a hole. | — |
 | Meta line | `at` as `HH:mm` plus a relative `in 12m` when within the lead window. Omitted entirely for `state: "anytime"`. | JetBrains Mono 12sp, `faint` |
 | Title | `title`, max 2 lines, ellipsised | Figtree SemiBold 17sp, `text` |
