@@ -35,18 +35,28 @@ WEB_URL=http://localhost:5174 pnpm screenshots
 |------|---------|:--:|
 | `dashboard.png` | Overview — the day as cards with their art, and the agent's two beneath | ✅ |
 | `goals.png` | Goals, each with its rarity ladder, and the counters the conditions read | ✅ |
-| `landing-page.jpeg` | Android Today — bloom, Right now, habit cards | ✅ |
-| `goals-page.jpeg` | Android Goals — rungs and art | ✅ |
-| `analytics.jpeg` | Android Analytics — XP vs target, habit strips | ✅ |
-| `mobile-1.png` | Older Android Today | — |
-| `mobile-2.png` | Older Android timeline | — |
+| `android-today.png` | Android Today — the growth meter, the activity line, the day as one list | ✅ |
+| `android-day.png` | Android Day — the ribbon, the legend, and "Needs you" | ✅ |
+| `android-you.png` | Android You — goals with their rungs, last 7 days, vs. yesterday | ✅ |
 | `layers.png` | "Two layers, one job each" | ✅ |
 | `growth-meter.png` | The growth meter, with the 100% state ghosted behind | ✅ |
 | `agents.png` | The agent integration diagram | ✅ |
 | `landing.png` | Landing page hero | — |
 
-Mobile shots are captured on-device (not via Playwright). Drop new ones into this
-folder as `mobile-*.jpeg` / `mobile-*.png` when the UI changes.
+Android shots are captured on a real device, not via Playwright — the native
+client is a Kotlin/Compose app and Playwright cannot drive it. Capture them with
+the phone on wireless adb:
+
+```bash
+adb exec-out screencap -p > docs/screenshots/android-today.png
+```
+
+Send `adb shell input keyevent KEYCODE_WAKEUP` first: a dozing screen
+photographs as a black rectangle rather than failing, so a sleeping phone
+quietly produces three identical blank shots.
+
+Point the app at a **seeded sandbox instance**, never your own, so the images
+show demo data instead of somebody's real life.
 
 A note on the dashboard shot: it renders whatever is in **your** local database
 at the time, so the numbers will not match the ones committed here. If you want
