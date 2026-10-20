@@ -15,7 +15,7 @@ import { TimelinePage } from "./pages/TimelinePage";
 import { GoalsPage } from "./pages/GoalsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { IS_PAGES } from "./lib/deploy";
+import { IS_PAGES, LANDING_PATH } from "./lib/deploy";
 import { basePath } from "./lib/base";
 
 const qc = new QueryClient({
@@ -42,7 +42,19 @@ const routes = IS_PAGES ? (
   </Routes>
 ) : (
   <Routes>
-    <Route path="/" element={<LandingPage />} />
+    {/*
+      A self-hosted instance opens the product, not the pitch. Anyone who
+      reached this server is here to use it, so the root goes to the app —
+      and `RequireAuth` sends a visitor with no token to `/connect`, which is
+      the next thing they need, rather than to marketing copy about getting an
+      instance they already have.
+
+      The landing page is not gone, just demoted: it lives at `/home` and the
+      logo in the app header is the way back to it. On the Pages build this
+      whole branch is unused and the landing page keeps the root.
+    */}
+    <Route path="/" element={<Navigate to="/app" replace />} />
+    <Route path={LANDING_PATH} element={<LandingPage />} />
     {docsRoutes}
     <Route path="/connect" element={<ConnectPage />} />
     {/*
@@ -60,7 +72,7 @@ const routes = IS_PAGES ? (
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Route>
-    <Route path="*" element={<Navigate to="/" replace />} />
+    <Route path="*" element={<Navigate to="/app" replace />} />
   </Routes>
 );
 

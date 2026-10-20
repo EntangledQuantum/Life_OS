@@ -31,13 +31,13 @@ Your agent designs the system and keeps it up to date. You just tap to complete.
 <table>
   <tr>
     <td width="33%" valign="top">
-      <img src="docs/screenshots/landing-page.jpeg" alt="Life OS on Android — Today, the day's habits as cards" />
+      <img src="docs/screenshots/android-today.png" alt="Life OS on Android — Today, the growth meter and the day as one list" />
     </td>
     <td width="33%" valign="top">
-      <img src="docs/screenshots/goals-page.jpeg" alt="Life OS on Android — Goals with rungs and art" />
+      <img src="docs/screenshots/android-day.png" alt="Life OS on Android — Day, the ribbon and what still needs you" />
     </td>
     <td width="33%" valign="top">
-      <img src="docs/screenshots/analytics.jpeg" alt="Life OS on Android — Analytics, XP against target and habit strips" />
+      <img src="docs/screenshots/android-you.png" alt="Life OS on Android — You, goals and the last seven days" />
     </td>
   </tr>
 </table>
@@ -115,8 +115,13 @@ it happens, instead of asking every five minutes.
 ## Contributing
 
 Issues and PRs welcome. It is a pnpm workspace: `apps/api` (Hono),
-`apps/web` (React), `packages/{db,shared,mcp}`, and `mobile-frontend/app`
-(Expo), which is deliberately isolated and must not import from the monorepo.
+`apps/web` (React) and `packages/{db,shared,mcp}`, plus
+`mobile-frontend/native-android` — the Android client, Kotlin and Jetpack
+Compose, built with the Android SDK command-line tools and Gradle. It is
+deliberately isolated: it is not in the pnpm workspace, it must never import
+from `apps/*` or `packages/*`, and its only contact with the rest of the repo
+is HTTP to the API. `mobile-frontend/app` is the retired Expo client, kept
+until the native one has been in daily use for a while.
 
 ```bash
 pnpm install
@@ -126,10 +131,13 @@ pnpm test       # every package
 pnpm typecheck
 ```
 
-Before opening a PR: `pnpm typecheck && pnpm test`, and `npx tsc --noEmit` in
-`mobile-frontend/app` if you touched the app. Database changes go in
-`packages/db/src/migrations.ts` as a **new numbered migration** — never edit a
-shipped one.
+Before opening a PR: `pnpm typecheck && pnpm test`, and in
+`mobile-frontend/native-android`, `./gradlew assembleDebug assembleRelease test
+lint` if you touched the Android app. Build the **release** variant too, not
+just debug: Android permits cleartext HTTP in debug builds automatically, so a
+release-only networking failure is invisible until someone installs an APK.
+Database changes go in `packages/db/src/migrations.ts` as a **new numbered
+migration** — never edit a shipped one.
 
 Full docs, the API reference and the agent skill are on the
 [website](https://entangledquantum.github.io/Life_OS/) and under

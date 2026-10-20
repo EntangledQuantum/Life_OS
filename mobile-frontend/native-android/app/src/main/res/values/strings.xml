@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name is a resValue per build type: "Life OS dev" / "Life OS". -->
+
+    <!-- Shown in the launcher's own widget picker, before anything is placed. -->
+    <string name="widget_description">Today\'s progress, the day\'s shape and the next thing — from the cache, so it never waits on the server.</string>
+</resources>

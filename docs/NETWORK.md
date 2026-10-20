@@ -129,6 +129,13 @@ install, `pnpm serve` builds the dashboard and starts the API with
 `SERVE_WEB=1`, so **8787 serves both** — the API, and `apps/web/dist` with an SPA
 fallback for every non-API path. `pnpm serve:nobuild` skips the build.
 
+The root of a self-hosted instance **opens the dashboard**: you reached your own
+server to use it, so `/` goes straight to `/app`, and to `/connect` for the token
+if this browser does not have one yet. The landing page is still there at
+`/home`, reached from the Life OS logo in the app header — it is the page for
+people who do not have an instance yet, which is why the public GitHub Pages
+site keeps it as its root.
+
 The same build also works **under a path prefix** behind a reverse proxy, e.g.
 `https://box.tailnet.ts.net/lifeos/`. The proxy sends `X-Forwarded-Prefix:
 /lifeos` and may strip the prefix or not; either way the API routes the request

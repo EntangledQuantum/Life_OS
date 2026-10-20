@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The status-bar icon.
+
+  A notification icon must be a **single-colour silhouette on transparent**: the
+  OS takes its alpha channel and tints it, so any colour here is discarded and
+  any filled background becomes a solid white block. That is why this is the
+  sprout's outline rather than the launcher icon, which has a painted backdrop.
+
+  24dp, which is the density-independent size the platform expects.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11,21 L13,21 C13,16.5 12,13.5 13.2,10.8 C14.4,8.1 13,5.5 13,3.5 L11,3.5 C11,5.5 12.4,8.1 11.2,10.8 C10,13.5 11,16.5 11,21 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12.4,14.2 C14,12.6 16.2,12.6 17.4,13.8 C15.8,15.8 13.6,15.8 12.4,14.2 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11.6,10 C10,8.4 7.8,8.4 6.6,9.6 C8.2,11.6 10.4,11.6 11.6,10 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,4.6 m-2.2,0 a2.2,2.2 0 1,0 4.4,0 a2.2,2.2 0 1,0 -4.4,0" />
+</vector>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dark only. There is no `values-night/`, no DayNight parent, and no light
+  variant of any value in this tree (UI_SPEC 6.1). The window background is the
+  `bloom` palette's `bg` so the very first frame, before Compose draws, is
+  already the right near-black rather than a white flash.
+
+  Split into a Base style plus per-API overrides because two of the attributes
+  that enforce "dark only" did not exist at our minSdk: `windowLightNavigationBar`
+  arrived in API 27 and `forceDarkAllowed` in API 29. Declaring them in the base
+  style is a real lint error, not a nit — on API 26 the attribute is simply
+  ignored, and relying on that is how a theme ends up meaning something different
+  on two devices.
+-->
+<resources>
+    <style name="Theme.LifeOS.Base" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/lifeos_window_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.LifeOS" parent="Theme.LifeOS.Base" />
+</resources>

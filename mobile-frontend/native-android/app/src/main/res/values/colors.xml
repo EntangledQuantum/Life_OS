@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- bloom.bg — the only colour that has to exist outside Kotlin, because the
+         window background is painted by the OS before Compose runs. -->
+    <color name="lifeos_window_bg">#0D0910</color>
+</resources>
