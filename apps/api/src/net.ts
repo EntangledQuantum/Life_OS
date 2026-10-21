@@ -41,17 +41,57 @@ export function isAllowedOrigin(origin: string, extra: string[] = []): boolean {
   }
 }
 
-/** Every LAN IPv4 address this machine answers on, for the boot banner. */
+/**
+ * Interfaces that exist for a hypervisor or a container runtime, not for a
+ * network a phone is on. Matched on the adapter *name*, which is the only
+ * place the distinction is visible — their addresses are ordinary private
+ * ones.
+ */
+const VIRTUAL_ADAPTER =
+  /\b(vethernet|hyper-?v|wsl|docker|virtualbox|vmware|vmnet|veth\d*|br-|tailscale|zerotier|tunnel|loopback)\b/i;
+
+/**
+ * Rank an address by how likely a phone on the same Wi-Fi is to reach it.
+ * Lower sorts first.
+ *
+ * `172.16–31` is a legitimate private range, but on Windows it is also where
+ * Hyper-V and WSL put their virtual switches, so it loses to the ranges a home
+ * router actually hands out.
+ */
+function reachabilityRank(name: string, address: string): number {
+  const virtual = VIRTUAL_ADAPTER.test(name) ? 10 : 0;
+  if (/^192\.168\./.test(address)) return virtual + 0;
+  if (/^10\./.test(address)) return virtual + 1;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(address)) return virtual + 2;
+  return virtual + 3;
+}
+
+/**
+ * Every LAN IPv4 address this machine answers on, **best first**.
+ *
+ * The order is the whole point, because callers take `[0]` — the pairing QR
+ * does, and so does the boot banner. Unsorted, `os.networkInterfaces()` on a
+ * Windows box with Hyper-V or WSL installed reports `vEthernet (Default
+ * Switch)` at `172.23.x.x` *before* the real `Ethernet` at `192.168.x.x`, so
+ * the QR encoded an address that exists only inside the host. The phone's
+ * request went nowhere and the failure said "can't reach Life OS", which is
+ * true and useless.
+ */
 export function lanAddresses(): string[] {
-  const out: string[] = [];
-  for (const list of Object.values(os.networkInterfaces())) {
+  const found: { address: string; rank: number }[] = [];
+  for (const [name, list] of Object.entries(os.networkInterfaces())) {
     for (const iface of list ?? []) {
       if (iface.family !== "IPv4" || iface.internal) continue;
-      if (isPrivateHostname(iface.address)) out.push(iface.address);
+      if (!isPrivateHostname(iface.address)) continue;
+      found.push({ address: iface.address, rank: reachabilityRank(name, iface.address) });
     }
   }
-  return out;
+  // Stable within a rank, so identical hardware keeps a predictable order.
+  return found.sort((a, b) => a.rank - b.rank).map((f) => f.address);
 }
+
+/** Exported for the test; the ranking is the part worth pinning down. */
+export const __rankForTest = reachabilityRank;
 
 /** Is this bind address reachable from other machines? */
 export function isExposed(host: string): boolean {

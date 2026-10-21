@@ -21,14 +21,18 @@ import com.lifeos.app.ui.theme.palette
  * First run (§7.3).
  *
  * QR pairing is the primary path and the only filled button: the dashboard mints
- * a single-use code, draws `<base>/pair#c=CODE` as a QR, and the phone trades it
- * for `{baseUrl, token}` at `POST /api/v1/pair/claim`.
+ * a single-use code, shows it as a QR, and the phone trades the code for
+ * `{baseUrl, token}` at `POST /api/v1/pair/claim`.
  *
- * **This milestone ships the screen and a stub for the scanner.** The camera and
- * on-device barcode model are a later milestone, and a half-wired scanner that
- * silently fails is worse than one that says it is not here yet — so the stub
- * says so and sends the user to manual entry, which is a complete path. Manual
- * entry is the same form as `server`, by design: one form, one set of probes.
+ * Since 2.0.1 the button opens a **real** scanner (see `PairRoute`), and the
+ * same QR scanned in any other camera app opens this app through the
+ * `lifeos://pair` deep link. 2.0.0 shipped a stub here that said scanning was
+ * unavailable, which is the worst of the three options: the capability existed
+ * on the server, the link existed in the QR, and the app's own button said
+ * neither did.
+ *
+ * Manual entry is still the same form as `server`, by design: one form, one set
+ * of probes.
  */
 @Composable
 fun ConnectScreen(
@@ -69,38 +73,6 @@ fun ConnectScreen(
 
         TextButton(onClick = onWhereDoIFindThis) {
             Text("Where do I find this? ›", color = p.muted, style = LifeOsType.bodySmall)
-        }
-    }
-}
-
-/**
- * The scanner's placeholder.
- *
- * Camera permission denied must never be a dead end (§7.3), and neither must a
- * feature that has not shipped: both fall straight through to manual entry with
- * one line of explanation.
- */
-@Composable
-fun PairStubScreen(onEnterManually: () -> Unit, modifier: Modifier = Modifier) {
-    val p = palette
-    Column(
-        modifier = modifier.fillMaxSize().padding(Spacing.xxl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("QR scanning isn't in this build yet", style = LifeOsType.cardTitle, color = p.text)
-        Text(
-            text = "Enter the address and token by hand instead — it is the same form, and the " +
-                "same four checks.",
-            style = LifeOsType.bodySmall,
-            color = p.muted,
-            textAlign = TextAlign.Center,
-        )
-        Button(
-            onClick = onEnterManually,
-            colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = p.bg),
-        ) {
-            Text("Enter the address")
         }
     }
 }

@@ -27,6 +27,7 @@ coroutines = "1.10.1"
 # whose network layer is pluggable, which is what lets this app point it at the
 # user's own OkHttp client and nowhere else.
 coil = "3.2.0"
+
 junit = "4.13.2"
 turbine = "1.2.0"
 

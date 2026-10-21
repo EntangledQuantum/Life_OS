@@ -3,6 +3,7 @@ package com.lifeos.app.ui.day
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -31,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,7 +56,11 @@ import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.Radii
 import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
+import com.lifeos.app.ui.theme.arrivalAlpha
+import com.lifeos.app.ui.theme.craftedSurface
+import com.lifeos.app.ui.theme.lifted
 import com.lifeos.app.ui.theme.palette
+import com.lifeos.app.ui.theme.pressTone
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -89,6 +96,13 @@ fun DayScreen(
     val data = state.view?.data
     val settings = state.view?.settings ?: SettingsDto()
     val p = palette
+
+    /*
+     * Loading → loaded as a fade, not a cut. Read above the empty-cache branch
+     * or the animation is created already at its target and never runs; see
+     * `arrivalAlpha`.
+     */
+    val arrival = arrivalAlpha(ready = data != null)
 
     LaunchedEffect(data == null) {
         if (data == null) onArmEmptyTimeout()
@@ -140,7 +154,7 @@ fun DayScreen(
 
             TwoPane(
                 expanded = expanded,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = arrival },
                 primary = {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
@@ -279,8 +293,9 @@ private fun NeedsYouBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(p.surface)
+            // Lit top edge like every other card; the pulse still carries the
+            // "this needs you", and it is still the only pulsing region here.
+            .craftedSurface(shape = shape, base = p.surface, border = null, pressShrink = false)
             .pulseBorder(p.accent, shape)
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -290,12 +305,19 @@ private fun NeedsYouBlock(
             Mono(" · ${tasks.size}", color = p.accent)
         }
         tasks.forEach { task ->
+            val interaction = remember { MutableInteractionSource() }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = Sizes.dayRow)
-                    .clip(RoundedCornerShape(Radii.tile))
-                    .clickable(role = Role.Button) { onOpen(task) },
+                    // These rows sit on a card, so the press is a tone on the
+                    // row rather than a ripple over the card's own surface.
+                    .pressTone(interaction, RoundedCornerShape(Radii.tile))
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        role = Role.Button,
+                    ) { onOpen(task) },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
@@ -329,11 +351,17 @@ private fun NeedsYouBlock(
 
 @Composable
 private fun GlyphButton(glyph: String, tint: Color, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .size(Sizes.tickTouch)
             .clip(RoundedCornerShape(50))
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(bounded = false, radius = Sizes.tickTouch / 2),
+                role = Role.Button,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(glyph, style = LifeOsType.cardTitle, color = tint)
@@ -370,13 +398,32 @@ private fun DayRow(task: TaskDto, timezone: String?, onOpen: () -> Unit) {
     val activity = ActivityColors.of(task.activityTag, p.accent)
     val shape = RoundedCornerShape(Radii.tile)
 
+    val interaction = remember { MutableInteractionSource() }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = Sizes.dayRow)
-            .clip(shape)
-            .border(1.dp, activity.copy(alpha = 0.18f), shape)
-            .clickable(role = Role.Button, onClick = onOpen),
+            /*
+             * A row here used to be an outline on the page with nothing behind
+             * it, which is exactly the "too simplistic" the user reported: a
+             * list of twelve empty rectangles. It is still deliberately lighter
+             * than an agenda card — this screen is reading, not doing — so it
+             * gets `bg` lifted rather than `surface`, and no press shrink.
+             */
+            .craftedSurface(
+                shape = shape,
+                base = p.bg.lifted(0.028f),
+                border = activity.copy(alpha = 0.18f),
+                interactionSource = interaction,
+                pressShrink = false,
+            )
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(),
+                role = Role.Button,
+                onClick = onOpen,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(

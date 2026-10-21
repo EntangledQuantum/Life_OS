@@ -1,8 +1,10 @@
 package com.lifeos.app.ui.theme
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ProvidableCompositionLocal
@@ -87,9 +89,29 @@ fun LifeOsTheme(
     reducedMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    /*
+     * **The press state for the whole app, provided once.**
+     *
+     * Material 3 1.3 decoupled the ripple from the theme: `MaterialTheme` no
+     * longer provides `LocalIndication`, and a `clickable` that is not handed an
+     * indication explicitly falls back to Foundation's
+     * `DefaultDebugIndication` — a flat **black at 30%** rectangle on press.
+     * That is what every card, row and chip in 2.0.0 was using. On a near-black
+     * theme it darkens a surface toward the page instead of lifting it toward
+     * the finger, so a press read as the thing briefly disappearing. It is a
+     * large part of why the app felt unfinished, and it was invisible in code
+     * review because the call sites all look correct.
+     *
+     * One provider fixes every call site at once, including the ones that pass
+     * no indication at all, and the handful that want a tone instead still opt
+     * out with `indication = null` plus `pressTone`.
+     */
+    val indication = ripple()
+
     CompositionLocalProvider(
         LocalPalette provides palette,
         LocalReducedMotion provides reducedMotion,
+        LocalIndication provides indication,
     ) {
         MaterialTheme(
             colorScheme = palette.toColorScheme(),

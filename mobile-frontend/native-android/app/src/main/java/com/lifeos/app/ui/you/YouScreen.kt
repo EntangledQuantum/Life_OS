@@ -3,6 +3,7 @@ package com.lifeos.app.ui.you
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lifeos.app.data.api.AgentPropertyDto
@@ -58,7 +60,11 @@ import com.lifeos.app.ui.theme.POSITIVE
 import com.lifeos.app.ui.theme.Radii
 import com.lifeos.app.ui.theme.Sizes
 import com.lifeos.app.ui.theme.Spacing
+import com.lifeos.app.ui.theme.arrivalAlpha
+import com.lifeos.app.ui.theme.craftedSurface
+import com.lifeos.app.ui.theme.lifted
 import com.lifeos.app.ui.theme.palette
+import com.lifeos.app.ui.theme.pressTone
 
 /**
  * You (§3.3): goals above, the past tense of Today below.
@@ -88,6 +94,13 @@ fun YouScreen(
     val data = state.view?.data
     val settings = state.view?.settings ?: SettingsDto()
     val p = palette
+
+    /*
+     * Loading → loaded as a fade, not a cut. Read above the empty-cache branch
+     * or the animation is created already at its target and never runs; see
+     * `arrivalAlpha`.
+     */
+    val arrival = arrivalAlpha(ready = data != null)
 
     LaunchedEffect(data == null) {
         if (data == null) onArmEmptyTimeout()
@@ -124,7 +137,7 @@ fun YouScreen(
         val goals = remember(data.goals) { GoalOrder.forYou(data.goals) }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = arrival },
             contentPadding = PaddingValues(
                 start = Spacing.lg,
                 end = Spacing.lg,
@@ -286,9 +299,15 @@ private fun GoalCard(goal: GoalDto, lead: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(p.surface)
-            .border(1.dp, accent.copy(alpha = if (lead) 0.32f else 0.14f), shape),
+            // The lead goal is the one thing on this screen, so it keeps its
+            // louder border; both get the lit top edge, because a goal card
+            // with nothing behind its outline is the flattest thing in the app.
+            .craftedSurface(
+                shape = shape,
+                base = p.surface,
+                border = accent.copy(alpha = if (lead) 0.32f else 0.14f),
+                pressShrink = false,
+            ),
     ) {
         ArtBackground(art = art, modifier = Modifier.matchParentSize())
 
@@ -477,8 +496,7 @@ private fun AnalyticsBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.card))
-            .background(p.surface)
+            .craftedSurface(shape = RoundedCornerShape(Radii.card), pressShrink = false)
             .padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
@@ -640,8 +658,13 @@ fun DeltaTile(label: String, delta: DeltaDto, modifier: Modifier = Modifier) {
     val change = delta.delta
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(Radii.tile))
-            .background(p.surface)
+            .craftedSurface(
+                shape = RoundedCornerShape(Radii.tile),
+                // A tile is small, so its border would be most of what you see
+                // of it. Tone alone separates these five from the page.
+                border = null,
+                pressShrink = false,
+            )
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -705,8 +728,7 @@ private fun Collapsible(title: String, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.card))
-            .background(p.surface)
+            .craftedSurface(shape = RoundedCornerShape(Radii.card), pressShrink = false)
             .padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {

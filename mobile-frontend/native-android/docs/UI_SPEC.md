@@ -60,7 +60,7 @@ the rewrite, so it is first.
 | `fetchWithTimeout` wrapping every call because RN sets OkHttp timeouts to zero | We configure OkHttp directly: connect 5s, read 12s, call 15s; 6s for probes. Nothing is unbounded, but this is now config, not a wrapper. |
 | `networkMode: "always"` on React Query | No React Query. A Room-backed repository has no concept of "paused because the browser thinks we're offline". Always attempt; let failure be a typed error. |
 | `SwipeTabs` / `PanResponder` horizontal tab swiping | **Cut.** Three destinations, M3 navigation bar, predictive back. Swipe-between-tabs fights vertical lists and horizontally-scrollable content, and is a React-Navigation-era habit. |
-| The travelling, critically-damped nav-bar pill (`mass .55, damping 30, stiffness 420`) | **Cut** — this is the "too much animation at the bottom" the brief names. Replaced in §5.4. |
+| The travelling, **underdamped** nav-bar pill (`mass .55, damping 30, stiffness 420`) across five tabs | **The spring and the distance are cut; the travel is not.** This is the "too much animation at the bottom" the brief names, and the faults were that it was slow, that it wobbled (hence the repeated tuning), and that it crossed five slots. Three destinations and a genuinely critically damped spring make travel cheap and informative. §5.4 has the full history — it has been reversed twice, and the first reversal was wrong. |
 | `tab-bar.tsx` as one component with two shapes; `tabBarPosition: "left"` | Replaced by `NavigationSuiteScaffold` (navigation bar / rail by window size class). |
 | "No SVG filters, `react-native-svg` renders a black rectangle" | Compose `Canvas` + `RenderEffect.blur` (API 31+) are reliable. Blur is allowed again, with an API-level fallback to the existing `RadialGradient` halo. |
 | `GrowthHero` measuring itself with `onLayout` instead of the window | `BoxWithConstraints` solves this natively; the *rule* (size from your container, not the window) stays. |
@@ -616,59 +616,84 @@ more time, it is doing too much.
 | **Tick** | Ring → fill, 100ms, with a single `spring.snap` scale 1.0 → 1.12 → 1.0. The check path draws in 120ms. This is the app's signature micro-interaction and it is allowed to be crisp. |
 | **Card → done** | Alpha and border colour over `medium`. No size change, no position change. |
 | **Meter** | `animateFloatAsState` over `long` from the previous value. Leaves reveal as thresholds are crossed; the bloom at 1.0 is a one-shot arrival, because 100% must not look like a brighter 99%. |
-| **Destination change** | By tap: content cross-fades + 4% scale-in over `medium` (M3 "top level transition"), and the navigation bar does not move, re-layout, or animate its background. By swipe: the pages follow the finger and the bar's indicator tracks them continuously, settling in `short` (§5.4). |
-| **Drill-in (sheet, detail, settings)** | Shared-axis Z: incoming scales 92%→100% with fade, outgoing 100%→104% with fade, `medium`. Predictive back drives it in reverse under the user's finger (`PredictiveBackHandler`). |
+| **Destination change** | By tap: content cross-fades + 4% scale-in over `medium` (M3 "top level transition"), the bar itself does not move or re-layout, and its **indicator travels** to the new item on a critically damped spring (§5.4). By swipe: the pages follow the finger and the indicator tracks them continuously, settling in `short` (§5.4). |
+| **Drill-in — a full screen (settings, `server`, `connect/pair`, a goal)** | **Shared axis X.** Forward: incoming slides in from +12% of the width with a `medium` fade; outgoing slides to −12% and fades over `short`, so the old screen is gone before the new one is solid. Back is the same thing mirrored, and predictive back scrubs it under the user's finger. A cross-fade is banned here: it has no direction, so forward and back look identical and the back gesture stops feeling like going back. |
+| **Drill-in — a sheet** | Shared-axis Z: incoming scales 92%→100% with fade, outgoing 100%→104% with fade, `medium`. A sheet comes from *in front of* the screen rather than from beside it, so it keeps Z while full screens take X. Predictive back drives it in reverse (`PredictiveBackHandler`). |
+| **Loading → loaded** | One fade over the whole content, `short`, and **only** when the cache was empty — a cold start with a cache is already at full opacity on its first frame, so the path that matters never animates. A hard cut from six seconds of skeletons to content reads as the screen being swapped out from under you. Never per row (§5.4). |
+| **A press** | The surface comes up to meet the finger over `instant`: a tonal lift on a card (plus 1.2% of shrink), a tone on a row that has no card, and M3's ripple over both — provided once as `LocalIndication`, because Material 3 1.3 stopped providing it and the fallback is a flat black 30% rectangle. |
 | **Status strip** | Expand/collapse height + fade, `short`. It appears once per state change, not per poll. |
 | **Pending-write count** | Cross-fades the number. Never spins, never bounces. |
 | **Needs-you items** | `pulse` (§5.5) |
 | **Celebration** | Scale 0.9→1.0 + fade over `celebration`, particles for `celebrationIntensity: full` only. |
 
-### 5.4 What must not animate — and the bottom bar specifically
+### 5.4 What must not animate — and the navigation bar specifically
 
-The brief says the bottom is too busy. The diagnosis: the current bar animates a
-critically-damped pill that **travels the full width across five tabs**. Every navigation
-therefore produces a long, eye-catching horizontal slide at the exact bottom edge where the
-thumb already draws attention — and the animation is of the *chrome*, which carries no
-information about the content that just changed. It was tuned (`mass .55, damping 30,
-stiffness 420`) because it overshot; a thing that needs critical damping to stop wobbling
-across five tabs is a thing that should not be travelling.
+#### The rule
 
-**Replacement:** three items, and the active indicator **never travels on its own**. On a
-tap it cross-fades out at the old item and in at the new one over 200ms, while the icon
-swaps outlined → filled in place. Nothing slides. Nothing springs. The label is always
-visible (`alwaysShowLabel = true`) so nothing appears or disappears either. Total
-on-screen movement at the bottom edge from a tap: zero pixels.
+**Chrome does not animate itself to no purpose.** That is the whole rule, and the test it
+licenses a reviewer to apply is: *what did that movement tell me?* A movement that answers
+"where you just went", "where your finger is" or "what you just changed" is information and
+is allowed. A movement that answers nothing is decoration at the bottom edge of the screen,
+where the thumb already draws the eye, and it is banned.
 
-#### The rule, stated precisely
+Applied to the navigation bar's active indicator, three clauses:
 
-The original rule here said "zero pixels of travel", full stop. That was aimed at a pill
-that **animated itself after a tap** — chrome moving on its own, telling the user nothing
-about the content that had already changed. Milestone 4 added a swipe between the three
-destinations, and a swipe is a different thing: the user's own finger is on the pages, and
-an indicator that ignored them until the gesture ended would be *less* honest, not more.
-So the rule is:
+- **It tracks a gesture, frame for frame.** While a horizontal swipe is moving the pages the
+  indicator moves with them in real time. It stops when the finger stops and it goes back
+  when the finger goes back. Label and icon states interpolate with it rather than flipping
+  at the halfway point. This is direct manipulation; an indicator that ignored the finger
+  until the gesture ended would be *less* honest, not more.
+- **It travels between destinations on a tap.** Not a cross-fade in place — it moves, from
+  the old slot to the new one, and the eye follows it there. **Critically damped**
+  (`dampingRatio = 1.0`) so it has no oscillating term at all and therefore cannot overshoot
+  by construction, at a stiffness that crosses one slot in roughly 180ms. Quick, and done.
+  There is nothing to "tune away" later, which is the difference between this and the pill
+  it replaces.
+- **Nothing else in the bar moves.** The bar does not re-layout, does not animate its
+  background, does not change height, does not collapse on scroll, and nothing in it moves
+  because data arrived. Labels are always visible (`alwaysShowLabel = true`), so nothing
+  appears or disappears either.
 
-- **No self-animating travel on navigation.** Nothing in the navigation bar may move of its
-  own accord — not after a tap, not on arrival, not because data came in. A tap is still
-  zero pixels of travel.
-- **Continuous tracking during a gesture is required.** While a horizontal swipe is moving
-  the pages, the active indicator moves with them, frame for frame, in real time. It is
-  direct manipulation, not decoration: it stops when the finger stops and it goes back when
-  the finger goes back. Label and icon states interpolate with it rather than flipping at
-  the halfway point.
-- **The settle is the gesture finishing, not an animation starting.** When the finger lifts,
-  the pages and the indicator run to the nearest committed page in `short` (200ms,
-  decelerate) — a fixed duration, never a spring. The old bar needed critical damping to
-  stop wobbling; nothing here is allowed to need that.
-- With reduced motion the gesture still works and still tracks — it is the user's finger —
-  but the settle is immediate and the change reads as a cross-fade (§5.6).
+A gesture's settle is a fixed `short` (200ms, decelerate) and never a spring — the finger
+has already said where it is going, so the pages only have to finish arriving. With reduced
+motion the gesture still tracks (it is the user's finger) and both the settle and the
+indicator's travel become immediate, leaving the content cross-fade to carry the change
+(§5.6).
 
-Mechanically this means the compact bar is ours rather than a stock `NavigationBarItem`,
-whose indicator cannot be told where to be. Each item draws its own indicator at that
-item's `selectedness`, offset by how far the pages are from it; mid-gesture two of them
-coincide and read as one pill under the finger, and at rest exactly one is visible and
-un-offset. The navigation rail (Medium/Expanded) keeps the stock items: a vertical rail has
-no sideways travel to track, and the swipe still works underneath it.
+Mechanically the compact bar is ours rather than a stock `NavigationBarItem`, whose
+indicator cannot be told where to be. There is **one number** — the indicator's position in
+tab units, which is the pages' own position during a gesture and a damped animation toward
+the selected tab otherwise — and every item draws its indicator at its `selectedness` of
+that number, offset by how far it is from that item. In motion two coincide and read as one
+pill; at rest exactly one is visible and un-offset. Because it is the same arithmetic in
+both cases, the handover between them is invisible. The navigation rail (Medium/Expanded)
+keeps the stock items: a vertical rail has no sideways travel to track, and the swipe still
+works underneath it.
+
+#### Decision history — this section has been reversed twice. Read this before "fixing" it.
+
+1. **The Expo app travelled a pill across five tabs** on an underdamped spring
+   (`mass .55, damping 30, stiffness 420`). The user's complaint was that the bottom of the
+   screen was too busy: a long slide on every navigation, tuned repeatedly because it
+   overshot, at the edge the thumb already draws attention to.
+2. **The rewrite over-corrected to "zero pixels of travel", full stop** — my error, and I
+   wrote it. The diagnosis conflated two faults. The pill was *slow* and it *wobbled*
+   across *five* slots; none of those is "it moved". With three destinations and a damped
+   spring, travel is cheap and it is the one thing on screen that says which way you went.
+3. **Shipped in 2.0.0 and rejected on sight.** With travel banned, the bar obeyed by
+   cross-fading two indicators in place. The user: the highlight *"is weird, it's like
+   spotlight from one place to another"*. Exactly right — a highlight extinguished in one
+   slot and lit in the next is not a movement, and the eye is given nothing to follow. The
+   rule produced a worse artefact than the thing it was written to prevent.
+4. **Now:** the rule above. What is banned is self-animating chrome that carries no
+   information, which is what the Expo pill actually was. Travel that answers "where you
+   just went" is information, and 180ms of critically damped travel across one slot is not
+   "busy" by any measure the original complaint was about.
+
+The constants are `HomeTabsState.INDICATOR_DAMPING` / `INDICATOR_STIFFNESS` and the damping
+ratio is **unit-tested at exactly 1.0**, with this history in the test, specifically so that
+the next person to read step 2 above and reinstate it has to delete a test that explains why
+they should not.
 
 **Gesture ownership.** The swipe only takes a drag that is past the touch slop *and* twice
 as horizontal as vertical. Inherited from the Expo app and kept deliberately: the screen
@@ -684,9 +709,12 @@ Also banned:
 - Collapsing/expanding/hiding chrome on scroll. The bar stays put.
 - Parallax, carousels, auto-advancing anything.
 - Entry animations on list items. A card does not fly in; it is already there. (Per-item
-  stagger on a 12-row agenda is 1.2s of movement before the user can act.)
-- Shimmer on skeletons. Static placeholders at 6% alpha.
-- Anything animating because data arrived, other than the meter's value and the status strip.
+  stagger on a 12-row agenda is 1.2s of movement before the user can act.) The
+  loading→loaded arrival in §5.3 is one fade over the whole content, never one per row.
+- Shimmer on skeletons. Static placeholders at 6% alpha (with a 9% hairline, which is an
+  edge and not an animation).
+- Anything animating because data arrived, other than the meter's value, the status strip,
+  and the one-time arrival of the first payload a fresh install ever receives (§5.3).
 - Loading spinners on surfaces the user just touched.
 - Infinite/looping animation, with exactly two exceptions: the orb's liquid crests (the
   signature, and only while the orb is on screen) and the Needs-you pulse.
@@ -778,6 +806,21 @@ Elevation: M3 dark elevation is **tonal, not shadow**. Surfaces step by colour
 (`bg → surface → surface2`), and the only shadow in the app is the FAB's. Cards use a 1dp
 border and a container colour, never `elevation = 4.dp`. A "floating" card on near-black
 reads as mud.
+
+**Tonal does not mean flat.** A card's container is a vertical gradient whose top is lifted
+by about 0.022 in straight RGB — two values out of 255 against `bloom`'s `#1A1220` — ending
+at 62% of the card's height. That is a lit top edge, which is how dark Material says
+"object" without a shadow. It is small enough that nobody sees a gradient and large enough
+that nobody sees an outline with text in it.
+
+This is here because 2.0.0 got it wrong, and the error is worth naming: the user's
+complaint about the old app was **information overload**, and I treated that as a mandate to
+reduce *visual richness* too. They are different axes. Every surface at exactly the page's
+tone, every press a flat black overlay, every container an outline — that is not low
+density, it is unfinished, and the user's words were *"you stripped the app of its
+aesthetics now it looks too simplistic"*. The density reduction stands: nothing below adds a
+number, a row or a control. The craft comes back. The numbers live in `ui/theme/Surfaces.kt`
+and are non-themed, so a palette still cannot reach them (§6.2).
 
 ### 6.4 The eight palettes
 
@@ -933,28 +976,63 @@ connect
 └──────────────────────────────────────────┘
 ```
 
-**QR pairing is the primary path and is kept exactly as it works today.** The dashboard
-mints a single-use code (`POST /api/v1/pair`), draws `<base>/pair#c=CODE` as a QR; the phone
-scans it (CameraX + ML Kit barcode, bundled on-device model — no network, no Play Services
-download at first run) or arrives via the `lifeos://connect?code=…&url=…` deep link; the app
+**QR pairing is the primary path.** The dashboard mints a single-use code
+(`POST /api/v1/pair`) and shows it as a QR; the phone either scans it **in this app**
+(CameraX + ML Kit barcode, bundled on-device model — no network and no Play Services
+download at first run, which matters because pairing is the one moment the phone provably
+cannot reach Life OS yet) or **arrives on the deep link** from any other camera app; the app
 calls `POST /api/v1/pair/claim` (unauthenticated, by design) and receives `{baseUrl, token}`.
 
-- The code is in the URL **fragment** — never log the scanned URL, and never put the code
-  or token in a query string of our own.
-- Failure copy distinguishes the three real cases: *"That code has already been used"*,
-  *"That code expired — mint a new one on your dashboard"* (both are the same server
-  response, compared in constant time, so the copy is one line covering both:
-  **"That code is no longer valid. Mint a new one on your dashboard."**), and
-  *"Scanned, but couldn't reach `http://192.168.1.4:8787` from this phone"* — which is a
-  reachability problem, so it offers **Change server**, not a rescan.
-- Camera permission denied → fall straight through to manual entry with a one-line
-  explanation. Never a dead end.
+**The two paths meet immediately.** One parser, one claim, one token write, one set of
+failure sentences, whichever way the code arrived — `domain/PairLink` → `data/PairClaim` →
+`ui/connect/PairViewModel`. Two implementations of this is how the app ends up pairing
+correctly from its own camera and not from the phone's.
+
+The link, exactly:
+
+- **`lifeos://pair?code=<CODE>&url=<BASE_URL>`** is what the server mints
+  (`apps/api/src/services/pairing.ts`). `host` is `pair`; `connect` is accepted as an alias
+  because a QR already on someone's screen outlives the release that drew it.
+- On Android the web pair page hands over `intent://pair?…#Intent;scheme=lifeos;` +
+  `package=com.lifeos.app;…;end` instead, because Chrome will not follow a bare custom
+  scheme from a page it did not navigate to. The OS resolves that to the same
+  `lifeos://pair?…` data, so there is still one parser — but note it names the **release**
+  package, so a dev build is only ever reachable by the scheme form.
+- The intent filters are per-link: one filter per host, **not** two `<data>` tags in one
+  filter. Android merges data attributes across tags within a filter, so two tags declare
+  every scheme × every host — harmless with one scheme, and a silent `https://pair` the day
+  an App Link is added.
+- `android:autoVerify` is impossible for an arbitrary user host — App Links need a verified
+  domain and this instance may answer on `192.168.x.x` — so the `lifeos://` scheme is the
+  one that must work, and it must match exactly.
+
+**Both intent paths are handled**, and the cold start is the one that matters: the phone is
+opening *because* the link was tapped, so an implementation that only subscribes to
+`onNewIntent` does nothing at all in the common case. The data is cleared off the intent
+once read, like the notification extras in §8.4 — otherwise every configuration change
+re-reads it and re-claims a code that is single-use and already spent, which turns a paired
+phone into "that code is no longer valid".
+
+- The web fallback keeps the code in the URL **fragment** (`<base>/pair#c=CODE`) so it never
+  reaches a server, never lands in an access log and is never sent as a `Referer`. The deep
+  link cannot do that and does not need to: it goes from the QR into the app on one device.
+- **Never log the scanned URL, the code or the token.** The code is traded for the token, so
+  for the five minutes it lives it is a credential. `PairInvite.toString()` prints
+  `code=***` so that an accidental log line is harmless too, and a test asserts it.
+- Failure copy distinguishes what the user has to **do**, which is two cases and not three.
+  *"That code is no longer valid. Mint a new one on your dashboard."* covers expired and
+  already-used together, because the server compares in constant time and deliberately
+  answers both with one `401` — offering a guess at which it was would be a lie. Separately,
+  *"Scanned, but this phone couldn't reach `http://192.168.1.4:8787`"* is a reachability
+  problem, so it offers **Change server** and not a rescan: sending someone back to the
+  dashboard to mint codes for a sleeping machine wastes an afternoon.
+- Camera permission is requested **in context** — on arriving at the scanner, never at
+  launch — and a denial falls through to two routes that both work: manual entry, and
+  *"scan it with your phone's own camera app and it will open Life OS"*. That second
+  sentence is only honest because the deep link is handled; it must not be printed by a
+  build where it is not.
 
 **Manual entry** is the same form as `server` (§7.6): address, token, Test, Save.
-
-The declared intent filters are the `lifeos://` scheme and an `https` App Link for the
-`/pair` path of a configured public URL. `android:autoVerify` is not possible for an
-arbitrary user host, so the `lifeos://` scheme is the one that must work.
 
 ### 7.4 The status strip
 
@@ -1243,7 +1321,10 @@ renders instantly from cache.
 4. **The Goals tab.** Folded into You.
 5. **The Settings tab slot.** Settings is a leaf, not a destination.
 6. **Swipe-to-change-tab.** Three destinations, a navigation bar, predictive back.
-7. **The travelling navigation pill**, and animated chrome generally. (§5.4)
+7. **The Expo navigation pill** — five slots of slow, underdamped travel — and chrome that
+   animates itself while carrying no information. Not travel as such: §5.4's indicator
+   travels, quickly and critically damped, because *which way you just went* is information.
+   That section records the two reversals behind this line.
 8. **A habits screen / habits tab.** It made the screen you actually look at the poorer of
    two views of the same habits. The agenda card *is* that screen.
 9. **`totalXp` as a headline**, `improvementPct` on Today, `vsYesterday` tiles on Today, and

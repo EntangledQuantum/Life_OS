@@ -33,7 +33,9 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -59,8 +61,9 @@ import com.lifeos.app.ui.components.PendingCountBadge
 import com.lifeos.app.ui.components.SecondaryScaffold
 import com.lifeos.app.ui.components.StatusStrip
 import com.lifeos.app.ui.components.UndoSnackbar
+import com.lifeos.app.domain.PairInvite
 import com.lifeos.app.ui.connect.ConnectScreen
-import com.lifeos.app.ui.connect.PairStubScreen
+import com.lifeos.app.ui.connect.PairRoute
 import com.lifeos.app.ui.day.DayScreen
 import com.lifeos.app.ui.outdated.OutdatedScreen
 import com.lifeos.app.ui.server.ServerScreen
@@ -105,6 +108,9 @@ fun LifeOsRoot(
     /** `type.key to targetId` from the notification that opened the app, if any. */
     pendingTap: Pair<String, String>? = null,
     onTapRead: () -> Unit = {},
+    /** The `lifeos://pair` link that opened the app, if one did (§7.3). */
+    pendingPair: PairInvite? = null,
+    onPairRead: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val navController = rememberNavController()
@@ -131,11 +137,21 @@ fun LifeOsRoot(
     val rootState by viewModel.state.collectAsStateWithLifecycle()
     val celebration by viewModel.celebration.collectAsStateWithLifecycle()
 
+    val backStackEntry by navController.currentBackStackEntryAsState()
+
     /*
      * `426` and `401` are reactive: they can arrive on any poll, so the gate is
      * an effect on the state rather than a decision made once at startup.
      */
     LaunchedEffect(connection) {
+        /*
+         * Except while pairing. A phone arriving on a QR link has no token yet,
+         * so the state is `Unconfigured` by definition — and bouncing it to
+         * `connect` would push a screen on top of the claim that is already in
+         * flight, which looks exactly like the dead link this release fixes.
+         */
+        if (backStackEntry?.destination?.route == Routes.PAIR) return@LaunchedEffect
+
         when (connection) {
             is ConnectionState.Outdated -> navController.navigate(Routes.OUTDATED) {
                 launchSingleTop = true
@@ -186,9 +202,33 @@ fun LifeOsRoot(
         viewModel.consumeNotificationTap(current)
     }
 
+    /*
+     * The pairing link, held here rather than in the Activity.
+     *
+     * The Activity's copy is cleared the instant it is read (see
+     * `readPairLink`), so it cannot survive to the frame the `connect/pair`
+     * route is actually composed in. This is where it waits for that route, and
+     * the route clears it in turn once the claim is under way — the same
+     * read-once discipline the notification tap has, for the same reason.
+     */
+    var pairInvite by remember { mutableStateOf<PairInvite?>(null) }
+
+    LaunchedEffect(pendingPair) {
+        val incoming = pendingPair ?: return@LaunchedEffect
+        pairInvite = incoming
+        onPairRead()
+        navController.navigate(Routes.PAIR) { launchSingleTop = true }
+    }
+
     NavHost(
         navController = navController,
         startDestination = if (prefs.baseUrl.isNullOrBlank()) Routes.CONNECT else Routes.TODAY,
+        // §5.3: shared axis X. Forward moves the world left, back moves it
+        // right, and predictive back scrubs the pop pair under the finger.
+        enterTransition = { screenEnter(reduced) },
+        exitTransition = { screenExit(reduced) },
+        popEnterTransition = { screenPopEnter(reduced) },
+        popExitTransition = { screenPopExit(reduced) },
     ) {
         /* ---- the three top-level destinations: one route, three pages ---- */
         composable(Routes.TODAY) {
@@ -214,8 +254,28 @@ fun LifeOsRoot(
         }
 
         composable(Routes.PAIR) {
-            SecondaryScaffold(title = "Pair", onBack = navController::popBackStack) {
-                PairStubScreen(onEnterManually = { navController.navigate(Routes.SERVER) })
+            SecondaryScaffold(
+                title = "Pair this phone",
+                // Reachable from a cold start on a deep link, where there may be
+                // nothing behind it on the stack at all.
+                onBack = { if (!navController.popBackStack()) navController.navigate(Routes.CONNECT) },
+            ) {
+                PairRoute(
+                    container = container,
+                    invite = pairInvite,
+                    onInviteRead = { pairInvite = null },
+                    onPaired = {
+                        // Pairing is the one thing that gets a brand-new phone
+                        // all the way in, so it lands on Today with nothing
+                        // behind it: there is no "back" to an unpaired app.
+                        navController.navigate(Routes.TODAY) {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    },
+                    onEnterManually = { navController.navigate(Routes.SERVER) },
+                    onChangeServer = { navController.navigate(Routes.SERVER) },
+                )
             }
         }
 
@@ -399,16 +459,20 @@ fun LifeOsRoot(
  * Bar-vs-rail still comes from `currentWindowAdaptiveInfo()`, never from a
  * device-type check, because Android resizes the app while it runs.
  *
- * **The bottom bar still does not travel on its own.** The old app animated a
- * critically-damped pill the full width of five tabs at the exact bottom edge
- * where the thumb already draws attention, carrying no information about the
- * content that changed. A tap here moves the pages instantly and the indicator
- * cross-fades in place: zero pixels of travel, as before.
+ * **The indicator travels between destinations, and tracks a swipe.** Both, from
+ * one number — see `HomeTabsState.indicator`. A swipe moves the pages under the
+ * finger and the indicator goes with them, frame for frame; a tap jumps the
+ * pages (the content cross-fades, §5.3) and sends the indicator across on a
+ * critically damped spring, so it cannot overshoot and cannot wobble.
  *
- * What is new in milestone 4 is that a **swipe** moves the pages under the
- * finger, and the indicator goes with them — continuously, as they move. That
- * is not the same thing as the old pill: there the chrome animated by itself
- * after a tap; here the user is dragging it. §5.4 now says so explicitly.
+ * This reverses the rule 2.0.0 shipped. §5.4 said "zero pixels of travel" and
+ * the bar obeyed it by cross-fading two indicators in place — which the user
+ * described as the highlight teleporting, "like spotlight from one place to
+ * another", and they were right: an extinguished highlight and a lit one are not
+ * a movement, and the eye has nothing to follow. The old Expo pill was rejected
+ * for wobbling slowly across five tabs, not for moving at all. §5.4 is rewritten
+ * to say what is actually banned: chrome that animates itself while carrying no
+ * information.
  *
  * The compact bar is `TrackingNavigationBar` rather than a standard item list,
  * because a `NavigationBarItem` cannot be told where to put its indicator. The
@@ -498,7 +562,6 @@ private fun AppShell(
                 if (bottomBar) {
                     TrackingNavigationBar(
                         state = tabs,
-                        reduced = reduced,
                         icon = { tab, filled ->
                             Icon(
                                 imageVector = tabIcon(tab, filled),

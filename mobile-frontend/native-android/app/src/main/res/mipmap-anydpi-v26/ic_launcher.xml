@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The product's own icon, carried over from the Expo client.
+
+  It was briefly a generated vector whose own comment admitted it was
+  "placeholder art; shape, not brand" — and the manifest pointed `android:icon`
+  straight at that drawable, with no adaptive icon and no mipmaps at all. The
+  launcher therefore showed a stand-in rather than Life OS.
+
+  `monochrome` is what Android 13+ themed icons use; without it the launcher
+  falls back to shrinking the full-colour icon into a grey circle.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

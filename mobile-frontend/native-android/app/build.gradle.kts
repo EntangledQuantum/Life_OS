@@ -22,8 +22,11 @@ android {
         // users cannot take as an update is a break, and a break is what earns
         // a whole integer. Everything lives on the user's own server, so an
         // uninstall costs a re-pair and no data.
-        versionCode = 200
-        versionName = "2.0.0"
+        // 2.0.1: the QR deep link and the scanner behind the button that claimed
+        // it, plus the motion the 2.0.0 flattening took out. No break, no new
+        // signing key, no re-pair — an ordinary patch on top of 2.0.0.
+        versionCode = 201
+        versionName = "2.0.1"
 
         // The protocol this app can read. Source of truth:
         // packages/shared/src/protocol.ts (PROTOCOL_VERSION). Copied, not imported.

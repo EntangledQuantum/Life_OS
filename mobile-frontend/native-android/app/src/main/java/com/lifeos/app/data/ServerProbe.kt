@@ -158,17 +158,24 @@ class ServerProbe(private val tokens: TokenStore) {
             report
         }
 
-    /**
-     * A probe's description of a transport failure.
-     *
-     * Named cases, because "java.net.SocketTimeoutException" on a settings screen
-     * tells the user nothing about which of the four things to go and fix.
-     */
-    private fun describe(error: Throwable): String = when (error) {
-        is java.net.SocketTimeoutException -> "timed out"
-        is java.net.UnknownHostException -> "no such host"
-        is java.net.ConnectException -> "connection refused"
-        is java.io.InterruptedIOException -> "timed out"
-        else -> error.message?.takeIf { it.isNotBlank() } ?: "could not connect"
-    }
+    private fun describe(error: Throwable): String = describeTransportFailure(error)
+}
+
+/**
+ * What to tell the user when nothing answered.
+ *
+ * Named cases, because "java.net.SocketTimeoutException" on a settings screen
+ * tells the user nothing about which of the four things to go and fix.
+ *
+ * Top-level rather than private to the probe because the pairing claim needs the
+ * same sentence for the same failure, and two copies of this list would drift
+ * into the probe saying "connection refused" where pairing says "could not
+ * connect" about the identical socket.
+ */
+internal fun describeTransportFailure(error: Throwable): String = when (error) {
+    is java.net.SocketTimeoutException -> "timed out"
+    is java.net.UnknownHostException -> "no such host"
+    is java.net.ConnectException -> "connection refused"
+    is java.io.InterruptedIOException -> "timed out"
+    else -> error.message?.takeIf { it.isNotBlank() } ?: "could not connect"
 }
