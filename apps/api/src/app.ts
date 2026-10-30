@@ -59,6 +59,10 @@ import * as backups from "./services/backups.js";
 import * as setup from "./services/setup.js";
 import * as webhook from "./services/webhook.js";
 import * as tasks from "./services/tasks.js";
+import * as sessions from "./services/sessions.js";
+import * as sync from "./services/sync.js";
+import * as push from "./services/push.js";
+import * as assets from "./services/assets.js";
 import { getAnalytics } from "./services/analytics.js";
 import { claimPairingCode, mintPairingCode } from "./services/pairing.js";
 import { getPublicUrl, getReachabilityHint, getTunnelMode } from "./reachability.js";
@@ -215,6 +219,47 @@ export function createApp() {
    */
   app.all("/mcp", requireAuth, (c) => handleMcpRequest(c));
 
+  /**
+   * One picture, addressed by the hash of its own bytes.
+   *
+   * This is what took the artwork out of the poll: 2.21 MB of base64 on every
+   * single request became a URL the client fetches once, ever. The hash cannot
+   * describe different bytes, so the answer is immutable by construction —
+   * a year of `max-age` with `immutable`, which RFC 8246 names versioned URLs
+   * as precisely the case for, and no revalidation round trip either.
+   *
+   * Deliberately **not** under the protocol gate, and registered before
+   * `/api/v1` is routed. An image loader sends neither a protocol header nor a
+   * JSON `Accept`, and these bytes have no protocol-versioned shape to argue
+   * about. The token is still required: this is the user's own artwork, their
+   * instance may be on a public Funnel, and `private` keeps it out of any
+   * shared cache in between.
+   */
+  app.get("/api/v1/assets/:hash", requireAuth, (c) => {
+    const asset = assets.getAsset(getDb(), c.req.param("hash") ?? "");
+    if (!asset) {
+      return c.json(
+        {
+          error: "No such asset",
+          hint: "Asset URLs come from a sync response. A hash that is no longer referenced is pruned when the art it belonged to is replaced.",
+        },
+        404,
+      );
+    }
+    const etag = `"${asset.hash}"`;
+    c.header("ETag", etag);
+    c.header("Cache-Control", "private, max-age=31536000, immutable");
+    c.header("Content-Type", asset.mime);
+    c.header("Content-Length", String(asset.size));
+    if (c.req.header("if-none-match") === etag) return c.body(null, 304);
+    return c.body(
+      asset.bytes.buffer.slice(
+        asset.bytes.byteOffset,
+        asset.bytes.byteOffset + asset.bytes.byteLength,
+      ) as ArrayBuffer,
+    );
+  });
+
   // Protected API
   const api = new Hono<AppEnv>();
   api.use("*", requireAuth);
@@ -251,6 +296,82 @@ export function createApp() {
     } catch (error) {
       console.warn("[goals] evaluation failed:", error);
     }
+  });
+
+  /**
+   * **The one read.** What changed since the cursor you hold.
+   *
+   * `?since=<cursor>` and nothing else. Omit it for a cold sync, which comes
+   * back with `reset: true` and the whole state. The contract — the envelope,
+   * the cursor semantics, the tombstones, what a client computes for itself —
+   * is `docs/SYNC.md`, written so a client can be built against it without
+   * reading any of this.
+   *
+   * There is no `wait=` and no event stream, and that is a decision rather than
+   * an omission. A client in the foreground gets an unchanged answer for a few
+   * hundred bytes, which at eight seconds is nothing; a client in the
+   * background cannot hold a connection open at all, because Android's Doze
+   * suspends network access and defers `JobScheduler` — the same reason
+   * Google's own guidance is to be woken rather than to poll. A persistent
+   * stream would therefore only help in the case that is already cheap, while
+   * adding a connection to keep alive across a relay that is known to buffer.
+   * Server-to-agent push already exists, as webhook targets. If a long poll is
+   * wanted later it can be added as `wait=` without changing this envelope or
+   * bumping the protocol, because an empty delta and a timed-out wait are the
+   * same response.
+   */
+  api.get("/sync", (c) => {
+    const { envelope, etag } = sync.buildDelta(getDb(), {
+      since: c.req.query("since") ?? null,
+      base: requestBase(c),
+    });
+
+    /*
+     * A conditional poll that costs no body at all. The `ETag` is a function of
+     * the cursor, the life-day and where the client is starting from — exactly
+     * what decides the bytes — so a client that is current revalidates into a
+     * `304` with nothing after the headers.
+     *
+     * `private` because this is one person's day and must never be held by a
+     * shared cache on the way through a tunnel; RFC 9111 §3.5 forbids a shared
+     * cache storing an `Authorization`-bearing response without being told it
+     * may, and we never tell it. `no-cache` rather than `no-store` so the
+     * client's own HTTP cache may keep it and revalidate, which is the whole
+     * mechanism.
+     */
+    c.header("ETag", etag);
+    c.header("Cache-Control", "private, no-cache");
+    c.header("Vary", "Authorization, " + PROTOCOL_HEADER);
+    if (c.req.header("if-none-match") === etag) return c.body(null, 304);
+    return c.json(envelope);
+  });
+
+  /**
+   * **The one write.** Mutations up, authoritative results and a delta back.
+   *
+   * A client that has just written is current when this returns — it does not
+   * then poll to discover what its own tick did, which is what made a write
+   * cost a full re-read of the day. Idempotent by mutation number, and the
+   * life-day guard is enforced here as well as on the client, because the
+   * client cannot catch a write that was in flight when the day turned.
+   */
+  api.post("/sync/push", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Expected { clientId, since, mutations }" }, 400);
+    }
+    const outcome = await push.push(getDb(), body as never, {
+      base: requestBase(c),
+    });
+    if (!outcome.ok) {
+      return c.json(
+        { error: outcome.error, lastMutationId: outcome.lastMutationId },
+        outcome.status,
+      );
+    }
+    return c.json(outcome.response);
   });
 
   api.get("/habits", (c) => c.json(habits.listHabits(getDb())));
@@ -551,7 +672,26 @@ export function createApp() {
     return c.json(result, 201);
   });
 
-  api.get("/dashboard/today", (c) => c.json(dashboard.getDashboard(getDb())));
+  /*
+   * `GET /dashboard/today` used to be here, and it is gone.
+   *
+   * It returned the whole day in one 2.26 MB payload — 97.4% of it base64
+   * artwork the client already had — and the clients asked for it every eight
+   * seconds. Over the user's relay that measured 14.6 s a poll, so polls
+   * overlapped permanently and the app never reached a steady state. The same
+   * bytes took 0.31 s on loopback: the protocol was the problem, not the
+   * server.
+   *
+   * Keeping it for one version was considered and makes no sense. The protocol
+   * gate above refuses anything below v4, so the only client that could still
+   * reach this route is a v4 client — and a v4 client has `GET /sync`, which
+   * returns the same information, only what changed, with art as a URL. There
+   * is no caller a kept route could serve. `docs/SYNC.md` has the migration.
+   *
+   * `getDashboard` itself stays: the MCP tool still hands an agent the whole
+   * day in one object, which is the right shape for an agent reading over a
+   * local channel once, and the wrong one for a phone polling over a relay.
+   */
   api.get("/dashboard/vs-yesterday", (c) =>
     c.json(snapshots.getVsYesterday(getDb())),
   );
@@ -566,10 +706,7 @@ export function createApp() {
     return c.json(getAnalytics(getDb(), range));
   });
 
-  api.get("/session/active", (c) => {
-    const d = dashboard.getDashboard(getDb());
-    return c.json(d.activeSession);
-  });
+  api.get("/session/active", (c) => c.json(sessions.getActiveSession(getDb())));
   api.post("/session/active", async (c) => {
     const body = activeSessionSchema.parse(await c.req.json());
     return c.json(
@@ -854,6 +991,25 @@ export function createApp() {
   });
 
   return app;
+}
+
+/**
+ * The absolute base URL this request actually arrived on.
+ *
+ * Asset links are absolute, which means they have to be built from the address
+ * the client used rather than from anything this process thinks it is. Behind a
+ * gateway publishing this instance under `/lifeos`, the request URL is the
+ * upstream's loopback address and only `X-Forwarded-*` know where the browser
+ * really is — including the prefix, which a relative link would silently drop.
+ */
+function requestBase(c: Context): string {
+  const forwarded = forwardedBaseUrl(c.req.raw.headers);
+  if (forwarded) return forwarded;
+  try {
+    return new URL(c.req.url).origin;
+  } catch {
+    return `http://${env.apiHost}:${env.apiPort}`;
+  }
 }
 
 function originOf(url: string | null): string | null {

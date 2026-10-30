@@ -12,9 +12,19 @@
  */
 import { DatabaseSync } from "node:sqlite";
 import { resolveDbPath } from "./client.js";
-import { LATEST_VERSION, currentVersion, runMigrations } from "./migrations.js";
+import {
+  LATEST_VERSION,
+  currentVersion,
+  ensureSyncTriggers,
+  runMigrations,
+} from "./migrations.js";
 
-export { LATEST_VERSION, MIGRATIONS, currentVersion } from "./migrations.js";
+export {
+  LATEST_VERSION,
+  MIGRATIONS,
+  currentVersion,
+  ensureSyncTriggers,
+} from "./migrations.js";
 export type { Migration, MigrationResult } from "./migrations.js";
 
 export function ensureSchema(dbPath?: string) {
@@ -23,7 +33,20 @@ export function ensureSchema(dbPath?: string) {
   try {
     const before = currentVersion(db);
     const result = runMigrations(db);
-    return { ...result, latest: LATEST_VERSION, wasCurrent: before === LATEST_VERSION };
+    /*
+     * The sync triggers are the only schema here that something outside a
+     * migration can plausibly remove — a `VACUUM INTO`, a restore from a
+     * `.dump`, a table rebuilt by hand — and losing one is silent: writes stop
+     * being recorded and every client polls forever without ever being told.
+     * One `sqlite_master` count on boot is cheaper than that failure.
+     */
+    const triggersRepaired = ensureSyncTriggers(db);
+    return {
+      ...result,
+      latest: LATEST_VERSION,
+      wasCurrent: before === LATEST_VERSION,
+      triggersRepaired,
+    };
   } finally {
     db.close();
   }

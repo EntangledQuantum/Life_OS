@@ -15,3 +15,4 @@ export * from "./journey.js";
 export * from "./time.js";
 export * from "./protocol.js";
 export * from "./analytics.js";
+export * from "./sync.js";

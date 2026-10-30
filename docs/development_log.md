@@ -1,6 +1,6 @@
 # Life OS — Development Log & Agent Handoff
 
-**Last updated:** 2026-08-04  
+**Last updated:** 2026-10-30  
 **Repo:** https://github.com/EntangledQuantum/Life_OS  
 **Status:** Phase 1 web MVP working locally; v0.4 shipped the flexible agentic pipeline — agent-owned settings and setup, scheduled/reminder cards with spaced repetition, agent-defined properties, condition-driven goals with must-be-seen celebrations, and automatic database backups. v0.4.1 added the Timeline tab, compacted the dashboard, and made the whole thing reachable over the LAN. v0.4.2 added notification sounds and do-not-disturb, and opened `mobile-frontend/` for the native client. v0.5 removed password login — auth is the `API_TOKEN` bearer and nothing else. **v0.6 stopped shipping a default token entirely, rebuilt the mobile client's look, and fixed the orb's water animation.**
 
@@ -16,7 +16,141 @@
 
 ---
 
-## 0. What changed in the v0.6.1 pass (2026-08-06)
+## 0. What changed in the sync-protocol pass (2026-10-30)
+
+**The clients were re-downloading the world every eight seconds.**
+`GET /api/v1/dashboard/today` returned **2,263,618 bytes** on the real database,
+and **2,205,542 of them — 97.4%, in 40 blobs — were base64 artwork** that both
+clients cache by hash and discard as a duplicate on arrival. Without the art the
+body is 58,076 bytes. Measured from the phone against the real server over a
+Tailscale Funnel it took **14.6 s a poll** on an 8 s interval, so polls
+overlapped permanently and the app never reached a steady state. The same bytes
+took **0.31 s on loopback** — the server was never the problem. There was no
+`ETag` and no `Cache-Control` on the route, and gzip through the portal returned
+the same bytes and measured *slower*, which points at buffering.
+
+It was also the cause of the hard crash: 2.26 MB in one SQLite row exceeds
+Android's 2 MB `CursorWindow`, so the app threw `SQLiteBlobTooBigException` and
+died permanently after its first *successful* fetch.
+
+The replacement is incremental sync — the user's own description of it was
+exactly right ("you just check with the server if something is changed") — built
+the way Linear, Replicache, CouchDB and Microsoft Graph build it. The contract is
+**[`docs/SYNC.md`](SYNC.md)**, written so the client agents can implement against
+it without reading the server. Protocol **3 to 4**.
+
+| | before | after |
+|--|--|--|
+| Unchanged poll | 2,263,618 B · 254 ms | **314 B · 7–13 ms** — or **0 B** with `If-None-Match` (`304`) |
+| Cold sync | 2,263,618 B · 254 ms | 303,815 B · 296 ms |
+| Inline base64 in any response | 2,205,542 B | **0 B** |
+| Write, then learning what it did | 2.26 MB refetch | **17,022 B**, in the write's own response |
+
+**The change log is in SQLite triggers, not in the service layer.** Migration 15
+adds `sync_state` (one monotonic counter for the whole database), `change_log`,
+`sync_docs`, `sync_clients` and `assets`, plus 42 triggers. Putting the log in
+triggers is the decision the rest rests on: every writer bumps the cursor for
+free — the REST routes, the 1,500 lines of MCP tools, the seed script, an agent
+with a `sqlite3` prompt — whereas a log maintained by hand would have needed a
+line in each of them, and the one that was forgotten would have been invisible.
+It also means the REST surface is untouched and a client can move its read to
+`/sync` before it moves its writes.
+
+`change_log` holds **one row per entity, not one per change** — the trigger
+overwrites with a higher version. So the table is the size of the world plus its
+tombstones rather than the size of its history, and a client back after a month
+gets each changed thing once instead of once per edit. That is Graph's
+documented delta semantic: the latest state for each item, not each change.
+
+**Two rules decide what may be in a payload.** The first is the one that makes
+the whole thing possible: *nothing in a sync response may depend on what time it
+is*. The old payload had the now-marker cut into the timeline and the
+pace-adjusted improvement baked into `progress`, so it was different on every
+single poll **by construction** — no amount of caching could ever have helped it.
+The server now sends instants and the client compares them with its own clock,
+which is the only clock next to the screen. Four things moved client-side:
+`current`, `dueReminders`, the timeline's cut at the now-marker, and
+`progress.improvementPct`. Pure helpers for all four are exported from
+`@life-os/shared`, so the web client imports them and Android reimplements five
+small functions. It is also *better*: the marker advances smoothly between polls
+instead of jumping on each one.
+
+The second rule is no bytes a client already has. Artwork is content-addressed at
+`GET /api/v1/assets/<sha256>`, `private, max-age=31536000, immutable` — RFC 8246
+names versioned URLs as exactly what that directive is for, so there is not even
+a `304` round trip. **This half costs the clients almost nothing**: `resolveArt()`
+already prefers inline data and falls back to a URL, so the server writes the
+asset URL into the url slot and nulls the data slot, and both clients render the
+same picture through the path they already had. Nothing was moved in the
+database — the `*_image_data` columns are untouched, per the additive-only rule —
+so `assets` is a 1.67 MB cache beside the data and the release can be rolled back
+with no loss.
+
+**Writes return the delta they caused**, so a client that has just ticked
+something is current when the response lands rather than refetching a day it just
+changed one row of. `POST /api/v1/sync/push` takes a closed set of eleven
+mutations, each delegating to the same service function the REST route calls, so
+there is one implementation of completing a habit. Idempotent by a per-client
+counter; and Replicache's rule that bites late is honoured — *a mutation that can
+never succeed still advances `lastMutationId`*, or every write queued behind it is
+stuck forever and the client is silently dead. **The life-day guard is now
+enforced server-side as well as on the client**, because the client's own check
+(UI_SPEC §7.5) cannot catch a write already in flight when the clock passed
+04:00; a stale stamp comes back as `staleLifeDay`, never retryable.
+
+**`GET /api/v1/dashboard/today` was removed rather than deprecated**, and the
+reasoning is worth keeping: `MIN_PROTOCOL_VERSION` is 4, so a v3 client is refused
+at the gate before it reaches any route — meaning the only client a kept route
+could serve is a v4 client, and a v4 client has `/sync`, which is strictly better.
+There was no caller. `getDashboard` itself stays, for the MCP tool.
+
+**Poll, not push, and deliberately.** An unchanged poll is 314 bytes in ~10 ms, so
+the foreground case is already free; and a stream cannot help the background case
+at all, because Doze suspends network access and defers `JobScheduler` (which
+`WorkManager` uses), with `setExactAndAllowWhileIdle` capped at once per nine
+minutes. Google's own advice there is to be woken by FCM rather than poll — and
+FCM means a Google dependency in an app whose pitch is that nothing is watching,
+for a server in the user's bedroom. A held connection through a relay that
+already demonstrably buffers would cost battery for no latency. Server-to-agent
+push already exists as webhook targets. A long poll can be added later as `wait=`
+without touching the envelope or the protocol number, because a timed-out wait and
+an empty delta are the same response.
+
+**The trap worth writing down.** `refreshTodaySnapshot` rewrites `daily_snapshots`
+and `user_progress` on every dashboard read. A sync trigger on either table would
+have bumped the counter on every `GET`, every poll would have carried a delta, and
+the protocol would have been an elaborate way of sending the whole day again — it
+would have *looked* like it was working. Those two tables therefore have no
+trigger, which is safe because a snapshot can only move when a habit log, task,
+study session, quest or achievement moves, and all of those are covered. A test
+polls six times and asserts the cursor does not budge.
+
+Also fixed along the way: a goal carries its ladder four times — the `tiers` array
+plus `currentTier` / `nextTier` / `pendingTier` — and externalising only the array
+left a tier's full 57 KB background sitting in `currentTier`; each rung is now
+externalised once into a map and every pointer remapped through it. And SQLite
+cannot parse an upsert attached to an `INSERT ... SELECT` without a `WHERE`
+clause, failing with `near "DO": syntax error`, which points nowhere near the
+cause.
+
+What is **not** solved is in SYNC.md §14 and is stated there rather than here, but
+the main one: the cold sync grows without bound because tasks accumulate and
+nothing prunes them — 242,661 of the 303,815 bytes is 213 tasks, so roughly a
+megabyte a year. The hook for a retention window exists in the once-a-day
+`advanceDay` pass; it is not built.
+
+Verified against a copy of the real database on port 8795 with `TUNNEL=off`,
+leaving the production instance on 8787 untouched. `pnpm typecheck` and `pnpm test`
+green at the root: 354 tests, 0 failures, 38 of them new in
+`apps/api/test/sync.test.ts`.
+
+Clients are **out of scope for this pass** and both are now behind: `apps/web` and
+the Android app still speak protocol 3 and will get a `426` until they are
+updated. That is the documented upgrade path — SYNC.md §15 is the brief.
+
+---
+
+## 0.0 What changed in the v0.6.1 pass (2026-08-06)
 
 **The API could die on startup and claim it had started.** `index.ts` printed
 `Life OS API listening on …`, plus the LAN addresses and the exposure warning,

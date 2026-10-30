@@ -1004,6 +1004,281 @@ const habitGoalArtAndTiers: Migration = {
   },
 };
 
+/* ------------------------------------------------------- v15: sync engine */
+
+/**
+ * Which tables feed which synced collection.
+ *
+ * The left column is a physical table; the middle is the collection a client
+ * keeps; the right is the expression that names the *entity* whose state
+ * changed. A child row names its parent — a `habit_logs` insert does not change
+ * a log the client holds, it changes the habit's streak and its
+ * `completedToday`, and the habit is what the client stores.
+ *
+ * `@docs` is not a collection. It is the signal "a derived document may have
+ * moved": settings, the active session, the activity log and the daily
+ * snapshots are read as whole computed documents rather than as rows, so a
+ * write to them has to bump the version without putting anything in a client's
+ * entity store.
+ */
+const SYNC_SOURCES: {
+  table: string;
+  collection: string;
+  /** The id column on this table that names the entity. */
+  id: string;
+  /** False for a child table: its DELETE updates the parent, not a tombstone. */
+  ownsEntity: boolean;
+}[] = [
+  { table: "habits", collection: "habits", id: "id", ownsEntity: true },
+  { table: "habit_logs", collection: "habits", id: "habit_id", ownsEntity: false },
+  { table: "tasks", collection: "tasks", id: "id", ownsEntity: true },
+  { table: "goals", collection: "goals", id: "id", ownsEntity: true },
+  { table: "goal_tiers", collection: "goals", id: "goal_id", ownsEntity: false },
+  {
+    table: "agent_properties",
+    collection: "properties",
+    id: "id",
+    ownsEntity: true,
+  },
+  { table: "quests", collection: "quests", id: "id", ownsEntity: true },
+  {
+    table: "achievements",
+    collection: "achievements",
+    id: "id",
+    ownsEntity: true,
+  },
+];
+
+/**
+ * Tables whose writes only move a derived document.
+ *
+ * Deliberately **not** `daily_snapshots` or `user_progress`. Both are rewritten
+ * by `refreshTodaySnapshot`, which runs on every dashboard read — a trigger
+ * there would bump the version on every GET and no poll would ever be able to
+ * answer "nothing changed". They need no trigger anyway: a snapshot can only
+ * move because a habit log, a task, a study session, a quest or an achievement
+ * moved, and every one of those is covered above.
+ */
+const SYNC_DOC_SOURCES = [
+  "settings",
+  "gamification_config",
+  "active_sessions",
+  "activity_log",
+  "study_sessions",
+  "sleep_logs",
+];
+
+/** `INSERT … ON CONFLICT` that stamps one entity with the next version. */
+function logChange(collection: string, idExpr: string, op: string): string {
+  return `
+    UPDATE sync_state SET version = version + 1 WHERE id = 1;
+    INSERT INTO change_log (collection, entity_id, version, op, at)
+    VALUES (
+      '${collection}',
+      ${idExpr},
+      (SELECT version FROM sync_state WHERE id = 1),
+      '${op}',
+      strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    )
+    ON CONFLICT(collection, entity_id) DO UPDATE SET
+      version = excluded.version,
+      op = excluded.op,
+      at = excluded.at;
+  `;
+}
+
+function createSyncTriggers(db: DatabaseSync): void {
+  for (const source of SYNC_SOURCES) {
+    if (!hasTable(db, source.table)) continue;
+    const prefix = `sync_${source.table}`;
+    db.exec(`DROP TRIGGER IF EXISTS ${prefix}_ai`);
+    db.exec(`DROP TRIGGER IF EXISTS ${prefix}_au`);
+    db.exec(`DROP TRIGGER IF EXISTS ${prefix}_ad`);
+    db.exec(`
+      CREATE TRIGGER ${prefix}_ai AFTER INSERT ON ${source.table} BEGIN
+        ${logChange(source.collection, `NEW.${source.id}`, "put")}
+      END;
+    `);
+    db.exec(`
+      CREATE TRIGGER ${prefix}_au AFTER UPDATE ON ${source.table} BEGIN
+        ${logChange(source.collection, `NEW.${source.id}`, "put")}
+      END;
+    `);
+    /*
+     * A deleted parent is a tombstone; a deleted child is an update to the
+     * parent that still exists. Getting this backwards would quietly delete a
+     * habit off every client the first time one of its logs was undone.
+     */
+    db.exec(`
+      CREATE TRIGGER ${prefix}_ad AFTER DELETE ON ${source.table} BEGIN
+        ${logChange(
+          source.collection,
+          `OLD.${source.id}`,
+          source.ownsEntity ? "del" : "put",
+        )}
+      END;
+    `);
+  }
+
+  for (const table of SYNC_DOC_SOURCES) {
+    if (!hasTable(db, table)) continue;
+    const prefix = `sync_doc_${table}`;
+    for (const [suffix, event, row] of [
+      ["ai", "INSERT", "NEW"],
+      ["au", "UPDATE", "NEW"],
+      ["ad", "DELETE", "OLD"],
+    ] as const) {
+      db.exec(`DROP TRIGGER IF EXISTS ${prefix}_${suffix}`);
+      db.exec(`
+        CREATE TRIGGER ${prefix}_${suffix} AFTER ${event} ON ${table} BEGIN
+          ${logChange("@docs", `'${table}'`, "put")}
+        END;
+      `);
+      void row;
+    }
+  }
+}
+
+/**
+ * Incremental sync: a version counter, a change log, and an asset store.
+ *
+ * The dashboard was one 2.26 MB payload re-sent every eight seconds, 97% of it
+ * base64 artwork the client already had and threw away on arrival. Three things
+ * fix that, and they are all in here.
+ *
+ * **`sync_state.version`** is a single monotonic counter for the whole
+ * database, bumped by a trigger on every write. A client holds the version it
+ * last saw; if the counter has not moved, there is provably nothing to send and
+ * the answer is a few hundred bytes without reading a single row of content.
+ * One counter rather than a timestamp because wall clocks go backwards and two
+ * writes in the same millisecond are indistinguishable; one counter rather than
+ * one per table because a client has exactly one question to ask.
+ *
+ * **`change_log`** holds *one row per entity*, not one per change — the
+ * `ON CONFLICT` in the trigger overwrites the previous entry with a higher
+ * version. So it is bounded by the number of things that exist plus the number
+ * that have ever been deleted, not by how often they are touched, and a client
+ * that has been away for a month gets each changed thing once rather than once
+ * per edit. The same shape Microsoft Graph's delta feed documents: the latest
+ * state per item, not every step it went through.
+ *
+ * **`assets`** is a content-addressed store: sha-256 of the decoded bytes is
+ * the key and the URL. The art stays exactly where it is, in the `*_image_data`
+ * columns — nothing is rewritten and nothing is dropped, per the additive rule
+ * above — and this table is a cache beside it, so a picture can be a long-lived
+ * immutable URL on the wire instead of 55 KB of base64 in every poll.
+ *
+ * `sync_clients` records how far each client's own writes have been applied, so
+ * a retried mutation is recognised rather than applied twice.
+ */
+const incrementalSync: Migration = {
+  version: 15,
+  name: "incremental sync: change log, content-addressed assets, client cursors",
+  up(db) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        version INTEGER NOT NULL DEFAULT 0,
+        /* The life-day the derived documents were last computed against. */
+        life_day TEXT,
+        /*
+         * Cursors at or below this are no longer serviceable: the tombstones
+         * that would have told a client what to delete have been pruned. A
+         * client arriving with one is handed the whole state and told to reset.
+         */
+        tombstone_floor INTEGER NOT NULL DEFAULT 0,
+        /*
+         * Changes identity when the database is replaced underneath the clients
+         * — a restore from backup, a different instance on the same address.
+         * A cursor from another epoch means nothing, so it is refused outright
+         * rather than being compared against a counter that has gone backwards.
+         */
+        epoch TEXT NOT NULL
+      );
+    `);
+    db.prepare(
+      "INSERT OR IGNORE INTO sync_state (id, version, tombstone_floor, epoch) VALUES (1, 0, 0, ?)",
+    ).run(
+      `${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`,
+    );
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS change_log (
+        collection TEXT NOT NULL,
+        entity_id  TEXT NOT NULL,
+        version    INTEGER NOT NULL,
+        /* 'put' — read the current row. 'del' — a tombstone. */
+        op         TEXT NOT NULL,
+        at         TEXT NOT NULL,
+        PRIMARY KEY (collection, entity_id)
+      ) WITHOUT ROWID;
+    `);
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS change_log_version ON change_log (version)",
+    );
+
+    /*
+     * Derived documents — the agenda, the ribbon, today's numbers — are not
+     * rows and cannot be versioned by a trigger. They are recomputed when the
+     * counter has moved, hashed, and compared with what was last sent; the
+     * version recorded here is the one at which the content actually changed,
+     * so a client whose cursor is newer than that is not sent it again.
+     */
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_docs (
+        name    TEXT PRIMARY KEY,
+        hash    TEXT NOT NULL,
+        version INTEGER NOT NULL
+      ) WITHOUT ROWID;
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_clients (
+        client_id        TEXT PRIMARY KEY,
+        /*
+         * The highest mutation this client has had applied. A write that
+         * arrives twice — the phone retried, the response was lost — is
+         * recognised by its number and not applied again.
+         */
+        last_mutation_id INTEGER NOT NULL DEFAULT 0,
+        last_seen_at     TEXT NOT NULL
+      ) WITHOUT ROWID;
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS assets (
+        /* sha-256 of the bytes, lowercase hex. The key and the URL. */
+        hash       TEXT PRIMARY KEY,
+        mime       TEXT NOT NULL,
+        size       INTEGER NOT NULL,
+        bytes      BLOB NOT NULL,
+        created_at TEXT NOT NULL
+      ) WITHOUT ROWID;
+    `);
+
+    createSyncTriggers(db);
+
+    /*
+     * Seed the log with everything that already exists, at version 1, so a
+     * client's first sync is a complete picture rather than only the rows that
+     * happen to be written after the upgrade.
+     */
+    db.exec("UPDATE sync_state SET version = 1 WHERE id = 1");
+    for (const source of SYNC_SOURCES) {
+      if (!source.ownsEntity) continue;
+      if (!hasTable(db, source.table)) continue;
+      db.exec(`
+        INSERT INTO change_log (collection, entity_id, version, op, at)
+        SELECT '${source.collection}', ${source.id}, 1, 'put',
+               strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        FROM ${source.table}
+        WHERE ${source.id} IS NOT NULL
+        ON CONFLICT(collection, entity_id) DO NOTHING;
+      `);
+    }
+  },
+};
+
 /** Every migration, in order. Append only. */
 export const MIGRATIONS: Migration[] = [
   baseline,
@@ -1020,7 +1295,32 @@ export const MIGRATIONS: Migration[] = [
   cardStyling,
   cardIconImage,
   habitGoalArtAndTiers,
+  incrementalSync,
 ];
+
+/**
+ * Re-create the sync triggers if a database is missing any of them.
+ *
+ * The triggers are not schema a migration can be trusted to have left behind
+ * for good: `VACUUM INTO`, a restore from a `.dump`, or a table rebuilt by hand
+ * all keep the rows and lose the triggers, and the symptom would be a client
+ * that polls forever and never hears about a change. Checked on every boot
+ * because the check is one indexed read of `sqlite_master` and being wrong is
+ * silent.
+ */
+export function ensureSyncTriggers(db: DatabaseSync): boolean {
+  if (!hasTable(db, "change_log")) return false;
+  const expected = SYNC_SOURCES.filter((s) => hasTable(db, s.table)).length * 3;
+  const row = db
+    .prepare(
+      "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='trigger' AND name LIKE 'sync_%'",
+    )
+    .get() as { n?: number } | undefined;
+  const present = Number(row?.n ?? 0);
+  if (present >= expected + SYNC_DOC_SOURCES.length * 3) return false;
+  createSyncTriggers(db);
+  return true;
+}
 
 /** The version a database is brought to by `runMigrations`. */
 export const LATEST_VERSION = MIGRATIONS.reduce(

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { LifeOsDb } from "@life-os/db";
 import * as schema from "@life-os/db";
 import {
+  ACTIVITY_COLORS,
   efficiencyPct,
   paceAdjustedImprovementPct,
   type DashboardToday,
@@ -30,18 +31,13 @@ import {
   refreshTodaySnapshot,
 } from "./snapshots.js";
 
-const CATEGORY_COLORS: Record<string, string> = {
-  Sleep: "#6366F1",
-  Life: "#5B8CFF",
-  "Life Admin": "#5B8CFF",
-  "Deep Work": "#A78BFA",
-  Study: "#C084FC",
-  Health: "#34D399",
-  Break: "#94A3B8",
-  Startup: "#FBBF24",
-  Exercise: "#34D399",
-  Exploration: "#F472B6",
-};
+/*
+ * One colour table, in `@life-os/shared`, because the client colours the
+ * lived half of the ribbon from the activity name while the server colours the
+ * planned half — two tables would make the same hour change colour as it
+ * crossed the now-marker.
+ */
+const CATEGORY_COLORS = ACTIVITY_COLORS;
 
 /** Clock hour (0–24) — the ribbon is drawn against the wall clock, not the life-day. */
 function clockHour(d: Date): number {

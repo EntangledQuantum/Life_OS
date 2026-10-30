@@ -39,7 +39,10 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 | GET/POST | `/api/v1/properties` | List / define agent counters |
 | GET/PATCH/DELETE | `/api/v1/properties/:key` | Read / set / delete a counter |
 | POST | `/api/v1/properties/:key/increment` | `{ by }` — auto-defines unknown keys |
-| GET | `/api/v1/dashboard/today` | Full dashboard (primary read) |
+| GET | `/api/v1/sync?since=` | **The primary read.** What changed since your cursor — see [`SYNC.md`](SYNC.md) |
+| POST | `/api/v1/sync/push` | **The primary write.** Mutations up, results + the delta back |
+| GET | `/api/v1/assets/:sha256` | One picture, immutable and cacheable for a year |
+| GET | `/api/v1/dashboard/today` | **Removed in protocol 4.** Returns `404` — use `/api/v1/sync` |
 | GET | `/api/v1/dashboard/vs-yesterday` | Deltas |
 | GET | `/api/v1/dashboard/pulse` | Pulse |
 | GET | `/api/v1/analytics?range=` | Analytics over `7d` \| `30d` \| `90d` \| `all` |
@@ -60,6 +63,48 @@ styling. Everything platform-specific lives under `mobile-frontend/`.
 
 **Every successful non-`GET` request re-checks every goal condition.** That is the contract:
 any change to the database can complete a goal, whichever endpoint made it.
+
+---
+
+## Sync
+
+**[`SYNC.md`](SYNC.md) is the contract.** This is the summary.
+
+`GET /api/v1/dashboard/today` is gone. It returned 2,263,618 bytes of which 97.4% was base64
+artwork the client already had, and the clients asked for it every eight seconds — 14.6 s a
+poll from the user's phone over a Funnel, against 0.31 s for the same bytes on loopback. Polls
+overlapped permanently, and a 2.26 MB row also exceeded Android's 2 MB `CursorWindow` and
+killed the app after its first successful fetch.
+
+```http
+GET  /api/v1/sync?since=<cursor>     → what changed, plus a new cursor
+POST /api/v1/sync/push               → mutations up; results and the delta back
+GET  /api/v1/assets/<sha256>         → one picture, once, ever
+```
+
+- **An unchanged poll is 314 bytes**, or `0` with `If-None-Match` (`304`), in 7–13 ms.
+- Omit `since` for a cold sync. Any cursor the server cannot honour — none, a different
+  epoch, older than the 30-day tombstone floor, malformed — is answered with `200` and
+  `reset: true` plus the whole state, never an error. A client needs the reset path for its
+  first run anyway.
+- `changed` holds whole rows per collection, `deleted` holds ids to forget, `docs` holds nine
+  computed documents replaced wholesale and absent when unchanged.
+- **Artwork is a URL.** `resolveArt()` already prefers inline data and falls back to a URL, so
+  the server writes the asset URL into the url slot and nulls the data slot — existing clients
+  render the same picture through the path they already had.
+- **Nothing in a response depends on the current time.** The server sends instants; the client
+  compares them against its own clock. That rule is what makes an unchanged poll genuinely
+  empty, and it moves four display values to the client — `current`, `dueReminders`, the
+  timeline's now-cut, and `progress.improvementPct`. Pure helpers for all of them are exported
+  from `@life-os/shared`.
+- A write returns the delta it caused, so **a client that has just written does not refetch**.
+  Mutations are idempotent by a per-client counter, and the life-day guard is enforced
+  server-side as well as on the client.
+
+The change log lives in **SQLite triggers**, not in the service layer, so every writer bumps
+the cursor for free — the REST routes below, the MCP tools, the seed script, an agent with a
+`sqlite3` prompt. That is also why the REST surface is unchanged and a client can migrate its
+read to `/sync` before moving its writes.
 
 ---
 
@@ -311,7 +356,7 @@ what it found, and what to run if it found nothing.
 Every `/api/v1/*` request must send:
 
 ```
-X-LifeOS-Protocol: 2
+X-LifeOS-Protocol: 4
 ```
 
 A client that sends an older version — or none, which means it was written before the header
@@ -321,9 +366,9 @@ existed — gets `426 Upgrade Required` with a body naming both versions and a d
 {
   "error": "This app is too old for this Life OS server",
   "hint": "…",
-  "clientProtocol": 1,
-  "serverProtocol": 2,
-  "minProtocol": 2,
+  "clientProtocol": 3,
+  "serverProtocol": 4,
+  "minProtocol": 4,
   "downloadUrl": "https://github.com/EntangledQuantum/Life_OS/releases/latest/download/life-os.apk"
 }
 ```
@@ -340,6 +385,14 @@ the old shapes forever, or saying so once and clearly. A client that is too old 
 |---------|--------|
 | 1 | cards, agent events, light reviews and schedule blocks as separate things |
 | 2 | one task system: `tasks` replaces all four |
+| 3 | one agenda: habits carry their own time, and `missed` is a task status |
+| 4 | incremental sync: `GET /sync` replaces `GET /dashboard/today`, art is a URL |
+
+**v4 removed a route rather than deprecating it.** Keeping `GET /dashboard/today` for one
+version was considered and makes no sense: the gate above refuses anything below v4, so the
+only client that could still reach it is a v4 client — and a v4 client has `GET /sync`, which
+returns the same information, only what changed, with the artwork as a URL. There is no caller
+a kept route could have served.
 
 ---
 
