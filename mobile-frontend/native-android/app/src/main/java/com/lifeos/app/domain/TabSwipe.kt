@@ -90,9 +90,48 @@ object TabSwipe {
      * position — `1` when it fills the screen, `0` when a neighbour does, and
      * linear in between.
      *
-     * One number, read by the indicator, the icon and the label, so the three
-     * cannot drift out of step mid-gesture.
+     * The honest number: it is the finger's own position, rescaled. Everything
+     * the bar draws is a function of this, so the icon, the label and the
+     * indicator cannot drift out of step mid-gesture.
      */
     fun selectedness(position: Float, index: Int): Float =
         (1f - abs(position - index)).coerceIn(0f, 1f)
+
+    /**
+     * `selectedness`, eased — the number the bar actually *draws* with.
+     *
+     * Raw selectedness is linear, and a linear hand-over is the least legible
+     * one there is: a third of the way through a swipe the two items differ by
+     * a third, which on a 24dp glyph is nothing at all. Smoothstep spends that
+     * contrast where a frozen frame needs it. At 40% of a swipe the outgoing
+     * item is at 0.65 and the incoming at 0.35 — nearly half as much separation
+     * again as the linear pair, which is the difference between a still that
+     * reads "mostly Today, becoming Day" and one that reads "two grey icons".
+     *
+     * Symmetric, so `emphasis(p, i)` and `emphasis(p, i + 1)` still sum to one
+     * across a swipe: the bar never gets brighter or dimmer in total, it only
+     * moves its weight from one destination to the next.
+     */
+    fun emphasis(position: Float, index: Int): Float {
+        val t = selectedness(position, index)
+        return t * t * (3f - 2f * t)
+    }
+
+    /**
+     * How far item `index` leans toward where the pages currently are, as a
+     * fraction of one lean — `0` at rest, `±1` once the pages are a whole tab
+     * away.
+     *
+     * This is what is left of the travelling pill, and the bound is the whole
+     * point. Multiplied by a lean of a few dp rather than by the slot width, an
+     * item's indicator shifts *toward* the movement without ever leaving the
+     * icon it belongs to, so it can never be the thing that it was: a highlight
+     * adrift in the gap between two destinations, meaning nothing until it
+     * arrived (§5.4, revision 4).
+     *
+     * Direction survives the bound. During a left-to-right move every item's
+     * lean increases together, so the whole bar leans the way you are going.
+     */
+    fun lean(position: Float, index: Int): Float =
+        (position - index).coerceIn(-1f, 1f)
 }

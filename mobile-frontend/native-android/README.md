@@ -65,6 +65,18 @@ only appears once a user has accumulated enough inline artwork to cross the line
 why a small LAN instance pairs and runs perfectly. The body now lives in a file beside the
 database (schema 3 → 4) and the row keeps the metadata.
 
+**Unreleased** — the bottom navigation bar, redesigned so that the **destinations** respond
+to a swipe rather than a highlight sliding behind them. 2.0.1 restored the indicator's
+travel and the user installed it and said the moving thing was *"an empty glow moving on the
+background glow until it lands on an icon"* — which it was, because the capsule crossed the
+whole gap between two slots while the icons themselves cross-faded one white glyph into a
+nearly identical white one. Now each glyph grows, lifts and warms from grey to the palette's
+accent under the finger, each capsule opens from a disc around the icon it belongs to, and
+nothing crosses the gap. A frame taken 40% through a swipe says where you are between two
+tabs. See [§5.4 in the spec](docs/UI_SPEC.md), which this reverses for the **third** time
+and which now records why the distance the highlight slides was never the variable. Both of these
+and the 2.0.2 work above now sit on the 3.0 line, where the version is set once.
+
 **2.0.1** — four things the user found by installing 2.0.0 on their phone. Scanning the
 pairing QR in any other app now actually opens and pairs Life OS (the manifest matched the
 link; nothing read it). The "Scan QR" button opens a real CameraX + ML Kit scanner instead
@@ -415,7 +427,7 @@ remembered.) They cover the parts worth testing:
 | `AnalyticsAndCelebrationTest` | The four ranges and their wire values, an axis that is never zero, **the y-domain rule** — a reachable target riding the same axis, a far-off target going off-scale rather than flattening the week onto the floor, a 130% day that is not clipped — percentage-**points** formatting; the celebration queue's rung-over-goal choice, oldest-debt-first stable ordering, one-at-a-time, and the dismissed set that stops the dialog reappearing before the refetch; goal ordering and the rarity ladder's rungs |
 | `RemindersTest` | The derived notification time in all its forms (`remindAt` wins outright, `eventAt - lead` otherwise, a clamped negative lead, a malformed instant costing one notification and not the screen); the window an item leaves whether or not it was completed; the plan's alarm seeding, ordering, past-and-horizon exclusions and its needs-you agreeing with `Predicates`; the once-only filter; quiet hours wrapping past midnight, start-equal-to-end meaning *none*, and a malformed time never meaning permanent silence; channel ids carrying their sound, the id/group names being pinned against a rename, sound resolution through user → server → type, and a new sound choice adding exactly one channel and migrating none |
 | `WidgetAndSoundsTest` | The tier rule at every threshold, the smallest tier having no tick at all, and width winning over height; the quantised ribbon's cell count, colours, lived/planned/done treatment, and a now-marker that stays in range at both ends of the day; `upNext` taking the server's order; and the committed WAVs — present, 16-bit mono 44.1kHz PCM with a truthful data size, and as long as their note tables say |
-| `TabSwipeTest` | The swipe between the three destinations: the 2:1 rule that decides whether a drag is a page turn or a scroll, the settle (snap back under 35%, commit past it, a flick committing on a short drag, one tab per gesture, no wrap at the ends), and the `selectedness` the navigation bar's indicator reads — including that the three always sum to one, which is why two half-opacity indicators read as one pill; plus the indicator's travel being **critically damped at exactly 1.0**, with §5.4's two reversals written into the test so the next person has to delete an explanation to undo it |
+| `TabSwipeTest` | The swipe between the three destinations: the 2:1 rule that decides whether a drag is a page turn or a scroll, the settle (snap back under 35%, commit past it, a flick committing on a short drag, one tab per gesture, no wrap at the ends), and the numbers the navigation bar draws itself from — `selectedness`, and the eased `emphasis` on top of it, which must beat a linear hand-over at 40% of a swipe, sum to one across the three, never exceed 1 (every reading is a `lerp`, so an overshooting ease would make the glyph grow past full size and spring back) and never dip. Plus `lean` being **bounded at one**, which is 2.0.2's fault written down as arithmetic, and the travel being **critically damped at exactly 1.0**, with §5.4's three reversals written into the test so the next person has to delete an explanation to undo it |
 | `PairingTest` | QR pairing end to end, minus the camera. The deep link as the server really mints it, the `connect` host alias, a tunnelled URL keeping its scheme and path prefix, an unencoded `url=`, a bare host taking the LAN defaults, a lower-case scan, either query order; and the rejections — another scheme, another host, a missing or malformed code, an address that does not normalise, and the web fallback's `#c=` fragment not being mistaken for a query. Then the claim: a good code returning the token and the server's own address, the QR's address used when the server names none, `401` as one sentence for expired-or-used, a refused connection as a *reachability* outcome rather than a bad code, `404` on a server with no pairing route, a `200` with no token refusing rather than saving a blank one — and that no failure message anywhere contains the code |
 | `ArtTest` | Art resolution, the measured scrim and the cache key: inline data beating a URL **per slot**, the two slots never crossing, blank not being a picture, the scrim's floor/ceiling/default and the card's darker default, all pinned against `art.ts`; a key that never contains the base64, is stable across polls, moves when the agent changes the picture, and separates the two slots of one item and two items sharing one; a row falling back to the server's pre-resolved icon; a celebration taking the rung's art whole or the goal's; the scrim maths against the WCAG definition, a blown-out picture being darkened far past the floor, the grey photograph that shipped unreadable now clearing 4.5:1, a dark picture left alone, `artOverlay` honoured as a floor and ignored as a cap; and the token rule — the configured origin yes, a different port, host, scheme or lookalike no |
 | `ServerColorTest` | Every colour form the server really sends, including the `rgba()` one that was falling back to the accent and drawing *unrecorded* time as the loudest colour on the screen; out-of-range clamping; and null for anything unparseable so callers keep their fallback |
@@ -519,10 +531,11 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
   placement, the tick's spring punch, `medium` card-state transitions, the §5.5 pulse, and
   reduced motion OR'd with the OS setting throughout.
 - **§5.3 / §5.4 motion** — secondary screens on **shared axis X** (forward moves the world
-  left, back moves it right, predictive back scrubs it under the finger), a navigation
-  indicator that **travels** between destinations on a critically damped spring and tracks a
-  swipe frame for frame from the same single number, and a `short` arrival fade the one time
-  a fresh install's first payload replaces the skeletons.
+  left, back moves it right, predictive back scrubs it under the finger), a navigation bar
+  whose **three destinations interpolate** with a swipe frame for frame — size, lift, colour
+  and capsule, all from one number — and travel the same path on a critically damped spring
+  after a tap, and a `short` arrival fade the one time a fresh install's first payload
+  replaces the skeletons.
 - **§6.3 surface craft** — a lit top edge on every card (a 0.022 tonal lift, ending at 62%
   of its height; still no shadows anywhere but the FAB), press states that lift a card toward
   the finger rather than darkening it, and M3's ripple provided once as `LocalIndication`
@@ -588,8 +601,10 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
   [what it actually guarantees](#what-background-delivery-actually-guarantees); it is a
   freshener, not a delivery mechanism.
 - **§5.4 Swipe between the three destinations** — a horizontal drag moves Today · Day · You
-  with the page under the finger, and the navigation bar's active indicator travels with it
-  in real time rather than snapping when the gesture ends. Velocity-aware: a flick past
+  with the page under the finger, and the navigation bar's three items interpolate with it in
+  real time — the outgoing glyph shrinking, sinking and greying as the incoming one grows,
+  lifts and warms to the accent, each capsule opening around its own icon and nothing
+  crossing the gap between them. Velocity-aware: a flick past
   400dp/s commits on a short drag, a slow drag under 35% of a page snaps back, and the
   settle is a fixed 200ms decelerate — no spring, no overshoot. The gesture is only claimed
   once a drag is past the touch slop *and* twice as horizontal as vertical, so vertical
@@ -837,7 +852,8 @@ driving milestone 3 on it.
     may not animate itself while carrying no information, and *which way you just went* is
     information. The damping ratio is exactly 1.0, so the spring has no oscillating term and
     cannot overshoot by construction; `TabSwipeTest` pins that number with the history
-    attached.
+    attached. Reversed a third time — see item 18, which is about the thing all three
+    reversals were failing to notice.
 16. **A card is a tonal gradient, not a flat container.** §6.3 said tonal elevation and no
     shadows, which is still true and unchanged — but 2.0.0 read "tonal" as "flat", so every
     card sat at exactly `surface` with a 1dp outline and nothing else. §6.3 now specifies the
@@ -852,3 +868,21 @@ driving milestone 3 on it.
     flat black at 30% — since the rewrite began. `LifeOsTheme` provides `ripple()` now, and
     the handful of surfaces that want a tone instead opt out explicitly with
     `indication = null` plus `pressTone`.
+18. **The destinations interpolate; the highlight stopped travelling across the gap.** The
+    third reversal of §5.4, and the one that stops the argument rather than continuing it.
+    Items 13 and 15 were both about *how far the highlight should slide* — zero pixels, then
+    a whole slot — and both shipped and were rejected on sight, because the distance was
+    never the variable. What the user saw in 2.0.2 was a 64dp capsule crossing the empty
+    space between two icons while the icons did nothing you could see: their outlined and
+    filled copies were both drawn in the bar's content colour, so the "swap" was one white
+    glyph dissolving into a nearly identical white glyph. All of the signal was in the one
+    element that spent most of every gesture attached to nothing. So the signal moved into
+    the destinations: each glyph scales 0.84 → 1, lifts 4dp, and cross-fades from an
+    outlined `muted` copy to a filled `accent` one, while its capsule opens from a 32dp disc
+    to the full 64dp pill — four readings of one eased number (`TabSwipe.emphasis`), all
+    drawn rather than laid out so a gesture never re-measures the bar. What is left of the
+    travel is a 10dp lean, bounded so a capsule can never reach the gap, which still answers
+    "which way did I just go" because every item's lean moves the same way at once. The bar
+    now has strictly less moving chrome than 2.0.2 and strictly more that a still frame can
+    be read from — which is the only test any of this ever needed. Under reduced motion the
+    geometry is switched off entirely and the opacity alone tracks the finger (§5.6).

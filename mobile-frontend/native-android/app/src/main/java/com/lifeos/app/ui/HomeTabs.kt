@@ -5,7 +5,6 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,29 +18,32 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import com.lifeos.app.domain.TabSwipe
 import com.lifeos.app.ui.theme.LifeOsType
 import com.lifeos.app.ui.theme.Motion
@@ -362,39 +364,79 @@ private fun Modifier.tabSwipe(state: HomeTabsState, reduced: Boolean): Modifier 
 
 /* ------------------------------------------------------- the navigation bar */
 
+/** The resting indicator: a 64 × 32 capsule, centred under the selected icon. */
 private val IndicatorWidth: Dp = 64.dp
 private val IndicatorHeight: Dp = 32.dp
 
 /**
- * The bottom bar, with an indicator that travels (§5.4).
+ * What the indicator shrinks to on its way out — a circle, not a sliver.
  *
- * **One expression, both behaviours.** Every item owns an indicator; its opacity
- * is that item's `selectedness` at the shared [HomeTabsState.indicator] position
- * and its horizontal offset is how far that position is from the item. At rest
- * exactly one is visible and none is offset. In motion — whether a finger is
- * dragging the pages or a tap set the spring going — two are visible at partial
- * opacity, each offset toward the other, and because both land on the same point
- * they read as **one** pill travelling.
+ * Equal to the height, so the capsule's two end caps meet and the shape it
+ * passes through is a disc around the icon rather than a vanishing line. An
+ * unselected item's indicator is therefore never a *smaller version of a pill*
+ * sitting in a slot; it is a halo that has closed up around its own glyph.
+ */
+private val IndicatorRestWidth: Dp = IndicatorHeight
+
+/**
+ * How far an item's indicator may lean toward the movement. Ten dp, and that
+ * is the entire travel budget in this bar.
  *
- * That the two cases are the same arithmetic is the point. 2.0.0 had a `when`
- * here: track during a gesture, otherwise cross-fade two indicators in place.
- * The cross-fade is what the user described as "spotlight from one place to
- * another" — the highlight did not move, it was extinguished in one slot and lit
- * in the next, which the eye reads as teleporting rather than as going
- * somewhere.
+ * It replaces `(indicator - index) * slotWidth`, which was the full distance
+ * between two slots — the thing that put a lit capsule in the empty space
+ * between two icons for the whole middle of every gesture. Ten dp keeps it
+ * attached to its glyph (the capsule is 64dp wide in a slot of ~140dp, so even
+ * leaning it is comfortably inside) while still saying which way you are going.
+ */
+private val IndicatorLean: Dp = 10.dp
+
+/** An unselected glyph's size, as a fraction of a selected one's. */
+private const val IconRestScale = 0.84f
+
+/** How far an unselected glyph sits below a selected one. */
+private val IconSink: Dp = 4.dp
+
+/** The selected indicator's opacity. Its hue is `accent2`; this is its weight. */
+private const val IndicatorAlpha = 0.16f
+
+/**
+ * The bottom bar: three destinations that interpolate with the gesture (§5.4).
+ *
+ * **The destinations respond; nothing crosses the gap between them.** Every
+ * property the eye can read is a function of one number — the shared
+ * [HomeTabsState.indicator], which is the pages' own position while a finger is
+ * on them and a critically damped animation toward the selected tab otherwise.
+ * Per item, at its [TabSwipe.emphasis] of that number:
+ *
+ * - the glyph **grows** from [IconRestScale] to full size and **rises** by
+ *   [IconSink],
+ * - it **warms** from `muted` to `accent` as the outlined copy gives way to the
+ *   filled one,
+ * - its label firms from `muted` to `text`,
+ * - and its indicator **opens** from a disc to the full capsule, leaning at most
+ *   [IndicatorLean] toward the movement.
+ *
+ * Freeze any frame of a swipe and the bar says where you are between two tabs,
+ * because four properties say it at once and all four are attached to a
+ * destination. That is the whole of the change from 2.0.2, which put all of the
+ * signal into one capsule and then slid that capsule across the empty space
+ * between the icons: for most of a gesture there was nothing to read but a
+ * lozenge over background, and it only became legible on arrival. The user's
+ * words were *"an empty glow moving on the background glow until it lands on an
+ * icon"*. The glow no longer goes anywhere; the destinations do the talking.
  *
  * It is built inside M3's `NavigationBar` so the height, window insets and
  * colours stay the platform's; only the interior is ours, because a standard
- * `NavigationBarItem` cannot be told where to put its indicator.
+ * `NavigationBarItem` cannot be told how to interpolate.
  */
 @Composable
 fun TrackingNavigationBar(
     state: HomeTabsState,
+    reduced: Boolean,
     icon: @Composable (tab: HomeTab, filled: Boolean) -> Unit,
     onSelect: (HomeTab) -> Unit,
 ) {
     val p = palette
-    var slotWidth by remember { mutableFloatStateOf(0f) }
 
     NavigationBar(containerColor = p.surface, contentColor = p.text) {
         /*
@@ -404,29 +446,24 @@ fun TrackingNavigationBar(
          * exactly what it did the first time this was run on a phone. The bar's
          * height is `NavigationBar`'s own, and everything inside wraps.
          */
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .onSizeChanged { slotWidth = it.width.toFloat() / HomeTab.all.size },
+        Row(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HomeTab.all.forEachIndexed { index, tab ->
-                    NavItemSlot(
-                        tab = tab,
-                        selected = state.pager.currentPage == index,
-                        // One source for both, read on the draw pass (below), so
-                        // the indicator, the icon swap and the label firm up
-                        // together and cannot drift out of step mid-travel.
-                        selectedness = { TabSwipe.selectedness(state.indicator, index) },
-                        slide = { (state.indicator - index) * slotWidth },
-                        icon = icon,
-                        onSelect = { onSelect(tab) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+            HomeTab.all.forEachIndexed { index, tab ->
+                NavItemSlot(
+                    tab = tab,
+                    selected = state.pager.currentPage == index,
+                    // One source for all of it, read on the draw pass (below),
+                    // so the indicator, the glyph and the label firm up
+                    // together and cannot drift out of step mid-gesture.
+                    emphasis = { TabSwipe.emphasis(state.indicator, index) },
+                    lean = { TabSwipe.lean(state.indicator, index) },
+                    reduced = reduced,
+                    icon = icon,
+                    onSelect = { onSelect(tab) },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -435,21 +472,32 @@ fun TrackingNavigationBar(
 /**
  * One item.
  *
- * `selectedness` and `slide` are lambdas on purpose: read inside a
- * `graphicsLayer` block they move the pill on the draw pass, so a finger
- * dragging across the screen never recomposes or re-measures the bar.
+ * `emphasis` and `lean` are lambdas on purpose: read inside `drawBehind` and
+ * `graphicsLayer` blocks they are sampled on the **draw** pass, so a finger
+ * dragging across the screen never recomposes or re-measures the bar. The
+ * indicator is drawn rather than laid out for the same reason — a capsule whose
+ * width is a layout property would re-measure the bar on every frame of a
+ * gesture, which is how a bar drops frames under the one finger that is
+ * watching it.
+ *
+ * Under reduced motion every *geometric* interpolation here is switched off —
+ * no scale, no lift, no lean, and the capsule stays its full width (§5.6). What
+ * survives is the opacity, which still tracks the finger frame for frame,
+ * because the finger is the user's own movement and not ours.
  */
 @Composable
 private fun NavItemSlot(
     tab: HomeTab,
     selected: Boolean,
-    selectedness: () -> Float,
-    slide: () -> Float,
+    emphasis: () -> Float,
+    lean: () -> Float,
+    reduced: Boolean,
     icon: @Composable (tab: HomeTab, filled: Boolean) -> Unit,
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val p = palette
+    val indicatorColor = p.accent2
     Box(
         modifier = modifier.selectable(
             selected = selected,
@@ -465,25 +513,57 @@ private fun NavItemSlot(
                 Box(
                     modifier = Modifier
                         .size(IndicatorWidth, IndicatorHeight)
-                        .graphicsLayer {
-                            alpha = selectedness()
-                            translationX = slide()
-                        }
-                        .clip(RoundedCornerShape(IndicatorHeight / 2))
-                        .background(p.accent2.copy(alpha = 0.16f)),
+                        .drawBehind {
+                            val e = emphasis()
+                            if (e <= 0.001f) return@drawBehind
+                            val full = IndicatorWidth.toPx()
+                            val w = if (reduced) full else lerp(IndicatorRestWidth.toPx(), full, e)
+                            val h = size.height
+                            val dx = if (reduced) 0f else lean() * IndicatorLean.toPx()
+                            drawRoundRect(
+                                color = indicatorColor,
+                                topLeft = Offset((size.width - w) / 2f + dx, 0f),
+                                size = Size(w, h),
+                                cornerRadius = CornerRadius(h / 2f),
+                                alpha = IndicatorAlpha * e,
+                            )
+                        },
                 )
                 Box(
-                    modifier = Modifier.height(IndicatorHeight),
+                    modifier = Modifier
+                        .height(IndicatorHeight)
+                        .graphicsLayer {
+                            if (reduced) return@graphicsLayer
+                            val e = emphasis()
+                            val s = lerp(IconRestScale, 1f, e)
+                            scaleX = s
+                            scaleY = s
+                            translationY = (1f - e) * IconSink.toPx()
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // Outlined underneath, filled on top at this item's own
-                    // selectedness: the swap interpolates with the gesture
-                    // instead of waiting for it to end.
-                    Box(modifier = Modifier.graphicsLayer { alpha = 1f - selectedness() }) {
-                        icon(tab, false)
+                    /*
+                     * Outlined in `muted` underneath, filled in `accent` on
+                     * top, cross-faded at this item's own emphasis.
+                     *
+                     * The colour is the half of this that 2.0.2 was missing.
+                     * Both copies were drawn in the bar's content colour, so
+                     * the "swap" was one white glyph dissolving into a nearly
+                     * identical white glyph — invisible in motion and worth
+                     * nothing in a still. Grey to the palette's accent is a
+                     * change you can read at a glance and at 35% of the way
+                     * through. `accent` clears 3:1 on every surface in all
+                     * eight palettes, which `PaletteContrastTest` pins.
+                     */
+                    CompositionLocalProvider(LocalContentColor provides p.muted) {
+                        Box(modifier = Modifier.graphicsLayer { alpha = 1f - emphasis() }) {
+                            icon(tab, false)
+                        }
                     }
-                    Box(modifier = Modifier.graphicsLayer { alpha = selectedness() }) {
-                        icon(tab, true)
+                    CompositionLocalProvider(LocalContentColor provides p.accent) {
+                        Box(modifier = Modifier.graphicsLayer { alpha = emphasis() }) {
+                            icon(tab, true)
+                        }
                     }
                 }
             }
@@ -496,6 +576,10 @@ private fun NavItemSlot(
              * recomposes this `Text` on every frame of the travel, and a bar
              * that recomposes while a finger is dragging it is a bar that can
              * drop a frame. Two alphas in a `graphicsLayer` are a draw.
+             *
+             * The label does not scale with the glyph. One thing in the stack
+             * changing size is a size change; two is a zoom, and the bar would
+             * start to look like it was breathing.
              */
             Box {
                 Text(
@@ -504,7 +588,7 @@ private fun NavItemSlot(
                     color = p.muted,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
-                    modifier = Modifier.graphicsLayer { alpha = 1f - selectedness() },
+                    modifier = Modifier.graphicsLayer { alpha = 1f - emphasis() },
                 )
                 Text(
                     text = tab.label,
@@ -512,7 +596,7 @@ private fun NavItemSlot(
                     color = p.text,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
-                    modifier = Modifier.graphicsLayer { alpha = selectedness() },
+                    modifier = Modifier.graphicsLayer { alpha = emphasis() },
                 )
             }
         }

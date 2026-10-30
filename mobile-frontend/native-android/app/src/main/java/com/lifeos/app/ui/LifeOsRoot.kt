@@ -459,25 +459,28 @@ fun LifeOsRoot(
  * Bar-vs-rail still comes from `currentWindowAdaptiveInfo()`, never from a
  * device-type check, because Android resizes the app while it runs.
  *
- * **The indicator travels between destinations, and tracks a swipe.** Both, from
- * one number — see `HomeTabsState.indicator`. A swipe moves the pages under the
- * finger and the indicator goes with them, frame for frame; a tap jumps the
- * pages (the content cross-fades, §5.3) and sends the indicator across on a
- * critically damped spring, so it cannot overshoot and cannot wobble.
+ * **The three destinations interpolate with a swipe, and travel the same path
+ * after a tap.** Both, from one number — see `HomeTabsState.indicator`. A swipe
+ * moves the pages under the finger and the bar's glyphs, labels and capsules go
+ * with them frame for frame; a tap jumps the pages (the content cross-fades,
+ * §5.3) and animates that same number across on a critically damped spring, so
+ * the bar passes through the states a fast finger would have put it in and
+ * cannot overshoot or wobble.
  *
- * This reverses the rule 2.0.0 shipped. §5.4 said "zero pixels of travel" and
- * the bar obeyed it by cross-fading two indicators in place — which the user
- * described as the highlight teleporting, "like spotlight from one place to
- * another", and they were right: an extinguished highlight and a lit one are not
- * a movement, and the eye has nothing to follow. The old Expo pill was rejected
- * for wobbling slowly across five tabs, not for moving at all. §5.4 is rewritten
- * to say what is actually banned: chrome that animates itself while carrying no
- * information.
+ * This reverses §5.4 for the third time, and the reason it is worth a comment is
+ * that the first two reversals were the same mistake twice. Both argued about
+ * **how far** the active highlight should slide — "zero pixels of travel" in
+ * 2.0.0, which the user called a spotlight teleporting, then a whole slot in
+ * 2.0.1, which the user called *"an empty glow moving on the background glow
+ * until it lands on an icon"*. Both were right, and the distance was never the
+ * variable: the destinations themselves were inert in both, so the only thing
+ * moving was chrome that meant nothing until it arrived. The signal lives in the
+ * destinations now and nothing crosses the gap between them.
  *
  * The compact bar is `TrackingNavigationBar` rather than a standard item list,
- * because a `NavigationBarItem` cannot be told where to put its indicator. The
- * rail keeps the standard items — there is no horizontal page to track against
- * a vertical rail, and the swipe still works underneath it.
+ * because a `NavigationBarItem` cannot be told how to interpolate. The rail
+ * keeps the standard items — there is no horizontal page to track against a
+ * vertical rail, and the swipe still works underneath it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -562,6 +565,7 @@ private fun AppShell(
                 if (bottomBar) {
                     TrackingNavigationBar(
                         state = tabs,
+                        reduced = reduced,
                         icon = { tab, filled ->
                             Icon(
                                 imageVector = tabIcon(tab, filled),
