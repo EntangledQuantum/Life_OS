@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PendingWriteEntity::class,
         FiredNotificationEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class LifeOsDatabase : RoomDatabase() {
@@ -62,6 +62,36 @@ abstract class LifeOsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 3 → 4: the dashboard payload leaves the database.
+         *
+         * `snapshot.payload_json` held the whole `dashboard/today` body, which
+         * on a real instance is 2.26 MB of mostly inline base64 artwork — over
+         * Android's 2 MB `CursorWindow` limit, so reading the row threw
+         * `SQLiteBlobTooBigException` and killed the process on every launch
+         * once one had been stored. The payload now lives in a file
+         * ([SnapshotPayloads]) and this table keeps only the metadata.
+         *
+         * **Dropped rather than rebuilt**, and that is safe here precisely
+         * because of the rule stated below: the snapshot is a cache, the next
+         * poll refills it, and this migration does not go anywhere near
+         * `pending_writes`. Copying the old column's contents out to a file
+         * would mean reading the very row that cannot be read.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `snapshot`")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `snapshot` (" +
+                        "`id` INTEGER NOT NULL, " +
+                        "`fetched_at` INTEGER NOT NULL, " +
+                        "`life_day_date` TEXT NOT NULL, " +
+                        "`base_url` TEXT NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
         fun build(context: Context): LifeOsDatabase =
             Room.databaseBuilder(context, LifeOsDatabase::class.java, "lifeos.db")
                 /*
@@ -71,7 +101,7 @@ abstract class LifeOsDatabase : RoomDatabase() {
                  * written by hand from here on; there is no
                  * fallbackToDestructiveMigration.
                  */
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

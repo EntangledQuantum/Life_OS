@@ -7,6 +7,64 @@ repository and keeps working as a fallback. Nothing here touches it.
 Product and interaction decisions live in [`docs/UI_SPEC.md`](docs/UI_SPEC.md). That file is
 the source of truth; this one is how to build and how the code is arranged.
 
+**2.0.2** — the app could not pair with a Life OS reached through a Tailscale Funnel, and
+the reason was a number. Every timeout was sized for a LAN, and the pairing claim was given
+the *probe's* 6s; measured on the phone, that server's claim takes 12.27–17.37s and its
+`/health` takes 3.4–5.7s, so the claim could never succeed and connectivity read as flaky
+rather than as down. Timeouts are now **chosen from the address** — a LAN host keeps the old
+fail-fast numbers, a public or tunnelled one gets far more
+([§7.9](docs/UI_SPEC.md)) — the claim has its own budget rather than the probe's, and a
+timeout against a server the phone *did* connect to now says *"That server is slow to
+answer"* with **Try again**, instead of blaming an address that was correct. Separately,
+every piece of habit/goal artwork was being decoded at its source resolution because a
+Coil request with no declared size falls back to `SizeResolver.ORIGINAL`; a 48dp tile now
+decodes at 48dp.
+
+Connection reuse was also broken and is now fixed: `OkHttpClient.Builder` gets a fresh
+`ConnectionPool` every time, and this app built four of them, so pairing paid the TLS
+handshake three times over a link where it costs 1–5 s. Everything now shares
+`ApiClient.connections` — `/health` went from 1.09 s to 0.30 s on a reused connection, and
+a dashboard fetch from 37.1 s to 9.3 s.
+
+### Why it is still slow, and what would fix it (server-side, not done here)
+
+**97.4% of the dashboard payload is inline base64 artwork.** `GET /api/v1/dashboard/today`
+is 2,263,773 bytes on this instance; strip the pictures and it is **58,311 bytes**. The app
+re-downloads all of it on every poll, over a link that moves 140–240 KB/s, which is the
+whole of the user's *"every refresh takes so long"*. The server itself is not slow — the
+same bytes take 0.31 s from `127.0.0.1`.
+
+Compression is not the fix: gzip only reaches 1,654,385 B (27%, because base64 of an
+already-compressed PNG does not compress), the API has no compression middleware at all,
+and offering `Accept-Encoding: gzip` measured *slower* end to end, which looks like proxy
+buffering. What would fix it, in `apps/api/src`, in order of value:
+
+1. **Stop inlining art in the poll.** `getDashboard` should emit the existing `*ImageUrl`
+   fields instead of `backgroundImageData` / `iconImageData` / `imageData` / `iconImage`,
+   pointing at a dedicated route — `GET /api/v1/art/{id}/{slot}` — served with a strong
+   `ETag` and `Cache-Control: public, max-age=31536000, immutable`. **The Android client
+   needs no change for this**: `Art.picture(id, slot, data, url)` already falls back to the
+   URL when the data is absent, `Art.cacheKey` already keys on `<id>/<slot>/<fingerprint>`,
+   Coil already has a 48 MB disk cache, and image requests now share the API's connection
+   pool — so each picture would be fetched once, ever. This turns a 2.26 MB poll into a
+   57 KB one, a 39× reduction, and takes the steady-state refresh from ~9–16 s to under a
+   second. If old clients must keep working, gate it behind a query parameter
+   (`?art=urls`) or the existing protocol version rather than changing the shape outright.
+2. **Put an `ETag` on `/api/v1/dashboard/today`** and honour `If-None-Match`. The response
+   currently carries no `ETag`, no `Last-Modified` and no `Cache-Control`. With art removed,
+   a poll on an unchanged day becomes a 304 and costs essentially nothing.
+3. **Negotiate HTTP/2.** The portal proxy answers `HTTP/1.1`; h2 would let the art requests
+   from (1) multiplex over the one connection instead of queueing five at a time.
+
+And the crash the user reported as *"it crashed altogether after connecting"* turned out to
+be real, reproducible and nothing to do with memory pressure: the dashboard payload was
+stored in one SQLite `TEXT` column, Android's `CursorWindow` is **2 MB per row**, and at
+2.26 MB the first read after the first successful fetch threw
+`SQLiteBlobTooBigException` and took the process with it — on every launch, for good. It
+only appears once a user has accumulated enough inline artwork to cross the line, which is
+why a small LAN instance pairs and runs perfectly. The body now lives in a file beside the
+database (schema 3 → 4) and the row keeps the metadata.
+
 **2.0.1** — four things the user found by installing 2.0.0 on their phone. Scanning the
 pairing QR in any other app now actually opens and pairs Life OS (the manifest matched the
 link; nothing read it). The "Scan QR" button opens a real CameraX + ML Kit scanner instead
@@ -437,6 +495,12 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
   what makes the 8-second poll free; the memory cache answers it, nothing re-decodes, and a
   row with unchanged art is literally the same request object, so it cannot blink. No art is
   the normal case and renders exactly as it did before: the emoji, then the activity glyph.
+  **Every request declares its size** (2.0.2): a tile states its own dp exactly, a picture
+  that fills its box takes the draw scope's size, and only the background — which measures
+  its own pixels for the scrim — asks for a software bitmap. Coil's
+  `rememberAsyncImagePainter` substitutes `SizeResolver.ORIGINAL` for a request with no size
+  defined, so before this a 48dp tile holding a 1024² picture cost ~4 MB of heap instead of
+  ~80 KB, and a cache miss decoded the full image on the list the user reads every morning.
 - **A measured scrim.** The darkness over a background picture is computed from that
   picture, not chosen: its mean luminance is read once in linear light and the scrim is
   deepened until the palest text on the card clears 4.5:1. `artOverlay` is the floor of

@@ -332,12 +332,17 @@ class LifeOsViewModel(
      * backgrounded (the caller ties this to the lifecycle), and fired
      * immediately on resume.
      */
+    /**
+     * [intervalMs] is the destination's interval for a server on this network;
+     * a public or tunnelled one gets it stretched (§7.9), re-read each tick so
+     * that "Change server" takes effect without restarting the poll.
+     */
     fun startPolling(intervalMs: Long = PollIntervals.TODAY_MS) {
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
             refresh()
             while (true) {
-                delay(intervalMs)
+                delay(repository.pollInterval(intervalMs))
                 refresh()
             }
         }
@@ -364,10 +369,18 @@ class LifeOsViewModel(
         }
     }
 
-    /** Arms the 6-second timer that turns a truly empty cache into a panel. */
+    /**
+     * Arms the timer that turns a truly empty cache into a panel.
+     *
+     * Six seconds for a server on this network, stretched for one that is not
+     * (§7.9). A flat six put *"Waiting for today's dashboard"* and a **Change
+     * server** button in front of a first fetch that legitimately takes 6.8–15.2s
+     * through a tunnel — the panel was telling the user to go and fix something
+     * while their dashboard was on the way.
+     */
     fun armEmptyCacheTimeout() {
         viewModelScope.launch {
-            delay(com.lifeos.app.ui.theme.Motion.EMPTY_CACHE_ERROR_MS)
+            delay(repository.emptyCacheTimeout(com.lifeos.app.ui.theme.Motion.EMPTY_CACHE_ERROR_MS))
             emptyTimedOut.value = true
         }
     }

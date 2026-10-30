@@ -2,6 +2,7 @@ package com.lifeos.app
 
 import com.lifeos.app.data.PairClaim
 import com.lifeos.app.data.PairOutcome
+import com.lifeos.app.data.api.Budget
 import com.lifeos.app.data.api.PairClaimResponse
 import com.lifeos.app.domain.PairInvite
 import com.lifeos.app.domain.PairLink
@@ -11,6 +12,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.ConnectException
+import java.net.SocketTimeoutException
 
 /**
  * QR pairing: the link, and the claim.
@@ -132,7 +134,23 @@ class PairingTest {
 
     /* ----------------------------------------------------------- the claim */
 
-    private fun claimWith(api: FakeApi) = PairClaim(apiFactory = { api })
+    private fun claimWith(api: FakeApi) = PairClaim(apiFactory = { _, _ -> api })
+
+    /**
+     * A claim against a server this phone **did** connect to, which then took
+     * too long.
+     *
+     * The witness is marked in the factory, which is exactly where OkHttp's
+     * `connectEnd` would have marked it, and then the call throws. This is the
+     * user's real server: `POST /api/v1/pair/claim` measured at 12.27–17.37s
+     * through the Funnel, against a 6s budget, every single time.
+     */
+    private fun claimTimingOutAfterConnecting() = PairClaim(
+        apiFactory = { _, witness ->
+            witness.connected = true
+            FakeApi(throwOnClaim = SocketTimeoutException("timeout"))
+        },
+    )
 
     @Test
     fun `a good code comes back with the token and the server's own address`() = runTest {
@@ -188,6 +206,43 @@ class PairingTest {
         assertEquals(
             PairOutcome.Unreachable("http://192.168.1.4:8787", "connection refused"),
             outcome,
+        )
+    }
+
+    @Test
+    fun `a reachable server that answers too slowly is not a bad address`() = runTest {
+        // The 2.0.1 bug, as a test. The phone got a TLS connection to the
+        // address in the QR, so "Couldn't reach that address" was false and
+        // "Change server" was advice that could not help — the user re-types a
+        // correct address and waits out the same timeout.
+        val outcome = claimTimingOutAfterConnecting()
+            .claim(PairInvite("ABCDEFGH2345", "https://sunny.tailf9037f.ts.net/lifeos"))
+        assertEquals(
+            PairOutcome.TooSlow(
+                address = "https://sunny.tailf9037f.ts.net/lifeos",
+                seconds = Budget.of("https://sunny.tailf9037f.ts.net/lifeos")
+                    .forClaim().callSeconds,
+            ),
+            outcome,
+        )
+    }
+
+    @Test
+    fun `the slow outcome names the budget the claim was actually given`() = runTest {
+        // The number in the sentence is a fact about us, not about the server:
+        // "didn't answer within 45s" is honest, "the server took 45s" is not.
+        val outcome = claimTimingOutAfterConnecting()
+            .claim(PairInvite("ABCDEFGH2345", "https://sunny.tailf9037f.ts.net/lifeos"))
+        assertTrue((outcome as PairOutcome.TooSlow).seconds >= 30L)
+    }
+
+    @Test
+    fun `a slow LAN claim is still slow, with the LAN budget`() = runTest {
+        val outcome = claimTimingOutAfterConnecting()
+            .claim(PairInvite("ABCDEFGH2345", "http://192.168.1.4:8787"))
+        assertEquals(
+            Budget.LOCAL.forClaim().callSeconds,
+            (outcome as PairOutcome.TooSlow).seconds,
         )
     }
 

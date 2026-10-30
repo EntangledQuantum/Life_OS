@@ -20,12 +20,18 @@ import androidx.room.PrimaryKey
  * are kept: Room is still the only thing the UI reads, the read is still a Flow,
  * and the cache still survives the process. `lifeDayDate` is denormalised into a
  * column because the write queue's guard needs it without parsing the payload.
+ *
+ * **The payload itself is no longer in this row** (2.0.2). It was, and on a
+ * real instance it is 2.26 MB of mostly inline base64 artwork, which is over
+ * Android's 2 MB `CursorWindow` limit — so the first read after the first
+ * successful fetch threw `SQLiteBlobTooBigException` and took the process with
+ * it, on every launch, for good. It lives in a file now
+ * ([SnapshotPayloads]); what is left here is the metadata the app queries by,
+ * and all four columns together are a few hundred bytes.
  */
 @Entity(tableName = "snapshot")
 data class SnapshotEntity(
     @PrimaryKey val id: Int = SINGLETON_ID,
-    /** The raw `dashboard/today` body. */
-    @ColumnInfo(name = "payload_json") val payloadJson: String,
     /** When this snapshot arrived. The status strip shows it, so "stale" is a fact. */
     @ColumnInfo(name = "fetched_at") val fetchedAt: Long,
     /** `lifeDay.date` as the server reported it. The guard compares against this. */

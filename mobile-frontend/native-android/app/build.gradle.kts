@@ -25,8 +25,11 @@ android {
         // 2.0.1: the QR deep link and the scanner behind the button that claimed
         // it, plus the motion the 2.0.0 flattening took out. No break, no new
         // signing key, no re-pair — an ordinary patch on top of 2.0.0.
-        versionCode = 201
-        versionName = "2.0.1"
+        // 2.0.2: timeouts chosen from the address, so a tunnelled server can be
+        // paired with at all. Nothing about the data, the protocol or the
+        // signing key moves, so it is a patch like 2.0.1 was.
+        versionCode = 202
+        versionName = "2.0.2"
 
         // The protocol this app can read. Source of truth:
         // packages/shared/src/protocol.ts (PROTOCOL_VERSION). Copied, not imported.

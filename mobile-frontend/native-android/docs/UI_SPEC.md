@@ -57,7 +57,7 @@ the rewrite, so it is first.
 | Workaround | Why it dies |
 |---|---|
 | `usesCleartextTraffic` via `expo-build-properties` | Replaced by a real `network_security_config.xml` (§7.8). The *requirement* lives on — plain `http://` on a LAN must work in release builds — only the mechanism changes. |
-| `fetchWithTimeout` wrapping every call because RN sets OkHttp timeouts to zero | We configure OkHttp directly: connect 5s, read 12s, call 15s; 6s for probes. Nothing is unbounded, but this is now config, not a wrapper. |
+| `fetchWithTimeout` wrapping every call because RN sets OkHttp timeouts to zero | We configure OkHttp directly. Nothing is unbounded, but this is now config, not a wrapper. The numbers themselves are **chosen from the address** — see §7.9; a LAN server keeps connect 5s / read 12s / call 15s and 6s for probes, a public or tunnelled one gets far more. |
 | `networkMode: "always"` on React Query | No React Query. A Room-backed repository has no concept of "paused because the browser thinks we're offline". Always attempt; let failure be a typed error. |
 | `SwipeTabs` / `PanResponder` horizontal tab swiping | **Cut.** Three destinations, M3 navigation bar, predictive back. Swipe-between-tabs fights vertical lists and horizontally-scrollable content, and is a React-Navigation-era habit. |
 | The travelling, **underdamped** nav-bar pill (`mass .55, damping 30, stiffness 420`) across five tabs | **The spring and the distance are cut; the travel is not.** This is the "too much animation at the bottom" the brief names, and the faults were that it was slow, that it wobbled (hence the repeated tuning), and that it crossed five slots. Three destinations and a genuinely critically damped spring make travel cheap and informative. §5.4 has the full history — it has been reversed twice, and the first reversal was wrong. |
@@ -924,6 +924,17 @@ tap waits on a socket and every failure is an error panel. The rewrite inverts t
 - **Room is the only thing the UI reads.** One table holds the latest
   `GET /api/v1/dashboard/today` snapshot (as parsed entities plus `fetchedAt`), and one
   holds `pending_writes`. A cold start renders real content in the first frame.
+  - **The snapshot's body is a file, not a column** (2.0.2). Android's `CursorWindow` is
+    2 MB *per row* and that is a hard limit; a real instance's dashboard payload is 2.26 MB,
+    because habits and goals carry their artwork as inline base64 and it grows with every
+    picture an agent attaches. So the first read after the first successful fetch threw
+    `SQLiteBlobTooBigException` and took the process down — on every launch, permanently,
+    since the row was still there. The row now holds `fetched_at`, `life_day_date` and
+    `base_url`; the body lives beside the database. The file is written before the row and
+    replaced by rename, so the row never names a snapshot that is missing or half-written.
+  - The snapshot read and its deserialisation run on a background dispatcher. 2.26 MB of
+    JSON parsed on `Dispatchers.Main` once per poll is a dropped frame on the one list
+    read every morning.
 - **The poll** is 8s while Today is resumed (10s on Day, 15s on You), stopped when the
   process is backgrounded, and fired immediately on resume, on reconnect, and after any
   write is enqueued. Never poll from the composition.
@@ -1019,13 +1030,22 @@ phone into "that code is no longer valid".
 - **Never log the scanned URL, the code or the token.** The code is traded for the token, so
   for the five minutes it lives it is a credential. `PairInvite.toString()` prints
   `code=***` so that an accidental log line is harmless too, and a test asserts it.
-- Failure copy distinguishes what the user has to **do**, which is two cases and not three.
+- Failure copy distinguishes what the user has to **do**, which is three cases.
   *"That code is no longer valid. Mint a new one on your dashboard."* covers expired and
   already-used together, because the server compares in constant time and deliberately
   answers both with one `401` — offering a guess at which it was would be a lie. Separately,
   *"Scanned, but this phone couldn't reach `http://192.168.1.4:8787`"* is a reachability
   problem, so it offers **Change server** and not a rescan: sending someone back to the
   dashboard to mint codes for a sleeping machine wastes an afternoon.
+- The third case is **reachable and slow**, and it is its own because its remedy is the
+  opposite of the second's. If the host resolved and the TCP/TLS connection completed and
+  the claim simply had not come back inside its budget, the title is *"That server is slow
+  to answer"*, the body names the budget we spent (*"didn't answer within 45s. The
+  connection is fine, so the address is right"*) and warns that a single-use code may
+  already have been spent server-side, and the primary action is **Try again** with
+  **Change server** demoted to a text button. 2.0.1 filed this under *"Couldn't reach that
+  address"*, which is how a user with a correct tunnel URL spent an evening re-typing it —
+  the message was really *"this took longer than I allowed"*.
 - Camera permission is requested **in context** — on arriving at the scanner, never at
   launch — and a denial falls through to two routes that both work: manual entry, and
   *"scan it with your phone's own camera app and it will open Life OS"*. That second
@@ -1143,10 +1163,15 @@ server
 Behaviour:
 
 - Prefilled with the current address. Non-destructive: nothing changes until **Save**.
-- **Test** runs three probes with a 6s deadline each and reports them **separately**, which
-  is the whole point — "can't connect" conflates four different user actions:
-  `GET /health` (reachable, and `lan`), `GET /api/v1/protocol` (version), and
-  `GET /api/v1/auth/me` with the token (auth).
+- **Test** runs three probes and reports them **separately**, which is the whole point —
+  "can't connect" conflates four different user actions: `GET /health` (reachable, and
+  `lan`), `GET /api/v1/protocol` (version), and `GET /api/v1/auth/me` with the token (auth).
+  The deadline on each is the configured address's probe budget (§7.9): 6s for a LAN
+  address, 15s for a public one. A flat 6s is why a tunnelled server tested as *flaky* —
+  its `/health` takes 3.4–5.7s, so the same address passed some runs and failed others.
+- A probe that times out **after the connection was established** says so —
+  *"connected, but no answer within 15s"* — rather than *"timed out"*. The address is right
+  and nothing is gained by re-typing it.
 - `lan: false` is a warning, not a failure, and links to `docs/NETWORK.md` rather than
   pretending the app can fix it.
 - **Save** is enabled when Test passed; a failed Test offers **Save anyway** (the machine
@@ -1180,6 +1205,112 @@ and references it from `<application android:networkSecurityConfig=…>`. Keep i
 if it goes missing is "can't reach the server" while the same URL loads in the phone's
 browser; `adb logcat | grep -i cleartext` prints the real error. An instrumented release
 test asserts a cleartext request to a local server succeeds.
+
+### 7.9 Timeouts come from the address
+
+Added in 2.0.2, because one set of deadlines cannot be right for both servers this app has
+to talk to.
+
+Life OS is usually a machine on the same Wi-Fi, and §7's whole stance depends on that
+failing **fast**: a sleeping laptop answers nothing, and making someone wait thirty seconds
+to find that out is the bug the 6s probe exists to prevent. But the same instance is also
+reached from outside the house, through a Tailscale Funnel and a reverse proxy, and there
+the latency is not close. Measured with `curl` **on the phone**, against
+`https://sunny.tailf9037f.ts.net/lifeos`:
+
+| Request | Observed total |
+|---|---|
+| TLS handshake alone | 1.4 – 1.7 s |
+| `GET /health` | 3.45, 3.66, 4.17, 5.61, 5.69 s |
+| `GET /api/v1/auth/me` | ~2 s |
+| `POST /api/v1/pair/claim` | 12.27, 13.85, 17.37 s |
+
+So the rule is: **one predicate classifies the configured address, and the budget follows
+from it.** A loopback / RFC 1918 / `.local` host keeps the old numbers; everything else gets
+the generous set. The predicate is a port of `isPrivateHostname` in `apps/api/src/net.ts`,
+so the app and the server agree about what "my own network" means for the same address.
+
+| | LAN | Public / tunnelled |
+|---|---|---|
+| connect | 5 s | 15 s |
+| read / write | 12 s | 30 s |
+| call — the poll, the drain, the refetch | 15 s | 30 s |
+| probe (§7.6 **Test**) | 6 s | 15 s |
+| pairing claim (§7.3) | 15 s | 45 s |
+
+Four things about this table are load-bearing:
+
+- **The pairing claim has its own budget.** It used to borrow the probe's 6s, on the
+  reasoning that someone is standing there holding a phone at a screen — and that reasoning
+  is backwards. A probe paints a strip and the next poll has another go; the claim is one
+  shot at a single-use code with a five-minute life. Against a server that needs 12–17s it
+  could never succeed, not once, and the honest message ("timed out") pointed at the wrong
+  cause ("change your address").
+- **A tailnet address (`100.64.0.0/10`) is not local**, deliberately. The app cannot tell a
+  direct WireGuard path on the same Wi-Fi from one relayed through a DERP server on another
+  continent, and the honest budget for "I cannot tell" is the generous one.
+- **An address that will not parse gets the generous budget.** Guessing LAN for something
+  unrecognisable risks the failure this release fixes; guessing public only risks waiting.
+- **The poll's budget is not marginal.** A refresh that times out mid-flight against a
+  reachable tunnel walks the state machine Online → Stale → Unreachable (§7.2) and back on
+  a server that was answering the whole time, so the strip flickers and the user is told
+  their server is unreachable while it is not.
+
+The widget needs nothing from this, because it has no budget: it never fetches (§8.5) and
+renders from the same Room snapshot the app reads. The headless budget that does exist —
+8s on each of the three broadcast receivers — wraps Room work and an enqueue, with no
+request inside it.
+
+### 7.10 Why it is slow, and what the floor is
+
+A bigger budget stops the app *failing*; it does not stop it being slow. Measured on the
+phone against the real server, the slowness is almost entirely one thing.
+
+**`GET /api/v1/dashboard/today` is 2,263,773 bytes, and 2,205,462 of them — 97.4% — are
+inline base64 artwork.** The same payload without art is **58,311 bytes**. The app
+re-downloads all of it on every poll.
+
+| | |
+|---|---|
+| Whole payload | 2,263,773 B |
+| `backgroundImageData` | 1,135,637 B |
+| `iconImageData` | 572,798 B |
+| `imageData` | 450,469 B |
+| `iconImage` (agenda rows) | 46,558 B |
+| **Everything that is not a picture** | **58,311 B** |
+
+Three things follow, and only the third is something this app can fix:
+
+- **Compression is not the answer.** The response carries no `Content-Encoding` and the API
+  has no compression middleware; and gzipping it only reaches 1,654,385 B — a 27% saving,
+  because base64 of an already-compressed PNG does not compress. Offering
+  `Accept-Encoding: gzip` also measured *slower* end to end (54.5s vs 14.6s on one sample),
+  which looks like proxy buffering. Compressing a payload that should not be 2.26 MB is the
+  wrong fix.
+- **The real fix is server-side and is written up in the README**: stop inlining art in the
+  poll, and put an `ETag` on the route. Not done here — `apps/api` is out of scope for this
+  change.
+- **Connection reuse is ours, and it was broken.** `OkHttpClient.Builder` creates a fresh
+  `ConnectionPool` each time, and this app built four of them — one per address in
+  `ApiClient`, one in `PairClaim`, one per run in `ServerProbe`, one in `ArtLoader` — so
+  pairing paid the TLS handshake three times over. They now share
+  `ApiClient.connections`. Measured, three identical dashboard fetches in one process:
+
+  | | Total | TLS | TTFB |
+  |---|---|---|---|
+  | new connection | 37.1 s | 4.96 s | 6.98 s |
+  | reused | 16.3 s | 0 s | 1.15 s |
+  | reused | 9.3 s | 0 s | 0.68 s |
+
+  On a small route the effect is starker: `/health` is 1.09s on a new connection and 0.30s
+  on a reused one — **3.6×**.
+
+**The floor.** On a warm connection the round trip to this server is ~0.3s for a small
+response and TTFB is ~0.7s; that is relay latency and no client change touches it. What is
+left on top is body transfer at roughly 140–240 KB/s, so the 2.26 MB payload costs 9–16s
+even when everything else is perfect. Until the art comes out of the poll, **a steady-state
+refresh against this server cannot be faster than about nine seconds**, and that is a
+property of the payload, not of the app.
 
 ---
 

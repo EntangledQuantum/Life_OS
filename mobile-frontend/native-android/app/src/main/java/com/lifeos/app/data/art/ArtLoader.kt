@@ -14,6 +14,8 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.Options
 import coil3.svg.SvgDecoder
 import com.lifeos.app.data.TokenSource
+import com.lifeos.app.data.api.ApiClient
+import com.lifeos.app.data.api.Budget
 import com.lifeos.app.domain.ArtSvg
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -44,10 +46,22 @@ import java.util.concurrent.TimeUnit
  */
 object ArtLoader {
 
-    /** Matches `ApiClient`: nothing is unbounded, ever. A picture is not urgent. */
-    private const val CONNECT_SECONDS = 5L
-    private const val READ_SECONDS = 20L
-    private const val CALL_SECONDS = 30L
+    /**
+     * Nothing is unbounded, ever — and a picture is not urgent.
+     *
+     * The connect and read deadlines come from the **request's own host**
+     * (`Budget.ofHost`), applied per call, because one image request may go to
+     * the user's LAN server and the next to an agent's public URL and they do
+     * not deserve the same patience. [ART_MIN_READ] is the floor: a photograph
+     * is bigger than a JSON payload, so 20s is kept for a LAN read where the
+     * API would allow 12.
+     *
+     * [CALL_SECONDS] is the one that cannot vary per request — OkHttp fixes the
+     * call timeout on the client — so it is the outer cap for the slowest case
+     * and the per-call connect/read above do the real work.
+     */
+    private const val ART_MIN_READ = 20L
+    private const val CALL_SECONDS = 45L
 
     /**
      * A fifth of the app's heap for decoded bitmaps.
@@ -95,13 +109,34 @@ object ArtLoader {
 
     private fun okHttp(tokens: TokenSource, origin: ArtOrigin): OkHttpClient =
         OkHttpClient.Builder()
-            .connectTimeout(CONNECT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(READ_SECONDS, TimeUnit.SECONDS)
+            // The app's one connection pool (see `ApiClient.connections`). A
+            // picture from the user's own server then rides the connection the
+            // dashboard poll already has, instead of paying its own handshake.
+            .connectionPool(ApiClient.connections)
+            .connectTimeout(Budget.REMOTE.connectSeconds, TimeUnit.SECONDS)
+            .readTimeout(maxOf(Budget.REMOTE.readSeconds, ART_MIN_READ), TimeUnit.SECONDS)
             .callTimeout(CALL_SECONDS, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .addInterceptor(perHostDeadlines)
             .addInterceptor(sameOriginAuth(tokens, origin))
             // Deliberately no logging interceptor. See the note above.
             .build()
+
+    /**
+     * Tighten the deadlines for a picture on this network.
+     *
+     * The client is built once for the process, so the generous numbers are the
+     * ones baked into it and this narrows them per call. Without it a LAN image
+     * on a sleeping machine would hold a slot for 45s — the same mistake in the
+     * other direction from the one `Budget` exists to fix.
+     */
+    private val perHostDeadlines = Interceptor { chain ->
+        val budget = Budget.ofHost(chain.request().url.host)
+        chain
+            .withConnectTimeout(budget.connectSeconds.toInt(), TimeUnit.SECONDS)
+            .withReadTimeout(maxOf(budget.readSeconds, ART_MIN_READ).toInt(), TimeUnit.SECONDS)
+            .proceed(chain.request())
+    }
 
     /**
      * Bearer auth for the user's own server, and for no other host.

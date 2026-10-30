@@ -19,6 +19,7 @@ import com.lifeos.app.data.db.ServerSettingsDao
 import com.lifeos.app.data.db.ServerSettingsEntity
 import com.lifeos.app.data.db.SnapshotDao
 import com.lifeos.app.data.db.SnapshotEntity
+import com.lifeos.app.data.db.SnapshotPayloads
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -46,6 +47,28 @@ class FakeSnapshotDao(initial: SnapshotEntity? = null) : SnapshotDao {
 
     override suspend fun clear() {
         state.value = null
+    }
+}
+
+/**
+ * The snapshot body, in memory.
+ *
+ * The real one is a file, because 2.26 MB of dashboard JSON in a `TEXT` column
+ * is over Android's 2 MB `CursorWindow` limit and threw
+ * `SQLiteBlobTooBigException` on every read.
+ */
+class FakeSnapshotPayloads(initial: String? = null) : SnapshotPayloads {
+    var json: String? = initial
+        private set
+
+    override suspend fun write(json: String) {
+        this.json = json
+    }
+
+    override suspend fun read(): String? = json
+
+    override suspend fun clear() {
+        json = null
     }
 }
 
@@ -177,6 +200,8 @@ class FakeApi(
     var claimStatus: Int = 200,
     var claimResponse: PairClaimResponse = PairClaimResponse(),
     var throwOnClaim: Throwable? = null,
+    /** How long `today()` takes, so overlapping refreshes can be tested. */
+    var todayDelayMs: Long = 0,
 ) : LifeOsApi {
 
     val calls = mutableListOf<String>()
@@ -221,6 +246,9 @@ class FakeApi(
 
     override suspend fun today(): Response<DashboardTodayDto> {
         calls += "today"
+        // A fetch that takes real time, so a test can have two overlap. The
+        // user's tunnelled server takes 6.8–15.2s for this one call.
+        if (todayDelayMs > 0) kotlinx.coroutines.delay(todayDelayMs)
         return Response.success(today)
     }
 

@@ -2,6 +2,8 @@ package com.lifeos.app.data
 
 import com.lifeos.app.data.api.AddressInput
 import com.lifeos.app.data.api.ApiClient
+import com.lifeos.app.data.api.Budget
+import com.lifeos.app.data.api.ConnectionWitness
 import com.lifeos.app.data.api.LifeOsApi
 import com.lifeos.app.data.api.PairClaimRequest
 import com.lifeos.app.domain.PairInvite
@@ -25,6 +27,17 @@ sealed interface PairOutcome {
 
     /** Nothing answered at that address. Reachability, not the code. */
     data class Unreachable(val address: String, val detail: String) : PairOutcome
+
+    /**
+     * Four, because a timeout against a server that *did* connect is its own
+     * failure with its own way out.
+     *
+     * The address resolved, TCP and TLS completed, and the claim had not come
+     * back when the budget expired. Nothing about the address is wrong, so
+     * sending the user to **Change server** — which is what 2.0.1 did, every
+     * time, for this user's tunnelled server — is advice that cannot help.
+     */
+    data class TooSlow(val address: String, val seconds: Long) : PairOutcome
 }
 
 /**
@@ -37,35 +50,60 @@ sealed interface PairOutcome {
  * mintable only by someone already signed into the dashboard
  * (`apps/api/src/services/pairing.ts`).
  *
- * The probe deadline rather than the full call timeout, because somebody is
- * standing there holding a phone at a screen.
+ * **Its own deadline** (`Budget.forClaim`), which is the fix at the heart of
+ * 2.0.2. Until then the claim borrowed the *probe's* 6s, on the reasoning that
+ * somebody is standing there holding a phone at a screen — and that reasoning
+ * is backwards. A probe paints a status strip and the next poll has another go;
+ * this is one shot at a single-use code with a five-minute life, and there is
+ * nothing in the app that will retry it. Measured on the user's phone, their
+ * server's claim takes 12.27–17.37s through the Funnel, so 6s could not succeed
+ * once. Waiting is the correct behaviour here; giving up is not.
  *
  * Nothing in this file logs, at any level. The code and the token are the only
  * two secrets this app handles and they are both in scope here.
  */
 class PairClaim(
-    private val apiFactory: (String) -> LifeOsApi = { base ->
+    private val apiFactory: (String, ConnectionWitness) -> LifeOsApi = { base, witness ->
         // A client of its own with no token: the one stored (if any) belongs to
         // a different server until this succeeds, and sending it would be
         // handing an old server's credential to a new address.
-        ApiClient.retrofit(base, ApiClient.okHttp(StaticToken(""), ApiClient.PROBE_SECONDS))
-            .create(LifeOsApi::class.java)
+        //
+        // One client per claim, which is also what lets the witness be exact:
+        // it watches one request and nothing else.
+        ApiClient.retrofit(
+            base,
+            ApiClient.okHttp(StaticToken(""), Budget.of(base).forClaim(), witness),
+        ).create(LifeOsApi::class.java)
     },
 ) {
 
     suspend fun claim(invite: PairInvite): PairOutcome = withContext(Dispatchers.IO) {
         val base = ApiClient.normaliseBase(invite.baseUrl)
-        val api = apiFactory(base)
+        val budget = Budget.of(base).forClaim()
+        val witness = ConnectionWitness()
+        val api = apiFactory(base, witness)
 
         val attempt = runCatching {
             api.claimPairing("${base}api/v1/pair/claim", PairClaimRequest(invite.code))
         }
 
         val response = attempt.getOrElse { error ->
-            return@withContext PairOutcome.Unreachable(
-                address = invite.baseUrl,
-                detail = describeTransportFailure(error),
-            )
+            return@withContext when (
+                val failure = TransportFailure.of(error, witness, budget.callSeconds)
+            ) {
+                // Connected, and then we ran out of patience. The address is
+                // right; say so, and let the user try again rather than send
+                // them off to re-type it.
+                is TransportFailure.Slow -> PairOutcome.TooSlow(
+                    address = invite.baseUrl,
+                    seconds = failure.seconds,
+                )
+
+                is TransportFailure.Unreachable -> PairOutcome.Unreachable(
+                    address = invite.baseUrl,
+                    detail = failure.detail,
+                )
+            }
         }
 
         if (!response.isSuccessful) {
