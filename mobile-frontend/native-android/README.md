@@ -26,44 +26,61 @@ handshake three times over a link where it costs 1–5 s. Everything now shares
 `ApiClient.connections` — `/health` went from 1.09 s to 0.30 s on a reused connection, and
 a dashboard fetch from 37.1 s to 9.3 s.
 
-### Why it is still slow, and what would fix it (server-side, not done here)
+### Why it was slow, and what fixed it — protocol 4 (2.1.0)
 
-**97.4% of the dashboard payload is inline base64 artwork.** `GET /api/v1/dashboard/today`
-is 2,263,773 bytes on this instance; strip the pictures and it is **58,311 bytes**. The app
-re-downloads all of it on every poll, over a link that moves 140–240 KB/s, which is the
-whole of the user's *"every refresh takes so long"*. The server itself is not slow — the
-same bytes take 0.31 s from `127.0.0.1`.
+**97.4% of the dashboard payload was inline base64 artwork.**
+`GET /api/v1/dashboard/today` was 2,263,773 bytes on this instance; stripped of pictures it
+was **58,311 bytes**. The app re-downloaded all of it on every poll, over a link that moves
+140–240 KB/s, which was the whole of the user's *"every refresh takes so long"*. The server
+was never slow — the same bytes took 0.31 s from `127.0.0.1`. The protocol was the problem.
 
-Compression is not the fix: gzip only reaches 1,654,385 B (27%, because base64 of an
-already-compressed PNG does not compress), the API has no compression middleware at all,
-and offering `Accept-Encoding: gzip` measured *slower* end to end, which looks like proxy
-buffering. What would fix it, in `apps/api/src`, in order of value:
+Compression was not the fix: gzip only reached 1,654,385 B (27%, because base64 of an
+already-compressed PNG does not compress), and offering `Accept-Encoding: gzip` measured
+*slower* end to end, which looks like proxy buffering.
 
-1. **Stop inlining art in the poll.** `getDashboard` should emit the existing `*ImageUrl`
-   fields instead of `backgroundImageData` / `iconImageData` / `imageData` / `iconImage`,
-   pointing at a dedicated route — `GET /api/v1/art/{id}/{slot}` — served with a strong
-   `ETag` and `Cache-Control: public, max-age=31536000, immutable`. **The Android client
-   needs no change for this**: `Art.picture(id, slot, data, url)` already falls back to the
-   URL when the data is absent, `Art.cacheKey` already keys on `<id>/<slot>/<fingerprint>`,
-   Coil already has a 48 MB disk cache, and image requests now share the API's connection
-   pool — so each picture would be fetched once, ever. This turns a 2.26 MB poll into a
-   57 KB one, a 39× reduction, and takes the steady-state refresh from ~9–16 s to under a
-   second. If old clients must keep working, gate it behind a query parameter
-   (`?art=urls`) or the existing protocol version rather than changing the shape outright.
-2. **Put an `ETag` on `/api/v1/dashboard/today`** and honour `If-None-Match`. The response
-   currently carries no `ETag`, no `Last-Modified` and no `Cache-Control`. With art removed,
-   a poll on an unchanged day becomes a 304 and costs essentially nothing.
-3. **Negotiate HTTP/2.** The portal proxy answers `HTTP/1.1`; h2 would let the art requests
-   from (1) multiplex over the one connection instead of queueing five at a time.
+The three things this README used to list as "what would fix it, server-side, not done
+here" are now done, and the route is gone. `docs/SYNC.md` is the contract; the client half
+is below.
 
-And the crash the user reported as *"it crashed altogether after connecting"* turned out to
-be real, reproducible and nothing to do with memory pressure: the dashboard payload was
-stored in one SQLite `TEXT` column, Android's `CursorWindow` is **2 MB per row**, and at
-2.26 MB the first read after the first successful fetch threw
-`SQLiteBlobTooBigException` and took the process with it — on every launch, for good. It
-only appears once a user has accumulated enough inline artwork to cross the line, which is
-why a small LAN instance pairs and runs perfectly. The body now lives in a file beside the
-database (schema 3 → 4) and the row keeps the metadata.
+| | before | after, measured on a copy of the real database |
+|--|--|--|
+| unchanged poll | 2,263,618 B | **314 B**, or **0 B** on a `304` |
+| unchanged poll, server time | 254 ms | **5.7 ms** |
+| cold sync | 2,263,618 B | 303,810 B, once |
+| inline base64 in any response | 2,205,542 B | **0 B** |
+| one picture | re-sent every 8 s | 3,334 B once, then `304` or cache |
+| a write | + a 2.26 MB refetch | the reply **is** the new state (17,017 B) |
+
+What changed in this client:
+
+1. **`BuildConfig.LIFEOS_PROTOCOL` is 4**, and `GET /api/v1/dashboard/today` is gone. There
+   is no compatibility layer by design: a client claiming 3 gets `426` on every route.
+2. **The day is stored as rows**, not as one payload — six keyed collections, nine
+   documents and one state row. See the crash note below.
+3. **A cursor, an `ETag` and `If-None-Match`.** The cursor is opaque, stored *after* a
+   response is applied, and sent as `since`; `304` means nothing changed, so there is no
+   database write and no recomposition.
+4. **Art is a URL.** `Art.picture(id, slot, data, url)` already fell back to the URL when
+   the data was absent and `Art.cacheKey` already keyed on `<id>/<slot>/<fingerprint>`, so
+   this cost almost nothing — exactly as predicted here. `ArtLoader` adds the bearer header
+   for the user's own origin only, and `ImmutableAssets` treats a cache hit on
+   `/api/v1/assets/<sha256>` as fresh forever, because a hash cannot describe different
+   bytes.
+5. **Writes go to `POST /api/v1/sync/push`** under a persisted per-installation mutation
+   counter, and the reply carries the delta they caused. Nothing refetches after a write.
+6. **Four display values moved to the device** — `current`, `dueReminders`, the timeline's
+   now-cut and `improvementPct`. See `domain/SyncMath.kt`.
+
+The crash the user reported as *"it crashed altogether after connecting"* was real,
+reproducible and nothing to do with memory pressure: the dashboard payload was stored in
+one SQLite `TEXT` column, Android's `CursorWindow` is **2 MB per row**, and at 2.26 MB the
+first read after the first *successful* fetch threw `SQLiteBlobTooBigException` and took
+the process with it — on every launch, for good. It only appeared once a user had
+accumulated enough inline artwork to cross the line, which is why a small LAN instance
+paired and ran perfectly. 2.0.2 moved the body to a file beside the database (schema 3 → 4),
+which stopped the crash but kept the shape. **2.1.0 removes the shape**: the largest single
+value the database now holds, on this user's real data, is a 7,287-byte document — 288×
+under the limit — and nothing in the schema is an unbounded single-column blob.
 
 **Unreleased** — the bottom navigation bar, redesigned so that the **destinations** respond
 to a swipe rather than a highlight sliding behind them. 2.0.1 restored the indicator's
@@ -184,10 +201,10 @@ the same background sync.
 ## Architecture
 
 The UI reads **only** Room; the network is a background concern that catches up. A cold start
-renders the cached snapshot in the first frame, and a tap is a row of `pending_writes` plus
+renders the cached day in the first frame, and a tap is a row of `pending_writes` plus
 an optimistic overlay, never a request the user waits on. `LifeOsRepository` is the single
-seam: it owns the connection state machine (§7.2), stores each
-`GET /api/v1/dashboard/today` into the one-row `snapshot` table, and drains the write queue
+seam: it owns the connection state machine (§7.2), applies each `GET /api/v1/sync` delta
+into the keyed collections and documents in one transaction, and drains the write queue
 in enqueue order through `WorkManager` with backoff. Writes are stamped at tap time with the
 life-day that was then current, and the **life-day guard** (`LifeDayGuard`) refuses to send
 one whose stamp no longer matches the server's life-day — it strands instead, surfaces once,
@@ -207,23 +224,39 @@ Reminders──reads──►   │ │                      │ SyncWorker (Wor
 ```
 
 The widget and the notification layer are **readers**, exactly like the UI: they collect the
-same Room snapshot and neither of them fetches. That is what keeps one seam — a widget with
+same Room state and neither of them fetches. That is what keeps one seam — a widget with
 its own network call is a widget showing a spinner on a home screen, and a notification layer
 with its own fetch is a second connection state machine to keep in agreement with the first.
 
-**Two reads, not one.** `GET /api/v1/dashboard/today` carries no `settings` key — the
-server does not put one there — so settings are a second request on the same poll, cached in
-their own one-row table (`server_settings`, database version 2, hand-written migration). They
-are deliberately separate rows because either request can fail on its own: a settings fetch
-that fails must not discard a dashboard that succeeded, and an app that has never reached
-`/settings` still has to draw Today. Milestone 1 modelled `settings` as a field on the
-dashboard DTO with defaults, which meant `streaksEnabled`, `celebrationIntensity` and the
-quiet hours looked wired while always reading the default; that field is gone.
+**One read and one write.** Protocol 4 collapsed the poll into `GET /api/v1/sync` and every
+write into `POST /api/v1/sync/push`. Settings used to be a second request on every poll,
+because `dashboard/today` carried no `settings` key; they are one of the nine derived
+**documents** now and arrive only when their bytes actually changed. They are still kept in
+their own `server_settings` row rather than folded in with the rest, so that an upgrading
+install does not briefly draw defaults over someone's preferences before the first protocol
+4 response lands. (Milestone 1 modelled `settings` as a field on the dashboard DTO with
+defaults, which meant `streaksEnabled`, `celebrationIntensity` and the quiet hours looked
+wired while always reading the default; that field is gone.)
 
-The **one** screen-specific network read is `GET /api/v1/analytics`, and only for 30d/90d/all.
-`7d` is drawn from `xpSeries7` in the snapshot the whole app already has, so it renders
-offline and costs no request. Analytics is never polled and never cached in Room: it is a
-question the user asked by tapping a chip.
+The **one** screen-specific network read left is `GET /api/v1/analytics`, and only for
+30d/90d/all. `7d` is drawn from the `insights` document the whole app already has, so it
+renders offline and costs no request. Analytics is never polled and never cached in Room: it
+is a question the user asked by tapping a chip.
+
+**What Room holds** (database version 5):
+
+| Table | Holds |
+|---|---|
+| `habits` `tasks` `goals` `properties` `quests` `achievements` | one row per entity, keyed by the server's own id — `properties` by `uid`, which is its id field |
+| `sync_docs` | the nine derived documents, one row each, replaced whole |
+| `sync_state` | the cursor, the `ETag`, the life-day, the client id and the mutation counter |
+| `pending_writes` | the write queue, with the life-day stamp and the mutation number it was sent under |
+| `fired_notifications` | the durable "fire once" set |
+| `server_settings` | the `settings` document |
+
+The delta is applied in **one transaction** — reset, upsert, tombstone, documents, then the
+cursor last — because the UI reads Room through a `Flow`, so a half-applied delta is not a
+transient inconsistency, it is a frame the user sees.
 
 | Package | Holds |
 |---|---|
@@ -760,17 +793,24 @@ driving milestone 3 on it.
 
 ### Spec decisions changed, and why
 
-1. **Protocol 3, not 2.** UI_SPEC §7.7 and `docs/API.md` say 2; `protocol.ts` and the running
-   server say 3. Shipping 2 would have earned a `426` on the first request.
+1. **Protocol 4, not 2.** UI_SPEC §7.7 and `docs/API.md` said 2; `protocol.ts` and the
+   running server say 4, and `MIN_PROTOCOL_VERSION` is 4 too, so anything older earns a
+   `426` on the first request. `AddressInputTest` pins the number this build sends.
 2. **`bloom` ships in v1**, overruling UI_SPEC open question #1, per the brief. `sprout` and
    `orb` ship too; `constellation` and `ascent` are postponed.
-3. **The snapshot is stored as JSON text, not as normalised entities.** §7.1 says "parsed
-   entities". The dashboard is a single atomic read and the only query anything makes is "give
-   me the whole snapshot", so twenty tables would have to be written in one transaction and
-   re-joined on every emission to reconstruct exactly what arrived. Room is still the only
-   thing the UI reads, the read is still a Flow, and `lifeDayDate` is denormalised into a
-   column because the guard needs it without parsing. Stated here because it is a real
-   divergence, not an oversight.
+3. **The day is one row per entity, and each row keeps its own JSON body.** §7.1's "parsed
+   entities" is now satisfied — there are six keyed collections and nine documents rather
+   than one payload, a delta patches rows and a tombstone deletes one. What is *not* done
+   is projecting every field of every entity onto its own column: the columns broken out
+   are the ones something queries or compares against a clock (a task's `status`, `slot`
+   and its four window instants), and the rest of the row stays as the JSON the server
+   sent. That is deliberate. The server sends **whole rows**, so an upsert is one statement
+   that cannot half-apply; a forty-column projection would need a migration every time the
+   server grew a field, and any field this client does not model yet would be silently
+   dropped on the way through — the client would *lose* data the server sent it. The
+   property that was actually violated before is restored either way: every row is bounded
+   by one entity, and the largest value in the database on real data is 7,287 bytes against
+   a 2 MB limit.
 4. **User-installed certificates are not trusted** in the network security config, which
    UI_SPEC does not discuss. Nothing in the product needs a self-signed HTTPS server, so
    trusting the user store would widen the attack surface for no feature.

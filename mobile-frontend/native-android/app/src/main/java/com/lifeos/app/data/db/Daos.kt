@@ -7,23 +7,6 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 @Dao
-interface SnapshotDao {
-    /** The UI's only read. One row, so one nullable emission. */
-    @Query("SELECT * FROM snapshot WHERE id = ${SnapshotEntity.SINGLETON_ID}")
-    fun observe(): Flow<SnapshotEntity?>
-
-    @Query("SELECT * FROM snapshot WHERE id = ${SnapshotEntity.SINGLETON_ID}")
-    suspend fun get(): SnapshotEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun put(snapshot: SnapshotEntity)
-
-    /** Saving a different server address clears the cache — a different life. */
-    @Query("DELETE FROM snapshot")
-    suspend fun clear()
-}
-
-@Dao
 interface ServerSettingsDao {
     @Query("SELECT * FROM server_settings WHERE id = ${ServerSettingsEntity.SINGLETON_ID}")
     fun observe(): Flow<ServerSettingsEntity?>
@@ -119,4 +102,28 @@ interface PendingWriteDao {
 
     @Query("DELETE FROM pending_writes WHERE state = 'STRANDED'")
     suspend fun discardStranded()
+
+    /* ------------------------------------------------- protocol 4 numbering */
+
+    /**
+     * Record the number a write was sent under.
+     *
+     * Written **before** the request goes out, so a process killed mid-flight
+     * comes back knowing which number it used. Re-deriving it afterwards would
+     * mean either resending under a new number — completing a habit twice — or
+     * leaving a hole that refuses every later write.
+     */
+    @Query("UPDATE pending_writes SET mutation_id = :mutationId WHERE id = :id")
+    suspend fun setMutationId(id: Long, mutationId: Long)
+
+    /**
+     * Forget every assigned number, for the `409` repair path.
+     *
+     * A `409` means the server's counter and this client's disagree — a hole,
+     * or a database restored from backup. The server's own `lastMutationId`
+     * comes back in the body, so the queue is renumbered from it on the next
+     * drain rather than retrying the same refused batch forever.
+     */
+    @Query("UPDATE pending_writes SET mutation_id = NULL WHERE state = 'PENDING'")
+    suspend fun clearMutationIds()
 }

@@ -5,25 +5,38 @@ import com.lifeos.app.data.TokenSource
 import com.lifeos.app.data.api.AnalyticsDailyDto
 import com.lifeos.app.data.api.AnalyticsDto
 import com.lifeos.app.data.api.AuthMeDto
-import com.lifeos.app.data.api.DashboardTodayDto
 import com.lifeos.app.data.api.HealthDto
 import com.lifeos.app.data.api.LifeOsApi
 import com.lifeos.app.data.api.PairClaimRequest
 import com.lifeos.app.data.api.PairClaimResponse
 import com.lifeos.app.data.api.ProtocolDto
-import com.lifeos.app.data.api.SettingsDto
-import com.lifeos.app.data.api.SourceBody
+import com.lifeos.app.data.api.SyncEnvelopeDto
+import com.lifeos.app.data.api.SyncPushRequestDto
+import com.lifeos.app.data.api.SyncPushResponseDto
+import com.lifeos.app.data.db.AchievementDao
+import com.lifeos.app.data.db.AchievementEntity
+import com.lifeos.app.data.db.GoalDao
+import com.lifeos.app.data.db.GoalEntity
+import com.lifeos.app.data.db.HabitDao
+import com.lifeos.app.data.db.HabitEntity
 import com.lifeos.app.data.db.PendingWriteDao
 import com.lifeos.app.data.db.PendingWriteEntity
+import com.lifeos.app.data.db.PropertyDao
+import com.lifeos.app.data.db.PropertyEntity
+import com.lifeos.app.data.db.QuestDao
+import com.lifeos.app.data.db.QuestEntity
 import com.lifeos.app.data.db.ServerSettingsDao
 import com.lifeos.app.data.db.ServerSettingsEntity
-import com.lifeos.app.data.db.SnapshotDao
-import com.lifeos.app.data.db.SnapshotEntity
-import com.lifeos.app.data.db.SnapshotPayloads
+import com.lifeos.app.data.db.SyncApplyDao
+import com.lifeos.app.data.db.SyncDocDao
+import com.lifeos.app.data.db.SyncDocEntity
+import com.lifeos.app.data.db.SyncStateDao
+import com.lifeos.app.data.db.SyncStateEntity
+import com.lifeos.app.data.db.TaskDao
+import com.lifeos.app.data.db.TaskEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.serialization.json.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.Response
@@ -32,43 +45,261 @@ import retrofit2.Response
  * In-memory stand-ins.
  *
  * The parts of this app worth testing — the life-day guard, the queue's ordering
- * and retry, the growth geometry — need no server and no device, which is why
- * they are tested against these rather than against the user's live Life OS.
- * Nothing here opens a socket.
+ * and retry, the mutation numbering, the clock-dependent arithmetic — need no
+ * server and no device, which is why they are tested against these rather than
+ * against the user's live Life OS. Nothing here opens a socket.
  */
-
-class FakeSnapshotDao(initial: SnapshotEntity? = null) : SnapshotDao {
-    private val state = MutableStateFlow(initial)
-    override fun observe(): Flow<SnapshotEntity?> = state
-    override suspend fun get(): SnapshotEntity? = state.value
-    override suspend fun put(snapshot: SnapshotEntity) {
-        state.value = snapshot
-    }
-
-    override suspend fun clear() {
-        state.value = null
-    }
-}
 
 /**
- * The snapshot body, in memory.
+ * The six collections, the nine documents and the one state row, in memory.
  *
- * The real one is a file, because 2.26 MB of dashboard JSON in a `TEXT` column
- * is over Android's 2 MB `CursorWindow` limit and threw
- * `SQLiteBlobTooBigException` on every read.
+ * One object rather than eight unrelated fakes, because the thing worth testing
+ * is how a *delta* lands across all of them at once: a reset has to clear
+ * everything, a tombstone has to remove from the right table, and the cursor
+ * must not advance unless the rest of it did. It subclasses the real
+ * [SyncApplyDao], so the ordering in `apply` that the tests assert is the
+ * production code's own and not a copy of it.
  */
-class FakeSnapshotPayloads(initial: String? = null) : SnapshotPayloads {
-    var json: String? = initial
-        private set
+class FakeSyncDb : SyncApplyDao() {
 
-    override suspend fun write(json: String) {
-        this.json = json
+    val habitRows = MutableStateFlow<List<HabitEntity>>(emptyList())
+    val taskRows = MutableStateFlow<List<TaskEntity>>(emptyList())
+    val goalRows = MutableStateFlow<List<GoalEntity>>(emptyList())
+    val propertyRows = MutableStateFlow<List<PropertyEntity>>(emptyList())
+    val questRows = MutableStateFlow<List<QuestEntity>>(emptyList())
+    val achievementRows = MutableStateFlow<List<AchievementEntity>>(emptyList())
+    val docRows = MutableStateFlow<List<SyncDocEntity>>(emptyList())
+    val stateRow = MutableStateFlow<SyncStateEntity?>(null)
+
+    /* ------------------------------------------------------------- upserts */
+
+    override suspend fun upsertHabits(rows: List<HabitEntity>) {
+        habitRows.value = merge(habitRows.value, rows) { it.id }
     }
 
-    override suspend fun read(): String? = json
+    override suspend fun upsertTasks(rows: List<TaskEntity>) {
+        taskRows.value = merge(taskRows.value, rows) { it.id }
+    }
 
-    override suspend fun clear() {
-        json = null
+    override suspend fun upsertGoals(rows: List<GoalEntity>) {
+        goalRows.value = merge(goalRows.value, rows) { it.id }
+    }
+
+    override suspend fun upsertProperties(rows: List<PropertyEntity>) {
+        propertyRows.value = merge(propertyRows.value, rows) { it.uid }
+    }
+
+    override suspend fun upsertQuests(rows: List<QuestEntity>) {
+        questRows.value = merge(questRows.value, rows) { it.id }
+    }
+
+    override suspend fun upsertAchievements(rows: List<AchievementEntity>) {
+        achievementRows.value = merge(achievementRows.value, rows) { it.id }
+    }
+
+    override suspend fun upsertDocs(rows: List<SyncDocEntity>) {
+        docRows.value = merge(docRows.value, rows) { it.name }
+    }
+
+    /**
+     * `INSERT OR REPLACE`, by key, preserving the order rows first appeared.
+     *
+     * The order matters only so that assertions can be written against a stable
+     * list; SQLite makes no such promise and nothing in the app depends on one.
+     */
+    private fun <T, K> merge(existing: List<T>, incoming: List<T>, key: (T) -> K): List<T> {
+        val byKey = LinkedHashMap<K, T>()
+        existing.forEach { byKey[key(it)] = it }
+        incoming.forEach { byKey[key(it)] = it }
+        return byKey.values.toList()
+    }
+
+    /* ------------------------------------------------------------- deletes */
+
+    override suspend fun deleteHabits(ids: List<String>) {
+        habitRows.value = habitRows.value.filterNot { it.id in ids }
+    }
+
+    override suspend fun deleteTasks(ids: List<String>) {
+        taskRows.value = taskRows.value.filterNot { it.id in ids }
+    }
+
+    override suspend fun deleteGoals(ids: List<String>) {
+        goalRows.value = goalRows.value.filterNot { it.id in ids }
+    }
+
+    override suspend fun deleteProperties(ids: List<String>) {
+        propertyRows.value = propertyRows.value.filterNot { it.uid in ids }
+    }
+
+    override suspend fun deleteQuests(ids: List<String>) {
+        questRows.value = questRows.value.filterNot { it.id in ids }
+    }
+
+    override suspend fun deleteAchievements(ids: List<String>) {
+        achievementRows.value = achievementRows.value.filterNot { it.id in ids }
+    }
+
+    /* -------------------------------------------------------------- clears */
+
+    override suspend fun clearHabits() {
+        habitRows.value = emptyList()
+    }
+
+    override suspend fun clearTasks() {
+        taskRows.value = emptyList()
+    }
+
+    override suspend fun clearGoals() {
+        goalRows.value = emptyList()
+    }
+
+    override suspend fun clearProperties() {
+        propertyRows.value = emptyList()
+    }
+
+    override suspend fun clearQuests() {
+        questRows.value = emptyList()
+    }
+
+    override suspend fun clearAchievements() {
+        achievementRows.value = emptyList()
+    }
+
+    override suspend fun clearDocs() {
+        docRows.value = emptyList()
+    }
+
+    override suspend fun clearState() {
+        stateRow.value = null
+    }
+
+    /* --------------------------------------------------------------- state */
+
+    override suspend fun state(): SyncStateEntity? = stateRow.value
+
+    override suspend fun put(state: SyncStateEntity) {
+        stateRow.value = state
+    }
+
+    override suspend fun advance(
+        cursor: String?,
+        etag: String?,
+        lifeDayDate: String,
+        lifeDayStart: String?,
+        lifeDayEnd: String?,
+        dayResetTime: String,
+        timezone: String?,
+        serverTime: String?,
+        fetchedAt: Long,
+        baseUrl: String,
+    ) {
+        stateRow.value = stateRow.value?.copy(
+            cursor = cursor,
+            etag = etag,
+            lifeDayDate = lifeDayDate,
+            lifeDayStart = lifeDayStart,
+            lifeDayEnd = lifeDayEnd,
+            dayResetTime = dayResetTime,
+            timezone = timezone,
+            serverTime = serverTime,
+            fetchedAt = fetchedAt,
+            baseUrl = baseUrl,
+        )
+    }
+
+    /* ----------------------------------------------- the DAOs, over the same state */
+
+    val habits = object : HabitDao {
+        override fun observe(): Flow<List<HabitEntity>> = habitRows
+        override suspend fun upsert(rows: List<HabitEntity>) = upsertHabits(rows)
+        override suspend fun deleteByIds(ids: List<String>) = deleteHabits(ids)
+        override suspend fun clear() = clearHabits()
+        override suspend fun count(): Int = habitRows.value.size
+    }
+
+    val tasks = object : TaskDao {
+        override fun observe(): Flow<List<TaskEntity>> = taskRows
+        override suspend fun upsert(rows: List<TaskEntity>) = upsertTasks(rows)
+        override suspend fun deleteByIds(ids: List<String>) = deleteTasks(ids)
+        override suspend fun clear() = clearTasks()
+        override suspend fun count(): Int = taskRows.value.size
+        override suspend fun remindable(): List<TaskEntity> = taskRows.value.filter {
+            it.dueFrom != null &&
+                it.notifiedAt.isNullOrEmpty() &&
+                it.status != "done" &&
+                it.status != "dismissed"
+        }
+    }
+
+    val goals = object : GoalDao {
+        override fun observe(): Flow<List<GoalEntity>> = goalRows
+        override suspend fun upsert(rows: List<GoalEntity>) = upsertGoals(rows)
+        override suspend fun deleteByIds(ids: List<String>) = deleteGoals(ids)
+        override suspend fun clear() = clearGoals()
+    }
+
+    val properties = object : PropertyDao {
+        override fun observe(): Flow<List<PropertyEntity>> = propertyRows
+        override suspend fun upsert(rows: List<PropertyEntity>) = upsertProperties(rows)
+        override suspend fun deleteByIds(ids: List<String>) = deleteProperties(ids)
+        override suspend fun clear() = clearProperties()
+    }
+
+    val quests = object : QuestDao {
+        override fun observe(): Flow<List<QuestEntity>> = questRows
+        override suspend fun upsert(rows: List<QuestEntity>) = upsertQuests(rows)
+        override suspend fun deleteByIds(ids: List<String>) = deleteQuests(ids)
+        override suspend fun clear() = clearQuests()
+    }
+
+    val achievements = object : AchievementDao {
+        override fun observe(): Flow<List<AchievementEntity>> = achievementRows
+        override suspend fun upsert(rows: List<AchievementEntity>) = upsertAchievements(rows)
+        override suspend fun deleteByIds(ids: List<String>) = deleteAchievements(ids)
+        override suspend fun clear() = clearAchievements()
+    }
+
+    val docs = object : SyncDocDao {
+        override fun observe(): Flow<List<SyncDocEntity>> = docRows
+        override suspend fun upsert(rows: List<SyncDocEntity>) = upsertDocs(rows)
+        override suspend fun clear() = clearDocs()
+    }
+
+    val syncState = object : SyncStateDao {
+        override fun observe(): Flow<SyncStateEntity?> = stateRow
+        override suspend fun get(): SyncStateEntity? = stateRow.value
+        override suspend fun put(state: SyncStateEntity) {
+            stateRow.value = state
+        }
+
+        override suspend fun clear() {
+            stateRow.value = null
+        }
+
+        override suspend fun advance(
+            cursor: String?,
+            etag: String?,
+            lifeDayDate: String,
+            lifeDayStart: String?,
+            lifeDayEnd: String?,
+            dayResetTime: String,
+            timezone: String?,
+            serverTime: String?,
+            fetchedAt: Long,
+            baseUrl: String,
+        ) = this@FakeSyncDb.advance(
+            cursor, etag, lifeDayDate, lifeDayStart, lifeDayEnd,
+            dayResetTime, timezone, serverTime, fetchedAt, baseUrl,
+        )
+
+        override suspend fun touch(fetchedAt: Long) {
+            stateRow.value = stateRow.value?.copy(fetchedAt = fetchedAt)
+        }
+
+        override suspend fun setLastMutationId(id: Long) {
+            stateRow.value = stateRow.value?.copy(lastMutationId = id)
+        }
     }
 }
 
@@ -167,6 +398,18 @@ class FakePendingWriteDao : PendingWriteDao {
     override suspend fun discardStranded() {
         rows.value = rows.value.filterNot { it.state == "STRANDED" }
     }
+
+    override suspend fun setMutationId(id: Long, mutationId: Long) {
+        rows.value = rows.value.map {
+            if (it.id == id) it.copy(mutationId = mutationId) else it
+        }
+    }
+
+    override suspend fun clearMutationIds() {
+        rows.value = rows.value.map {
+            if (it.state == "PENDING") it.copy(mutationId = null) else it
+        }
+    }
 }
 
 class FakeConfig(private var url: String? = "http://127.0.0.1:8787") : ConnectionConfig {
@@ -181,27 +424,32 @@ class FakeToken(private val value: String? = "test-token") : TokenSource {
 }
 
 /**
- * A scripted API.
+ * A scripted protocol 4 API.
  *
  * Each call appends to [calls] in order, which is how the queue's ordering is
  * asserted: a complete followed by an undo must arrive in that order, or the
- * server ends up with the opposite of what the user did.
+ * server ends up with the opposite of what the user did. [pushes] keeps every
+ * request body, so the mutation numbering and the life-day stamps can be
+ * checked as the server would see them.
  */
 class FakeApi(
-    private val today: DashboardTodayDto = DashboardTodayDto(),
-    private val settings: SettingsDto = SettingsDto(),
-    /** Per-endpoint responses, keyed by the call name. */
-    var habitCompleteCode: Int = 200,
-    var taskCompleteCode: Int = 200,
-    var throwOnHabitComplete: Boolean = false,
+    private val envelope: SyncEnvelopeDto = SyncEnvelopeDto(),
+    var syncCode: Int = 200,
+    /** Scripted `/sync/push` outcome. */
+    var pushCode: Int = 200,
+    var pushResponse: SyncPushResponseDto = SyncPushResponseDto(),
+    var pushConflictLastMutationId: Long = 0,
+    var throwOnPush: Boolean = false,
     var analyticsCode: Int = 200,
     var analyticsDaily: List<AnalyticsDailyDto> = emptyList(),
     /* ---- pairing (§7.3). The claim is unauthenticated, so none of this needs a token. ---- */
     var claimStatus: Int = 200,
     var claimResponse: PairClaimResponse = PairClaimResponse(),
     var throwOnClaim: Throwable? = null,
-    /** How long `today()` takes, so overlapping refreshes can be tested. */
-    var todayDelayMs: Long = 0,
+    /** How long `sync()` takes, so overlapping refreshes can be tested. */
+    var syncDelayMs: Long = 0,
+    /** The `ETag` the scripted sync answers with. */
+    var etag: String? = null,
 ) : LifeOsApi {
 
     val calls = mutableListOf<String>()
@@ -209,12 +457,12 @@ class FakeApi(
     /** Every code submitted, and the URL it was submitted to. */
     val claims = mutableListOf<Pair<String, String>>()
 
-    private fun ok(): Response<JsonObject> = Response.success(JsonObject(emptyMap()))
+    /** Every push body, in order. */
+    val pushes = mutableListOf<SyncPushRequestDto>()
 
-    private fun code(status: Int): Response<JsonObject> = Response.error(
-        status,
-        """{"error":"scripted $status"}""".toResponseBody("application/json".toMediaType()),
-    )
+    /** Every `since` a sync was asked with, and every `If-None-Match`. */
+    val syncCursors = mutableListOf<String?>()
+    val syncEtags = mutableListOf<String?>()
 
     override suspend fun health(url: String): Response<HealthDto> {
         calls += "health"
@@ -223,7 +471,7 @@ class FakeApi(
 
     override suspend fun protocol(url: String): Response<ProtocolDto> {
         calls += "protocol"
-        return Response.success(ProtocolDto(protocol = 3, minProtocol = 3))
+        return Response.success(ProtocolDto(protocol = 4, minProtocol = 4))
     }
 
     override suspend fun claimPairing(url: String, body: PairClaimRequest): Response<PairClaimResponse> {
@@ -244,17 +492,67 @@ class FakeApi(
         return Response.success(AuthMeDto(ok = true))
     }
 
-    override suspend fun today(): Response<DashboardTodayDto> {
-        calls += "today"
-        // A fetch that takes real time, so a test can have two overlap. The
-        // user's tunnelled server takes 6.8–15.2s for this one call.
-        if (todayDelayMs > 0) kotlinx.coroutines.delay(todayDelayMs)
-        return Response.success(today)
+    override suspend fun sync(since: String?, ifNoneMatch: String?): Response<SyncEnvelopeDto> {
+        calls += "sync"
+        syncCursors += since
+        syncEtags += ifNoneMatch
+        if (syncDelayMs > 0) kotlinx.coroutines.delay(syncDelayMs)
+        return when (syncCode) {
+            200 -> {
+                val headers = okhttp3.Headers.Builder()
+                    .apply { etag?.let { add("ETag", it) } }
+                    .build()
+                Response.success(envelope, headers)
+            }
+
+            /*
+             * `304` carries no body at all, which is the whole point of sending
+             * `If-None-Match` — 314 bytes become zero.
+             *
+             * Built from a raw OkHttp response rather than with
+             * `Response.error(code, body)`, because that overload rejects any
+             * code below 400 and a 304 is not an error. This is exactly how
+             * Retrofit itself delivers one: `parseResponse` treats anything
+             * outside 200–299 as `Response.error(buffered, rawResponse)`, so a
+             * real 304 arrives with `isSuccessful == false` and `code() == 304`
+             * — which is why the repository has to test the code *before* it
+             * tests `isSuccessful`, and why this fake has to reproduce the shape
+             * faithfully rather than approximate it.
+             */
+            304 -> Response.error(
+                "".toResponseBody(null),
+                okhttp3.Response.Builder()
+                    .code(304)
+                    .message("Not Modified")
+                    .protocol(okhttp3.Protocol.HTTP_1_1)
+                    .request(okhttp3.Request.Builder().url("http://127.0.0.1:8787/api/v1/sync").build())
+                    .build(),
+            )
+
+            else -> Response.error(
+                syncCode,
+                """{"error":"scripted $syncCode"}""".toResponseBody("application/json".toMediaType()),
+            )
+        }
     }
 
-    override suspend fun settings(): Response<SettingsDto> {
-        calls += "settings"
-        return Response.success(settings)
+    override suspend fun push(body: SyncPushRequestDto): Response<SyncPushResponseDto> {
+        calls += "push"
+        pushes += body
+        if (throwOnPush) throw java.io.IOException("socket closed")
+        return when (pushCode) {
+            200 -> Response.success(pushResponse)
+            409 -> Response.error(
+                409,
+                """{"error":"hole","lastMutationId":$pushConflictLastMutationId}"""
+                    .toResponseBody("application/json".toMediaType()),
+            )
+
+            else -> Response.error(
+                pushCode,
+                """{"error":"scripted $pushCode"}""".toResponseBody("application/json".toMediaType()),
+            )
+        }
     }
 
     override suspend fun analytics(range: String): Response<AnalyticsDto> {
@@ -268,56 +566,5 @@ class FakeApi(
                     .toResponseBody("application/json".toMediaType()),
             )
         }
-    }
-
-    override suspend fun completeHabit(id: String, body: SourceBody): Response<JsonObject> {
-        calls += "habit-complete:$id"
-        if (throwOnHabitComplete) throw java.io.IOException("socket closed")
-        return if (habitCompleteCode == 200) ok() else code(habitCompleteCode)
-    }
-
-    override suspend fun undoHabit(id: String): Response<JsonObject> {
-        calls += "habit-undo:$id"
-        return ok()
-    }
-
-    override suspend fun completeTask(id: String, body: SourceBody): Response<JsonObject> {
-        calls += "task-complete:$id"
-        return if (taskCompleteCode == 200) ok() else code(taskCompleteCode)
-    }
-
-    override suspend fun dismissTask(id: String): Response<JsonObject> {
-        calls += "task-dismiss:$id"
-        return ok()
-    }
-
-    override suspend fun taskNotified(id: String): Response<JsonObject> {
-        calls += "task-notified:$id"
-        return ok()
-    }
-
-    override suspend fun celebrationSeen(id: String): Response<JsonObject> {
-        calls += "celebration-seen:$id"
-        return ok()
-    }
-
-    override suspend fun patchSettings(body: JsonObject): Response<JsonObject> {
-        calls += "settings-patch"
-        return ok()
-    }
-
-    override suspend fun startSession(body: JsonObject): Response<JsonObject> {
-        calls += "session-start"
-        return ok()
-    }
-
-    override suspend fun stopSession(): Response<JsonObject> {
-        calls += "session-stop"
-        return ok()
-    }
-
-    override suspend fun logStudy(body: JsonObject): Response<JsonObject> {
-        calls += "study-log"
-        return ok()
     }
 }

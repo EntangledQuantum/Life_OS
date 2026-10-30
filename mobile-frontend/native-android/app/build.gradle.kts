@@ -28,12 +28,22 @@ android {
         // 2.0.2: timeouts chosen from the address, so a tunnelled server can be
         // paired with at all. Nothing about the data, the protocol or the
         // signing key moves, so it is a patch like 2.0.1 was.
-        versionCode = 202
-        versionName = "2.0.2"
+        // 2.1.0: protocol 4 — incremental sync. The day is stored as rows
+        // instead of one payload, the cursor replaces re-reading everything,
+        // artwork is a URL and four display values are computed on the device.
+        // A minor and not a whole integer: the signing key is unchanged, the
+        // install updates in place, and the schema migrates without losing a
+        // queued write. It is a large change that breaks nothing for the user.
+        versionCode = 210
+        versionName = "2.1.0"
 
         // The protocol this app can read. Source of truth:
         // packages/shared/src/protocol.ts (PROTOCOL_VERSION). Copied, not imported.
-        buildConfigField("int", "LIFEOS_PROTOCOL", "3")
+        //
+        // 4 as of 2.1.0. A v3 client gets 426 on every /api/v1 route and there
+        // is no compatibility layer by design, so this and the sync
+        // implementation move together or not at all.
+        buildConfigField("int", "LIFEOS_PROTOCOL", "4")
     }
 
     /*

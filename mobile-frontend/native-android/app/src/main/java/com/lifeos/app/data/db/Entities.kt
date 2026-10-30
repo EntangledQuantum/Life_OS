@@ -4,48 +4,27 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-/**
- * The snapshot table (UI_SPEC §7.1).
+/*
+ * The `snapshot` table is gone as of version 5.
  *
- * One row, id 1. It holds the latest `GET /api/v1/dashboard/today` response plus
- * `fetchedAt`, so a cold start renders real content in the first frame rather
- * than a spinner.
- *
- * **Deviation from §7.1, stated plainly:** the spec says "as parsed entities".
- * The payload is stored as its JSON text and deserialised on read instead. The
- * reason is that the dashboard is a single atomic read — twenty normalised
- * tables would have to be written in one transaction and re-joined on every
- * emission to reconstruct exactly what arrived, and the only query anything
- * actually makes is "give me the whole snapshot". The properties that mattered
- * are kept: Room is still the only thing the UI reads, the read is still a Flow,
- * and the cache still survives the process. `lifeDayDate` is denormalised into a
- * column because the write queue's guard needs it without parsing the payload.
- *
- * **The payload itself is no longer in this row** (2.0.2). It was, and on a
- * real instance it is 2.26 MB of mostly inline base64 artwork, which is over
- * Android's 2 MB `CursorWindow` limit — so the first read after the first
- * successful fetch threw `SQLiteBlobTooBigException` and took the process with
- * it, on every launch, for good. It lives in a file now
- * ([SnapshotPayloads]); what is left here is the metadata the app queries by,
- * and all four columns together are a few hundred bytes.
+ * It held the whole day as one opaque payload — first in a column, which
+ * exceeded Android's 2 MB per-row `CursorWindow` limit and bricked the app, then
+ * in a file beside the database, which did not crash but was still rewritten
+ * whole on every poll. Protocol 4 sends rows and tombstones, so the day is
+ * stored as rows: see [SyncEntities]. Nothing in this database is an unbounded
+ * single-column blob any more, and nothing may become one again.
  */
-@Entity(tableName = "snapshot")
-data class SnapshotEntity(
-    @PrimaryKey val id: Int = SINGLETON_ID,
-    /** When this snapshot arrived. The status strip shows it, so "stale" is a fact. */
-    @ColumnInfo(name = "fetched_at") val fetchedAt: Long,
-    /** `lifeDay.date` as the server reported it. The guard compares against this. */
-    @ColumnInfo(name = "life_day_date") val lifeDayDate: String,
-    /** Which server this came from. A different server is a different life. */
-    @ColumnInfo(name = "base_url") val baseUrl: String,
-) {
-    companion object {
-        const val SINGLETON_ID = 1
-    }
-}
 
 /**
- * The server's settings, cached in one row beside the snapshot.
+ * The server's settings, cached in one row.
+ *
+ * Still its own table under protocol 4, now fed by the `settings` **document**
+ * rather than by a second `GET /api/v1/settings` — one fewer request per poll,
+ * and the document only arrives when its bytes actually changed. The table is
+ * kept rather than folded into `sync_docs` so that the settings an upgrading
+ * install already has survive until the first protocol 4 response lands; a
+ * screen that drew defaults for a few seconds after an upgrade would look like
+ * the user's preferences had been lost.
  *
  * Its own table rather than a column on `snapshot` because the two arrive from
  * two different requests and either can fail on its own: a settings fetch that
@@ -111,4 +90,22 @@ data class PendingWriteEntity(
     @ColumnInfo(name = "notice_shown") val noticeShown: Boolean = false,
     /** Earliest instant the drain may try this write again. */
     @ColumnInfo(name = "next_attempt_at") val nextAttemptAt: Long = 0,
+    /**
+     * The mutation number this write was sent under, or null if it has not been
+     * sent yet.
+     *
+     * Protocol 4 identifies a write by a counter the client persists and
+     * increments by exactly one, and the server refuses a batch with a **hole**
+     * in it — `409`, resend from `lastMutationId + 1`. Two consequences, and
+     * both are the reason this column exists rather than a plain counter:
+     *
+     *  - **The number is assigned when the write is first sent, not when it is
+     *    enqueued.** A write the life-day guard strands never reaches the wire,
+     *    and a number burned on it would be a hole that refuses every later
+     *    write for good.
+     *  - **The number is reused on every retry.** That is what makes a retry
+     *    idempotent: the server answers `duplicate` and the user's habit is
+     *    completed once, not once per attempt on a flaky link.
+     */
+    @ColumnInfo(name = "mutation_id") val mutationId: Long? = null,
 )

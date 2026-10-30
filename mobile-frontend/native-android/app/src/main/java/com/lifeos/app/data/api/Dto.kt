@@ -131,6 +131,31 @@ data class TaskDto(
     val ctaLabel: String? = null,
     val ctaLink: String? = null,
     val source: String = "agent",
+
+    /* ------------------------------------------------- the four instants (p4) */
+
+    /**
+     * `SyncedTask`'s four window instants (SYNC.md §6).
+     *
+     * Pure functions of the row and the user's `reminderLeadMinutes` — **no clock
+     * is read to produce them** — so they are stable between polls and cached
+     * with the row forever. They exist so the *policy* stays on the server, with
+     * its shelf lives and default windows, while the *clock comparison* happens
+     * here, next to the screen. Without them this client would reimplement
+     * `isCardImminent` and `isReminderDue` and then drift from the dashboard
+     * about which task is urgent.
+     *
+     * Nullable and defaulted, so a response that omits them (a v3 body replayed
+     * from a cache, a server mid-upgrade) degrades to "never current" rather
+     * than to a parse failure.
+     */
+    val currentFrom: String? = null,
+    /** Last instant it is current; null means it has no window of its own. */
+    val currentUntil: String? = null,
+    /** First instant its notification should fire. Null means it never does. */
+    val dueFrom: String? = null,
+    /** Last instant firing it is a nudge rather than an accusation. */
+    val dueUntil: String? = null,
 )
 
 @Serializable

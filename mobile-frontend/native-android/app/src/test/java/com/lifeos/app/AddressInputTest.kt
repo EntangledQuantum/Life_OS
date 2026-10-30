@@ -84,10 +84,20 @@ class AddressInputTest {
     }
 
     @Test
-    fun `the protocol this build speaks is 3`() {
-        // Copied from packages/shared/src/protocol.ts (PROTOCOL_VERSION = 3).
-        // docs/API.md still documents 2; protocol.ts is the source of truth.
-        assertEquals(3, ApiClient.clientProtocol)
+    fun `the protocol this build speaks is 4`() {
+        /*
+         * Copied from packages/shared/src/protocol.ts, where
+         * `PROTOCOL_VERSION = 4` and `MIN_PROTOCOL_VERSION = 4`.
+         *
+         * This assertion is the reason the number is worth pinning at all.
+         * There is no compatibility layer by design: a client claiming 3 gets a
+         * `426` on every `/api/v1` route, and `GET /api/v1/dashboard/today` —
+         * the single call the whole app used to be built on — is gone. So
+         * `BuildConfig.LIFEOS_PROTOCOL` and the sync implementation have to move
+         * together, and a build that says 4 while still asking for the dashboard
+         * would fail at runtime rather than here.
+         */
+        assertEquals(4, ApiClient.clientProtocol)
         assertEquals("x-lifeos-protocol", ApiClient.PROTOCOL_HEADER)
     }
 

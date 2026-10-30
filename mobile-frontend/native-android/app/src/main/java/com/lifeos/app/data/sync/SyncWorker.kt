@@ -38,14 +38,24 @@ class SyncWorker(context: Context, params: WorkerParameters) :
         val outcome = runCatching { repository.drain() }.getOrElse { return Result.retry() }
 
         /*
-         * A write landing changes aggregates the client deliberately does not
-         * patch (§4.6), so a successful drain is always followed by a refetch.
+         * **A drain is no longer followed by a refetch.**
          *
-         * The periodic run refetches whether or not anything drained: that is
-         * the whole point of it — the cache, and therefore the widget, has to
-         * be current without the app having been opened.
+         * It used to be, and it had to be: a write changes aggregates the client
+         * deliberately does not patch (§4.6) — XP, efficiency, the pulse, the
+         * next occurrence, a goal completing — so the only way to learn what a
+         * tick had done was to ask for the whole day again. That is the 2.26 MB
+         * re-read protocol 4 exists to delete. `/sync/push` answers with the
+         * delta its own mutations caused, and `drain()` has already applied it,
+         * so the aggregates are in Room by the time this line is reached.
+         * Refetching here would be asking for something we were just handed.
+         *
+         * The **periodic** run still syncs, whether or not anything drained, and
+         * that is not the same thing: it is the background freshener, so the
+         * cache — and therefore the widget and the reminders below — is current
+         * without the app having been opened. An unchanged poll is 314 bytes, or
+         * nothing at all on a `304`.
          */
-        if (outcome == DrainOutcome.DRAINED || isPeriodic) {
+        if (isPeriodic) {
             runCatching { repository.refresh() }
         }
 
