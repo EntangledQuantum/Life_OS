@@ -58,6 +58,19 @@ export const AGENT_SETUP_URL =
   "https://raw.githubusercontent.com/EntangledQuantum/Life_OS/master/docs/AGENT_SETUP.md";
 
 /**
+ * The upgrade instructions, for someone who already runs Life OS.
+ *
+ * A second document rather than a section inside the first, because the two
+ * jobs barely overlap: a fresh install has no data, no paired phone and no
+ * order of operations to get wrong, while an upgrade is almost entirely about
+ * the order. 3.0 refuses every 2.x client outright, so the moment the server
+ * moves the app on the user's phone stops working — which an agent needs to be
+ * told *before* it starts, not discovered three steps in.
+ */
+export const AGENT_UPGRADE_URL =
+  "https://raw.githubusercontent.com/EntangledQuantum/Life_OS/master/docs/AGENT_UPGRADE.md";
+
+/**
  * The one thing to copy off the landing page.
  *
  * Setting Life OS up is an agent task — install it, run it as a service,
@@ -65,3 +78,13 @@ export const AGENT_SETUP_URL =
  * sentence that starts that rather than a wall of shell commands.
  */
 export const AGENT_ONE_LINER = `Fetch ${AGENT_SETUP_URL} and set Life OS up for me`;
+
+/**
+ * The same move for an existing install.
+ *
+ * Says "upgrade", not "set up", so an agent that reads only the sentence still
+ * lands on the right document: the first thing the upgrade file does is work
+ * out what the user already has, and the first thing the setup file does is
+ * send an upgrader away.
+ */
+export const AGENT_UPGRADE_ONE_LINER = `Fetch ${AGENT_UPGRADE_URL} and upgrade my Life OS to 3.0`;
