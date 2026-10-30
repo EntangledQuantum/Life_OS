@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, blob } from "drizzle-orm/sqlite-core";
 
 export const habits = sqliteTable("habits", {
   id: text("id").primaryKey(),
@@ -639,6 +639,91 @@ export const goalProgressHistory = sqliteTable("goal_progress_history", {
  * read, or expired a row in that table any more — so `ensureSchema()` drops it
  * on boot.
  */
+
+/* ------------------------------------------------------------------- sync */
+
+/**
+ * One row, holding the number every client's cursor is compared against.
+ *
+ * `version` is bumped by a trigger on every write to anything a client holds,
+ * so "has anything changed since I last asked" is one integer comparison
+ * against an in-memory page rather than a scan of the content. See migration
+ * 15 for why it is a counter and not a timestamp.
+ */
+export const syncState = sqliteTable("sync_state", {
+  id: integer("id").primaryKey(),
+  version: integer("version").notNull().default(0),
+  /** The life-day the derived documents were last computed against. */
+  lifeDay: text("life_day"),
+  /** Cursors at or below this cannot be served a delta — see `epoch`. */
+  tombstoneFloor: integer("tombstone_floor").notNull().default(0),
+  /** Identity of this database's history. A cursor from another one is refused. */
+  epoch: text("epoch").notNull(),
+});
+
+/**
+ * The change log: one row per entity, not one per change.
+ *
+ * The trigger overwrites an entity's row with a higher version rather than
+ * appending, so this table is the size of the world plus its tombstones — not
+ * the size of its history — and a client that has been away gets each changed
+ * thing exactly once.
+ */
+export const changeLog = sqliteTable("change_log", {
+  collection: text("collection").notNull(),
+  entityId: text("entity_id").notNull(),
+  version: integer("version").notNull(),
+  /** `put` — read the current row. `del` — a tombstone. */
+  op: text("op").notNull(),
+  at: text("at").notNull(),
+});
+
+/**
+ * The version at which each derived document last actually changed.
+ *
+ * A computed document (the agenda, the ribbon, today's numbers) has no row to
+ * put a trigger on, so it is recomputed when the counter moves, hashed, and
+ * compared with the hash recorded here. A recompute that produces the same
+ * bytes does not move the version, so completing a task does not re-send the
+ * eight documents it did not affect.
+ */
+export const syncDocs = sqliteTable("sync_docs", {
+  name: text("name").primaryKey(),
+  hash: text("hash").notNull(),
+  version: integer("version").notNull(),
+});
+
+/**
+ * How far each client's own writes have been applied.
+ *
+ * A mutation carries a number that only goes up, so a write that arrives twice
+ * — the phone retried, the response was lost on a relay — is recognised and
+ * not applied again. Without this an offline queue drained twice would complete
+ * a habit twice and pay for it twice.
+ */
+export const syncClients = sqliteTable("sync_clients", {
+  clientId: text("client_id").primaryKey(),
+  lastMutationId: integer("last_mutation_id").notNull().default(0),
+  lastSeenAt: text("last_seen_at").notNull(),
+});
+
+/**
+ * Content-addressed art, so a picture is a URL rather than 55 KB of base64 in
+ * every poll.
+ *
+ * The key is the sha-256 of the bytes, which makes the URL immutable by
+ * construction: the same hash is always the same picture, so it can be cached
+ * for a year and never revalidated. The art also stays in its original
+ * `*_image_data` column — this is a cache beside the data, not a move of it.
+ */
+export const assets = sqliteTable("assets", {
+  /** sha-256 of the bytes, lowercase hex. */
+  hash: text("hash").primaryKey(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(),
+  bytes: blob("bytes").notNull(),
+  createdAt: text("created_at").notNull(),
+});
 
 export const specialEventCandidates = sqliteTable("special_event_candidates", {
   id: text("id").primaryKey(),

@@ -16,8 +16,9 @@
  * | 1 | cards, agent events, light reviews and schedule blocks as separate things |
  * | 2 | one task system: `tasks` replaces all four |
  * | 3 | one agenda: habits carry their own time, and `missed` is a task status |
+ * | 4 | incremental sync: `GET /sync` replaces `GET /dashboard/today`, art is a URL |
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /**
  * The oldest client this server will talk to.
@@ -26,8 +27,14 @@ export const PROTOCOL_VERSION = 3;
  * that came before is gone rather than deprecated. A v2 client would read the
  * agenda as an empty day and show a task whose status it has no name for, which
  * is worse than being told to update.
+ *
+ * v4 is the sharpest break so far: `GET /dashboard/today` no longer exists, and
+ * a v3 client has no other way to read. Keeping the route for one version was
+ * considered and makes no sense — a v3 client is refused at this gate before it
+ * ever reaches a route, so the only caller a kept route could have is a v4
+ * client, and a v4 client has `GET /sync`, which is strictly better.
  */
-export const MIN_PROTOCOL_VERSION = 3;
+export const MIN_PROTOCOL_VERSION = 4;
 
 /** Header a client sends to say what it can read. */
 export const PROTOCOL_HEADER = "x-lifeos-protocol";
@@ -47,9 +54,10 @@ export function protocolMismatch(clientProtocol: number): ProtocolMismatch {
   return {
     error: "This app is too old for this Life OS server",
     hint:
-      "Life OS collapsed cards, agent events, reviews and study blocks into one " +
-      "task model. Update the app — the web dashboard updates itself, the " +
-      "Android app needs the latest APK.",
+      "Life OS syncs incrementally now: GET /api/v1/sync returns what changed " +
+      "since your cursor, and artwork is a URL rather than base64 in the " +
+      "payload. GET /api/v1/dashboard/today is gone. Update the app — the web " +
+      "dashboard updates itself, the Android app needs the latest APK.",
     clientProtocol,
     serverProtocol: PROTOCOL_VERSION,
     minProtocol: MIN_PROTOCOL_VERSION,

@@ -102,7 +102,8 @@ describe("the rule holds across the surface", () => {
    * review and fail in production.
    */
   const routes: [string, string][] = [
-    ["GET", "/api/v1/dashboard/today"],
+    ["GET", "/api/v1/sync"],
+    ["POST", "/api/v1/sync/push"],
     ["GET", "/api/v1/habits"],
     ["GET", "/api/v1/tasks"],
     ["GET", "/api/v1/settings"],
