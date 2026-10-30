@@ -125,8 +125,6 @@ The toolchain is pinned, and the combination matters: AGP 8.x must not run on Gr
 | Compose BOM | 2025.04.01 |
 | Room | 2.7.1 |
 | Glance (app widget) | 1.1.1 |
-| CameraX | 1.4.1 |
-| ML Kit barcode (bundled model) | 17.3.0 |
 | compileSdk / targetSdk / minSdk | 35 / 35 / 26 |
 
 ```powershell
@@ -135,10 +133,34 @@ $env:JAVA_HOME = "C:\Users\<you>\AppData\Local\Programs\Microsoft\jdk-17.0.10.7-
 $env:ANDROID_HOME = "C:\Android\sdk"
 
 .\gradlew assembleDebug      # app/build/outputs/apk/debug/app-debug.apk
-.\gradlew assembleRelease    # unsigned; this is where the cleartext trap hides
+.\gradlew assembleRelease    # signed if keystore.properties exists, else unsigned
 .\gradlew test               # unit tests — no device, no server
 .\gradlew lint               # reports; does not gate the build
 ```
+
+### The release certificate
+
+Every signed release since 2.0.0 carries the same key, and that is what lets a new
+APK install straight over an old one with no uninstall and no data loss. It is
+worth checking rather than trusting:
+
+```powershell
+apksigner verify --print-certs app\build\outputs\apk\release\app-release.apk
+```
+
+```
+CN=Life OS, OU=Life OS, O=Life OS, C=IN
+SHA-256  21ec7a9c5ee69fe8a7b7bcbd508cbc4e847c73e46daba8877eefcc022b4f9e48
+SHA-1    d65610cac572e4fce128e0a9b85f7a5990e3ded8
+```
+
+A different fingerprint means a different key, and Android will refuse the
+upgrade and demand an uninstall — which costs the user every queued offline
+write. The keystore lives outside this repository and is the one unrecoverable
+thing in the project: lose it and every future release needs an uninstall.
+`keystore.properties` is gitignored, and `assembleRelease` deliberately falls
+back to unsigned when it is absent so the release build stays usable as a
+compile check on a machine without the secrets.
 
 The build needs no `local.properties`: `ANDROID_HOME` is enough. It builds from a cold clone
 with no other setup — **including the notification sounds**, which are committed WAVs in
