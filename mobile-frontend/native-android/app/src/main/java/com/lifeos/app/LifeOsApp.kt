@@ -60,6 +60,16 @@ class LifeOsApp : Application(), SingletonImageLoader.Factory {
                 .collect { container.artOrigin.set(it) }
         }
 
+        /*
+         * Reclaim the 2.0.2 payload file.
+         *
+         * Protocol 4 stores the day as rows, so the 2.26 MB file the previous
+         * release kept beside the database is dead weight on every upgrading
+         * install. A Room migration cannot unlink a file, so the deletion
+         * happens once here, off the main thread, and nothing waits for it.
+         */
+        container.appScope.launch { container.discardLegacySnapshot() }
+
         // Best-effort background freshener. `KEEP`, so this is idempotent and
         // re-asking on every launch does not push the next run out.
         SyncWorker.schedulePeriodic(this)

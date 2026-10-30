@@ -282,7 +282,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.markCelebrationSeen(celebration.goalId)
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 
@@ -398,10 +397,17 @@ class LifeOsViewModel(
     fun tick(item: AgendaItemDto) {
         viewModelScope.launch {
             repository.complete(item.source, item.refId)
+            /*
+             * Drain, and do **not** refetch.
+             *
+             * Under protocol 4 the push reply carries the delta the write
+             * caused, so the queue draining *is* the refresh — the meter, the
+             * agenda and the XP arrive in the same response that confirmed the
+             * tick. The `refresh()` that used to be here is the refetch
+             * SYNC.md §15.9 says to stop doing: it asked for the whole day back
+             * to find out what one row had done to it.
+             */
             SyncWorker.request(appContext)
-            // Fired immediately after a write is enqueued, so the meter catches
-            // up in well under a second on a LAN.
-            refresh()
         }
         // Undo exists for habits only, and once per row per epoch.
         if (item.source == "habit" && !item.done && undoOffered.add(item.refId)) {
@@ -415,7 +421,6 @@ class LifeOsViewModel(
             if (item.source == "habit") {
                 repository.undoHabit(item.refId)
                 SyncWorker.request(appContext)
-                refresh()
             }
         }
     }
@@ -427,7 +432,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.complete("task", taskId)
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 
@@ -436,7 +440,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.dismissTask(taskId)
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 
@@ -445,7 +448,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.startSession(activity)
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 
@@ -453,7 +455,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.stopSession()
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 
@@ -462,7 +463,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.logStudy(title, minutes, qualityFlag)
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 
@@ -474,7 +474,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.patchSettings(key, value)
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 
@@ -487,7 +486,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.patchSettings(key, value)
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 
@@ -495,7 +493,6 @@ class LifeOsViewModel(
         viewModelScope.launch {
             repository.patchSettings(key, value)
             SyncWorker.request(appContext)
-            refresh()
         }
     }
 

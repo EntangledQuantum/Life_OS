@@ -10,6 +10,9 @@ import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.memory.MemoryCache
+import coil3.network.CacheStrategy
+import coil3.network.NetworkRequest
+import coil3.network.NetworkResponse
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.Options
 import coil3.svg.SvgDecoder
@@ -85,10 +88,21 @@ object ArtLoader {
             }
             .diskCache {
                 /*
-                 * Only network results land here — a `data:` URI is already in
-                 * the dashboard snapshot that Room holds, so it survives a cold
-                 * start by a different route and writing it twice would be the
-                 * same bytes in two places.
+                 * Under protocol 4 this is **the** copy of the user's artwork on
+                 * the device, and that is a change worth stating.
+                 *
+                 * It used to be a convenience: every picture also arrived inline
+                 * in the dashboard payload, so Room held a copy and a cold start
+                 * drew art with no network by a different route. Now a picture is
+                 * a URL and nothing inlines it, so an offline cold start draws
+                 * the art that is in here and the emoji for anything that is
+                 * not. That is the right trade — the inline copy cost 2.2 MB on
+                 * every poll for bytes the client already had — and it is why
+                 * this cache is generous rather than tight. The measured art for
+                 * this user's whole instance is 1,670,004 bytes across 24
+                 * assets, so 48 MB holds every picture they have with room for
+                 * years more, and content-addressed keys mean a replaced picture
+                 * adds an entry instead of invalidating one.
                  */
                 DiskCache.Builder()
                     .directory(context.cacheDir.resolve(DISK_DIR).toOkioPath())
@@ -104,7 +118,12 @@ object ArtLoader {
             // renderer that could execute it.
             .add(ArtSvgFetcher.Factory(), ArtSvg::class)
             .add(SvgDecoder.Factory())
-            .add(OkHttpNetworkFetcherFactory(callFactory = { okHttp(tokens, origin) }))
+            .add(
+                OkHttpNetworkFetcherFactory(
+                    callFactory = { okHttp(tokens, origin) },
+                    cacheStrategy = { ImmutableAssets },
+                ),
+            )
             .build()
 
     private fun okHttp(tokens: TokenSource, origin: ArtOrigin): OkHttpClient =
@@ -153,6 +172,76 @@ object ArtLoader {
             if (token.isNullOrBlank()) request
             else request.newBuilder().header("Authorization", "Bearer $token").build(),
         )
+    }
+}
+
+/**
+ * A content-addressed asset is fetched **once, ever**.
+ *
+ * Protocol 4 stopped inlining artwork — 2,205,542 bytes per poll, 97.4% of the
+ * old payload — and replaced it with `GET /api/v1/assets/<sha256>`, served with
+ * `Cache-Control: private, max-age=31536000, immutable`. A hash cannot describe
+ * different bytes, so there is nothing to revalidate and not even a `304` round
+ * trip to pay; RFC 8246 names exactly this as what `immutable` is for.
+ *
+ * Coil's default strategy would honour those headers on its own, and this is
+ * deliberately not a substitute for them. It is here because the headers have to
+ * survive the trip: this user reaches their server through a Tailscale Funnel
+ * and a portal proxy, gzip through it already measured *slower* than none —
+ * which points at buffering and at a proxy that rewrites more than it should —
+ * and a stripped or rewritten `Cache-Control` would quietly turn "fetched once,
+ * ever" back into a revalidation per picture per launch. On a URL whose last
+ * path segment **is** the SHA-256 of the bytes, a cache hit cannot be stale, so
+ * this says so locally and stops depending on anything in between.
+ *
+ * **Only for asset URLs.** Everything else — an agent's link to a picture on
+ * some other host — goes to [CacheStrategy.DEFAULT], because an ordinary URL is
+ * not a promise about its own contents and may legitimately change under its
+ * own address.
+ *
+ * Nothing here appends a cache-buster. There is no query parameter, no
+ * timestamp and no version to add: the hash in the path already is the cache
+ * key, and `Art.fingerprint` keys the memory and disk caches on the URL for the
+ * same reason.
+ */
+private object ImmutableAssets : CacheStrategy {
+
+    override suspend fun read(
+        cacheResponse: NetworkResponse,
+        networkRequest: NetworkRequest,
+        options: Options,
+    ): CacheStrategy.ReadResult =
+        if (isContentAddressed(networkRequest.url)) {
+            // Serve what is on disk and make no request at all.
+            CacheStrategy.ReadResult(cacheResponse)
+        } else {
+            CacheStrategy.DEFAULT.read(cacheResponse, networkRequest, options)
+        }
+
+    override suspend fun write(
+        cacheResponse: NetworkResponse?,
+        networkRequest: NetworkRequest,
+        networkResponse: NetworkResponse,
+        options: Options,
+    ): CacheStrategy.WriteResult =
+        CacheStrategy.DEFAULT.write(cacheResponse, networkRequest, networkResponse, options)
+
+    /**
+     * Is this one of the server's own immutable asset URLs?
+     *
+     * Matched on the path — `/api/v1/assets/<64 hex>` — and not merely on the
+     * directory, because the promise being relied on is that the last segment is
+     * the SHA-256 of the bytes. A path that merely looks like the route but
+     * carries something else is treated as an ordinary URL, which costs a
+     * revalidation and risks nothing.
+     */
+    private fun isContentAddressed(url: String): Boolean {
+        val path = url.toHttpUrlOrNull()?.encodedPath ?: return false
+        val marker = "/api/v1/assets/"
+        val at = path.lastIndexOf(marker)
+        if (at < 0) return false
+        val hash = path.substring(at + marker.length)
+        return hash.length == 64 && hash.all { it.isDigit() || it in 'a'..'f' }
     }
 }
 

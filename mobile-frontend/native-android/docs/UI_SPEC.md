@@ -969,23 +969,35 @@ tap waits on a socket and every failure is an error panel. The rewrite inverts t
           └─ optimistic overlay applied to the Room read, immediately
 ```
 
-- **Room is the only thing the UI reads.** One table holds the latest
-  `GET /api/v1/dashboard/today` snapshot (as parsed entities plus `fetchedAt`), and one
-  holds `pending_writes`. A cold start renders real content in the first frame.
-  - **The snapshot's body is a file, not a column** (2.0.2). Android's `CursorWindow` is
-    2 MB *per row* and that is a hard limit; a real instance's dashboard payload is 2.26 MB,
-    because habits and goals carry their artwork as inline base64 and it grows with every
-    picture an agent attaches. So the first read after the first successful fetch threw
-    `SQLiteBlobTooBigException` and took the process down — on every launch, permanently,
-    since the row was still there. The row now holds `fetched_at`, `life_day_date` and
-    `base_url`; the body lives beside the database. The file is written before the row and
-    replaced by rename, so the row never names a snapshot that is missing or half-written.
-  - The snapshot read and its deserialisation run on a background dispatcher. 2.26 MB of
-    JSON parsed on `Dispatchers.Main` once per poll is a dropped frame on the one list
-    read every morning.
+- **Room is the only thing the UI reads.** The day is held as **parsed entities** — six
+  collections keyed by the server's own ids (`habits`, `tasks`, `goals`, `properties` by
+  `uid`, `quests`, `achievements`), nine derived documents, and one `sync_state` row — plus
+  `pending_writes`. A cold start renders real content in the first frame.
+  - **Nothing in the database is an unbounded single-column blob** (2.1.0, protocol 4).
+    Android's `CursorWindow` is 2 MB *per row* and that is a hard limit; the old
+    `dashboard/today` payload was 2.26 MB, because habits and goals carried their artwork
+    as inline base64 and it grew with every picture an agent attached. So the first read
+    after the first *successful* fetch threw `SQLiteBlobTooBigException` and took the
+    process down — on every launch, permanently, since the row was still there. 2.0.2 moved
+    the body to a file beside the database, which stopped the crash but kept the shape;
+    protocol 4 sends rows and tombstones, so the client stores rows. On the user's real
+    data the largest single value in the database is a 7,287-byte document.
+  - A delta is applied in **one transaction** — reset, upsert, tombstone, documents, cursor
+    last — because the UI reads Room through a `Flow`, so a half-applied delta is a frame
+    the user sees rather than a transient inconsistency. The cursor is stored *after* the
+    rest, so it is impossible to hold a cursor for a delta that was not applied.
+  - Parsing runs on a background dispatcher, and is separated from the clock: rows are
+    parsed only when Room changes, while the four clock-dependent values are recomputed on
+    a 5-second tick over the already-parsed lists.
 - **The poll** is 8s while Today is resumed (10s on Day, 15s on You), stopped when the
-  process is backgrounded, and fired immediately on resume, on reconnect, and after any
-  write is enqueued. Never poll from the composition.
+  process is backgrounded, and fired immediately on resume and on reconnect. It sends the
+  cursor as `since` and the last `ETag` as `If-None-Match`; an unchanged poll is 314 bytes,
+  or a `304` with no body, **no database write and no recomposition**. Never poll from the
+  composition.
+  - It is **no longer fired after a write.** `POST /api/v1/sync/push` replies with the
+    delta its own mutations caused, so the state after a tick arrives in the same response
+    that confirmed it. The refetch that used to follow a write cost a 2.26 MB re-read of a
+    day the client had just changed one row of.
 - **Writes never block the UI.** Enqueue → optimistic overlay → return. `WorkManager` with
   a network constraint and exponential backoff drains the queue in order.
 - No React-Query equivalent, no `networkMode` concept, and no "offline" gate on reads —
@@ -1241,8 +1253,12 @@ A full-screen block, not a panel, because nothing in the app can work:
 > [ Change server ]
 
 Checked cheaply via unauthenticated `GET /api/v1/protocol` on every cold start before the
-first authenticated call, and reactively on any `426`. `X-LifeOS-Protocol: 2` goes on every
-`/api/v1/*` request from a single OkHttp interceptor.
+first authenticated call, and reactively on any `426`. `X-LifeOS-Protocol: <n>` goes on
+every `/api/v1/*` request from a single OkHttp interceptor, where `<n>` is
+`BuildConfig.LIFEOS_PROTOCOL` — **4** as of 2.1.0, copied from
+`packages/shared/src/protocol.ts`, which is the source of truth. The number is written in
+one place and pinned by a test; the screens above illustrate the shape of the message
+rather than the current version.
 
 ### 7.8 Cleartext HTTP
 

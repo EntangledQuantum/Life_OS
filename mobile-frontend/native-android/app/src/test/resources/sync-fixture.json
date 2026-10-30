@@ -1,0 +1,1566 @@
+{
+  "_generatedBy": "mobile-frontend/native-android/scripts/gen-sync-fixture.mjs",
+  "_source": "packages/shared/src/sync.ts, packages/shared/src/xp.ts",
+  "_note": "Committed output. Re-run with TZ pinned after changing either TypeScript module; SyncMathTest asserts the Kotlin port returns exactly these values.",
+  "now": "2026-10-30T09:30:00.000Z",
+  "timezone": "Asia/Calcutta",
+  "utcOffsetMinutesAtNow": 330,
+  "isCurrentAt": [
+    {
+      "name": "no window at all",
+      "task": {
+        "currentFrom": null
+      },
+      "expected": false
+    },
+    {
+      "name": "open-ended window already begun",
+      "task": {
+        "currentFrom": "2026-10-30T08:00:00.000Z",
+        "currentUntil": null
+      },
+      "expected": true
+    },
+    {
+      "name": "window not yet begun",
+      "task": {
+        "currentFrom": "2026-10-30T10:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "window already closed",
+      "task": {
+        "currentFrom": "2026-10-30T07:00:00.000Z",
+        "currentUntil": "2026-10-30T08:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "inside the window",
+      "task": {
+        "currentFrom": "2026-10-30T09:00:00.000Z",
+        "currentUntil": "2026-10-30T10:00:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "exactly at currentFrom",
+      "task": {
+        "currentFrom": "2026-10-30T09:30:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "exactly at currentUntil",
+      "task": {
+        "currentFrom": "2026-10-30T09:00:00.000Z",
+        "currentUntil": "2026-10-30T09:30:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "not active",
+      "task": {
+        "status": "done",
+        "currentFrom": "2026-10-30T08:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "dismissed",
+      "task": {
+        "status": "dismissed",
+        "currentFrom": "2026-10-30T08:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "missed is not active either",
+      "task": {
+        "status": "missed",
+        "currentFrom": "2026-10-30T08:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "showAt in the future hides it",
+      "task": {
+        "currentFrom": "2026-10-30T08:00:00.000Z",
+        "showAt": "2026-10-30T23:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "showAt in the past does not",
+      "task": {
+        "currentFrom": "2026-10-30T08:00:00.000Z",
+        "showAt": "2026-10-30T06:00:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "showAt empty string is absent",
+      "task": {
+        "currentFrom": "2026-10-30T08:00:00.000Z",
+        "showAt": ""
+      },
+      "expected": true
+    },
+    {
+      "name": "unparseable currentFrom does not open the window",
+      "task": {
+        "currentFrom": "not a date"
+      },
+      "expected": true
+    },
+    {
+      "name": "unparseable currentUntil does not close it",
+      "task": {
+        "currentFrom": "2026-10-30T08:00:00.000Z",
+        "currentUntil": "rubbish"
+      },
+      "expected": true
+    },
+    {
+      "name": "unparseable showAt is ignored",
+      "task": {
+        "currentFrom": "2026-10-30T08:00:00.000Z",
+        "showAt": "rubbish"
+      },
+      "expected": true
+    }
+  ],
+  "isReminderDueAt": [
+    {
+      "name": "no due window",
+      "task": {
+        "dueFrom": null
+      },
+      "expected": false
+    },
+    {
+      "name": "due and not notified",
+      "task": {
+        "dueFrom": "2026-10-30T09:00:00.000Z",
+        "dueUntil": "2026-10-30T10:00:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "already notified",
+      "task": {
+        "dueFrom": "2026-10-30T09:00:00.000Z",
+        "notifiedAt": "2026-10-30T09:05:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "notifiedAt empty string is not notified",
+      "task": {
+        "dueFrom": "2026-10-30T09:00:00.000Z",
+        "notifiedAt": ""
+      },
+      "expected": true
+    },
+    {
+      "name": "done tasks never chime",
+      "task": {
+        "status": "done",
+        "dueFrom": "2026-10-30T09:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "dismissed tasks never chime",
+      "task": {
+        "status": "dismissed",
+        "dueFrom": "2026-10-30T09:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "a missed task still chimes",
+      "task": {
+        "status": "missed",
+        "dueFrom": "2026-10-30T09:00:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "not due yet",
+      "task": {
+        "dueFrom": "2026-10-30T12:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "window has passed",
+      "task": {
+        "dueFrom": "2026-10-30T06:00:00.000Z",
+        "dueUntil": "2026-10-30T07:00:00.000Z"
+      },
+      "expected": false
+    },
+    {
+      "name": "open-ended due window",
+      "task": {
+        "dueFrom": "2026-10-30T06:00:00.000Z",
+        "dueUntil": null
+      },
+      "expected": true
+    },
+    {
+      "name": "exactly at dueFrom",
+      "task": {
+        "dueFrom": "2026-10-30T09:30:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "exactly at dueUntil",
+      "task": {
+        "dueFrom": "2026-10-30T09:00:00.000Z",
+        "dueUntil": "2026-10-30T09:30:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "showAt is irrelevant to a reminder",
+      "task": {
+        "dueFrom": "2026-10-30T09:00:00.000Z",
+        "showAt": "2026-10-30T23:00:00.000Z"
+      },
+      "expected": true
+    },
+    {
+      "name": "unparseable dueFrom does not open it",
+      "task": {
+        "dueFrom": "rubbish"
+      },
+      "expected": true
+    },
+    {
+      "name": "unparseable dueUntil does not close it",
+      "task": {
+        "dueFrom": "2026-10-30T06:00:00.000Z",
+        "dueUntil": "rubbish"
+      },
+      "expected": true
+    }
+  ],
+  "dayFractionAt": [
+    {
+      "name": "mid-day",
+      "lifeDayStart": "2026-10-29T22:30:00.000Z",
+      "lifeDayEnd": "2026-10-30T22:30:00.000Z",
+      "expected": 0.4583333333333333
+    },
+    {
+      "name": "before the start clamps to 0",
+      "lifeDayStart": "2026-10-30T20:00:00.000Z",
+      "lifeDayEnd": "2026-10-31T20:00:00.000Z",
+      "expected": 0
+    },
+    {
+      "name": "after the end clamps to 1",
+      "lifeDayStart": "2026-10-28T22:30:00.000Z",
+      "lifeDayEnd": "2026-10-29T22:30:00.000Z",
+      "expected": 1
+    },
+    {
+      "name": "zero-length day",
+      "lifeDayStart": "2026-10-30T09:30:00.000Z",
+      "lifeDayEnd": "2026-10-30T09:30:00.000Z",
+      "expected": 1
+    },
+    {
+      "name": "inverted day",
+      "lifeDayStart": "2026-10-31T00:00:00.000Z",
+      "lifeDayEnd": "2026-10-30T00:00:00.000Z",
+      "expected": 1
+    },
+    {
+      "name": "unparseable start",
+      "lifeDayStart": "rubbish",
+      "lifeDayEnd": "2026-10-30T22:30:00.000Z",
+      "expected": 1
+    },
+    {
+      "name": "unparseable end",
+      "lifeDayStart": "2026-10-29T22:30:00.000Z",
+      "lifeDayEnd": "rubbish",
+      "expected": 1
+    },
+    {
+      "name": "exactly at the start",
+      "lifeDayStart": "2026-10-30T09:30:00.000Z",
+      "lifeDayEnd": "2026-10-31T09:30:00.000Z",
+      "expected": 0
+    },
+    {
+      "name": "exactly at the end",
+      "lifeDayStart": "2026-10-29T09:30:00.000Z",
+      "lifeDayEnd": "2026-10-30T09:30:00.000Z",
+      "expected": 1
+    }
+  ],
+  "paceAdjustedImprovementPct": [
+    {
+      "today": 0,
+      "yesterday": 160,
+      "fraction": 0.08,
+      "expected": 0
+    },
+    {
+      "today": 60,
+      "yesterday": 100,
+      "fraction": 0.5,
+      "expected": 10
+    },
+    {
+      "today": 20,
+      "yesterday": 100,
+      "fraction": 0.5,
+      "expected": -30
+    },
+    {
+      "today": 80,
+      "yesterday": 100,
+      "fraction": 1,
+      "expected": -20
+    },
+    {
+      "today": 80,
+      "yesterday": 100,
+      "fraction": 5,
+      "expected": -20
+    },
+    {
+      "today": 80,
+      "yesterday": 100,
+      "fraction": -3,
+      "expected": 0
+    },
+    {
+      "today": 40,
+      "yesterday": 0,
+      "fraction": 0.5,
+      "expected": 40
+    },
+    {
+      "today": 0,
+      "yesterday": 0,
+      "fraction": 0.5,
+      "expected": 0
+    },
+    {
+      "today": 0.05,
+      "yesterday": 0,
+      "fraction": 1,
+      "expected": 0.1
+    },
+    {
+      "today": -0.05,
+      "yesterday": 0,
+      "fraction": 1,
+      "expected": 0
+    },
+    {
+      "today": 0.25,
+      "yesterday": 0,
+      "fraction": 1,
+      "expected": 0.3
+    },
+    {
+      "today": -0.25,
+      "yesterday": 0,
+      "fraction": 1,
+      "expected": -0.2
+    },
+    {
+      "today": 1.25,
+      "yesterday": 0,
+      "fraction": 1,
+      "expected": 1.3
+    },
+    {
+      "today": -1.25,
+      "yesterday": 0,
+      "fraction": 1,
+      "expected": -1.2
+    },
+    {
+      "today": 33.333,
+      "yesterday": 11.111,
+      "fraction": 0.9,
+      "expected": 23.3
+    },
+    {
+      "today": 100,
+      "yesterday": 99.95,
+      "fraction": 1,
+      "expected": 0
+    },
+    {
+      "today": 0,
+      "yesterday": 100,
+      "fraction": 0.1,
+      "expected": -10
+    },
+    {
+      "today": 0,
+      "yesterday": 100,
+      "fraction": 0.0999,
+      "expected": 0
+    },
+    {
+      "today": -20,
+      "yesterday": -40,
+      "fraction": 0.5,
+      "expected": 0
+    }
+  ],
+  "improvementPct": [
+    {
+      "today": 80,
+      "yesterday": 100,
+      "expected": -20
+    },
+    {
+      "today": 120,
+      "yesterday": 100,
+      "expected": 20
+    }
+  ],
+  "activityColor": [
+    {
+      "activity": "Sleep",
+      "expected": "#6366F1"
+    },
+    {
+      "activity": "Life",
+      "expected": "#5B8CFF"
+    },
+    {
+      "activity": "Life Admin",
+      "expected": "#5B8CFF"
+    },
+    {
+      "activity": "Deep Work",
+      "expected": "#A78BFA"
+    },
+    {
+      "activity": "Study",
+      "expected": "#C084FC"
+    },
+    {
+      "activity": "Health",
+      "expected": "#34D399"
+    },
+    {
+      "activity": "Break",
+      "expected": "#94A3B8"
+    },
+    {
+      "activity": "Startup",
+      "expected": "#FBBF24"
+    },
+    {
+      "activity": "Exercise",
+      "expected": "#34D399"
+    },
+    {
+      "activity": "Exploration",
+      "expected": "#F472B6"
+    },
+    {
+      "activity": "Gardening",
+      "expected": "#5B8CFF"
+    },
+    {
+      "activity": "",
+      "expected": "#5B8CFF"
+    },
+    {
+      "activity": "sleep",
+      "expected": "#5B8CFF"
+    }
+  ],
+  "composeTimeline": [
+    {
+      "name": "nothing lived",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "one closed interval",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l1",
+          "activity": "Sleep",
+          "startedAt": "2026-10-29T19:00:00.000Z",
+          "endedAt": "2026-10-29T23:30:00.000Z",
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 0.5,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "did-l1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0.5,
+          "endHour": 5,
+          "color": "#6366F1",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "unlogged-5.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 5,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "an open interval runs to the marker",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l1",
+          "activity": "Deep Work",
+          "startedAt": "2026-10-30T08:00:00.000Z",
+          "endedAt": null,
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 13.5,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "did-l1",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 13.5,
+          "endHour": 15,
+          "color": "#A78BFA",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "a gap becomes an explicit unlogged segment",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l1",
+          "activity": "Sleep",
+          "startedAt": "2026-10-30T01:00:00.000Z",
+          "endedAt": "2026-10-30T02:30:00.000Z",
+          "blockId": null
+        },
+        {
+          "id": "l2",
+          "activity": "Study",
+          "startedAt": "2026-10-30T06:00:00.000Z",
+          "endedAt": "2026-10-30T07:00:00.000Z",
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 6.5,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "did-l1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 6.5,
+          "endHour": 8,
+          "color": "#6366F1",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "unlogged-8.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 8,
+          "endHour": 11.5,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "did-l2",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 11.5,
+          "endHour": 12.5,
+          "color": "#C084FC",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "unlogged-12.500",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 12.5,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "out-of-order input is sorted",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l2",
+          "activity": "Study",
+          "startedAt": "2026-10-30T06:00:00.000Z",
+          "endedAt": "2026-10-30T07:00:00.000Z",
+          "blockId": null
+        },
+        {
+          "id": "l1",
+          "activity": "Sleep",
+          "startedAt": "2026-10-30T01:00:00.000Z",
+          "endedAt": "2026-10-30T02:30:00.000Z",
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 6.5,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "did-l1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 6.5,
+          "endHour": 8,
+          "color": "#6366F1",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "unlogged-8.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 8,
+          "endHour": 11.5,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "did-l2",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 11.5,
+          "endHour": 12.5,
+          "color": "#C084FC",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "unlogged-12.500",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 12.5,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "a zero-length interval is dropped",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l1",
+          "activity": "Break",
+          "startedAt": "2026-10-30T03:00:00.000Z",
+          "endedAt": "2026-10-30T03:00:00.000Z",
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "an interval ending after the marker is cut at it",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l1",
+          "activity": "Deep Work",
+          "startedAt": "2026-10-30T02:00:00.000Z",
+          "endedAt": "2026-10-30T20:00:00.000Z",
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "an interval starting after the marker collapses",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l1",
+          "activity": "Study",
+          "startedAt": "2026-10-30T16:00:00.000Z",
+          "endedAt": "2026-10-30T17:00:00.000Z",
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "an unknown activity takes the default colour",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l1",
+          "activity": "Gardening",
+          "startedAt": "2026-10-30T06:00:00.000Z",
+          "endedAt": "2026-10-30T07:00:00.000Z",
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 11.5,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "did-l1",
+          "category": "Gardening",
+          "label": "Gardening",
+          "startHour": 11.5,
+          "endHour": 12.5,
+          "color": "#5B8CFF",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "unlogged-12.500",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 12.5,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "back-to-back intervals leave no gap",
+      "ribbon": [
+        {
+          "id": "r1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 6,
+          "color": "#6366F1",
+          "status": "planned"
+        },
+        {
+          "id": "r2",
+          "category": "Deep Work",
+          "label": "Deep Work",
+          "startHour": 9,
+          "endHour": 12,
+          "color": "#A78BFA",
+          "status": "planned"
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 14,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned"
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [
+        {
+          "id": "l1",
+          "activity": "Sleep",
+          "startedAt": "2026-10-30T01:00:00.000Z",
+          "endedAt": "2026-10-30T02:00:00.000Z",
+          "blockId": null
+        },
+        {
+          "id": "l2",
+          "activity": "Health",
+          "startedAt": "2026-10-30T02:00:00.000Z",
+          "endedAt": "2026-10-30T03:00:00.000Z",
+          "blockId": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 6.5,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "did-l1",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 6.5,
+          "endHour": 7.5,
+          "color": "#6366F1",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "did-l2",
+          "category": "Health",
+          "label": "Health",
+          "startHour": 7.5,
+          "endHour": 8.5,
+          "color": "#34D399",
+          "status": "done",
+          "actual": true
+        },
+        {
+          "id": "unlogged-8.500",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 8.5,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r3",
+          "category": "Study",
+          "label": "Study",
+          "startHour": 15,
+          "endHour": 16,
+          "color": "#C084FC",
+          "status": "planned",
+          "actual": false
+        },
+        {
+          "id": "r4",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 20,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "an empty ribbon",
+      "ribbon": [],
+      "lived": [],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        }
+      ]
+    },
+    {
+      "name": "a plan segment straddling the marker is trimmed",
+      "ribbon": [
+        {
+          "id": "r9",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 0,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned"
+        }
+      ],
+      "lived": [],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        },
+        {
+          "id": "r9",
+          "category": "Life",
+          "label": "Life",
+          "startHour": 15,
+          "endHour": 24,
+          "color": "#5B8CFF",
+          "status": "planned",
+          "actual": false
+        }
+      ]
+    },
+    {
+      "name": "a plan segment entirely behind the marker is dropped",
+      "ribbon": [
+        {
+          "id": "r9",
+          "category": "Sleep",
+          "label": "Sleep",
+          "startHour": 0,
+          "endHour": 2,
+          "color": "#6366F1",
+          "status": "planned"
+        }
+      ],
+      "lived": [],
+      "expected": [
+        {
+          "id": "unlogged-0.000",
+          "category": "Unlogged",
+          "label": "Not recorded",
+          "startHour": 0,
+          "endHour": 15,
+          "color": "rgba(255,255,255,0.05)",
+          "status": "unlogged",
+          "actual": true
+        }
+      ]
+    }
+  ]
+}

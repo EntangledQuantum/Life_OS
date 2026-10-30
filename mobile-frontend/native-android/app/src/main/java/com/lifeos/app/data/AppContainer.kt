@@ -63,24 +63,48 @@ class AppContainer(private val context: Context) {
     }
 
     /**
-     * The dashboard body, in a file beside the database rather than in it.
+     * The 2.0.2 stopgap, kept only to delete what it left behind.
      *
-     * A 2.26 MB payload in a `TEXT` column is over Android's 2 MB
-     * `CursorWindow` limit, and reading it threw `SQLiteBlobTooBigException` on
-     * every launch once one had been stored — see [SnapshotPayloads].
+     * The whole-day payload lived in a file beside the database, because the
+     * same bytes in a `TEXT` column exceeded Android's 2 MB per-row
+     * `CursorWindow` limit and threw `SQLiteBlobTooBigException` on every launch
+     * once one had been stored. Protocol 4 stores rows, so nothing writes this
+     * any more — but an upgrading install still has a 2.26 MB file sitting in
+     * `filesDir`, and a SQL migration cannot unlink a file. So the file is
+     * removed once, here, on the first construction of the graph after the
+     * upgrade. Nothing reads it.
      */
-    private val snapshotPayloads by lazy { FileSnapshotPayloads(context.filesDir) }
+    private val legacyPayloads: SnapshotPayloads by lazy { FileSnapshotPayloads(context.filesDir) }
 
     val repository by lazy {
         LifeOsRepository(
-            snapshots = database.snapshots(),
-            payloads = snapshotPayloads,
+            habitsDao = database.habits(),
+            tasksDao = database.tasks(),
+            goalsDao = database.goals(),
+            propertiesDao = database.properties(),
+            questsDao = database.quests(),
+            achievementsDao = database.achievements(),
+            docsDao = database.syncDocs(),
+            stateDao = database.syncState(),
+            applyDao = database.syncApply(),
             settingsStore = database.serverSettings(),
             writes = database.pendingWrites(),
             prefs = preferences,
             tokens = tokens,
             apiFactory = apiFactory,
         )
+    }
+
+    /**
+     * Reclaim the old payload file, once.
+     *
+     * Deliberately not in a `lazy` the app might never touch, and deliberately
+     * not blocking: it is one `delete()` of a file that is no longer referenced
+     * by anything, and if it fails the only cost is the disk space it was
+     * already using.
+     */
+    suspend fun discardLegacySnapshot() {
+        runCatching { legacyPayloads.clear() }
     }
 
     val firedNotifications by lazy { database.firedNotifications() }
