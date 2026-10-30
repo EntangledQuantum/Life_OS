@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ACTIVITIES, type AgendaItem } from "@life-os/shared";
-import { api } from "@/lib/api";
 import { celebrate } from "@/lib/celebrate";
 import { prefetchImages } from "@/lib/image-cache";
 import { useUiStore } from "@/lib/store";
+import { pushMutation } from "@/lib/sync";
+import { useDashboard, useNow } from "@/lib/use-sync";
 import { cn } from "@/lib/utils";
 import { DayGraphic } from "@/components/graphics/DayGraphic";
 import { AgendaList } from "@/components/AgendaList";
@@ -32,19 +33,9 @@ import { motion } from "motion/react";
  * two things to tick.
  */
 export function OverviewPage() {
-  const qc = useQueryClient();
   const intensity = useUiStore((s) => s.celebrationIntensity);
-  const { data, isLoading } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: api.dashboard,
-    refetchInterval: 8000,
-  });
-
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, []);
+  const data = useDashboard();
+  const now = useNow();
 
   /*
    * Pull every picture onto the device once the day loads.
@@ -72,38 +63,60 @@ export function OverviewPage() {
    * One handler for both kinds, because the list is one list. `source` is the
    * only thing that differs, and it decides which record gets the completion —
    * the habit that owns the streak, or the task that owns the XP.
+   *
+   * There is no `invalidateQueries` after any of these any more. The push
+   * response carries the delta the write caused, so by the time this resolves
+   * the row is already updated — a tick used to cost a 2.26 MB re-read of the
+   * day it had just changed one field of.
    */
   const complete = useMutation({
-    mutationFn: (item: AgendaItem) =>
-      item.source === "habit"
-        ? api.completeHabit(item.refId)
-        : api.completeTask(item.refId),
-    onSuccess: (res: { xpAwarded?: number; streakRecovered?: boolean; error?: string }) => {
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      if (res?.error) return;
-      if (res?.streakRecovered) {
+    mutationFn: async (item: AgendaItem) => {
+      const { result } = await pushMutation(
+        item.source === "habit" ? "habit.complete" : "task.complete",
+        item.source === "habit"
+          ? { habitId: item.refId, source: "user" }
+          : { taskId: item.refId, source: "user" },
+      );
+      return result;
+    },
+    onSuccess: (result) => {
+      /*
+       * `staleLifeDay` and `rejected` are permanent: the day turned under the
+       * tap, or the thing cannot be done at all. Say so once and never retry —
+       * a habit completion replayed onto the wrong day corrupts a streak
+       * silently, which is worse than losing it.
+       */
+      if (result && result.status !== "applied" && result.status !== "duplicate") {
+        toast.error(result.error ?? "That could not be saved");
+        return;
+      }
+      const res = (result?.result ?? {}) as {
+        xpAwarded?: number;
+        streakRecovered?: boolean;
+      };
+      if (res.streakRecovered) {
         celebrate(intensity, "streak");
         toast.success("Streak recovered");
         return;
       }
       celebrate(intensity, "complete");
-      toast.success(res?.xpAwarded ? `+${res.xpAwarded} XP` : "Done");
+      toast.success(res.xpAwarded ? `+${res.xpAwarded} XP` : "Done");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const undo = useMutation({
-    mutationFn: (item: AgendaItem) => api.undoHabit(item.refId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+    mutationFn: (item: AgendaItem) =>
+      pushMutation("habit.undo", { habitId: item.refId }),
     onError: (e: Error) => toast.error(e.message),
   });
 
   const setActivity = useMutation({
-    mutationFn: (activity: string) => api.setActiveSession(activity),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+    mutationFn: (activity: string) => pushMutation("session.set", { activity }),
+    onError: (e: Error) => toast.error(e.message),
   });
 
-  if (isLoading || !data) {
+  if (!data) {
     return <div className="text-[var(--muted)]">Loading…</div>;
   }
 
@@ -129,7 +142,7 @@ export function OverviewPage() {
       */
       className="mx-auto max-w-[1500px] pb-16"
     >
-      <ReminderRunner due={data.dueReminders ?? []} />
+      <ReminderRunner />
       <GoalCelebration goals={data.pendingCelebrations ?? []} />
 
       <header className="flex items-start justify-between gap-4">

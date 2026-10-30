@@ -67,11 +67,25 @@ function lastHeaders(): Record<string, string> {
 }
 
 describe("the API client", () => {
-  it("puts the protocol header on a read", async () => {
-    const { api } = await import("../src/lib/api.js");
+  it("puts the protocol header on the one read", async () => {
+    /*
+     * `GET /dashboard/today` used to be the read and is gone — it returned the
+     * whole day, 2.26 MB of it, on every poll. `GET /sync` replaces it, and it
+     * has the same obligation: the server refuses anything below protocol 4 at
+     * the gate, before a route is reached.
+     */
+    const { syncRead } = await import("../src/lib/api.js");
     seen = [];
-    await api.dashboard();
+    await syncRead(null, null);
     assert.equal(lastHeaders()[PROTOCOL_HEADER], String(PROTOCOL_VERSION));
+  });
+
+  it("puts it on the one write too", async () => {
+    const { syncPush } = await import("../src/lib/api.js");
+    seen = [];
+    await syncPush({ clientId: "test", since: null, mutations: [] });
+    assert.equal(lastHeaders()[PROTOCOL_HEADER], String(PROTOCOL_VERSION));
+    assert.equal(seen.at(-1)!.init.method, "POST");
   });
 
   it("puts it on a write too — this is the one that broke", async () => {
@@ -129,11 +143,16 @@ function sourceFiles(dir: string): string[] {
 /**
  * Files allowed to call `fetch` without going through the API client.
  *
- * Exactly one, and it is not talking to Life OS: `image-cache.ts` fetches
- * agent-supplied pictures from whatever host they live on, to put them in Cache
- * Storage. Sending our `Authorization` and `X-LifeOS-Protocol` headers to a
- * stranger's image host would leak the token and trip CORS, so it must not use
- * the client. The rule below still holds it to that.
+ * Exactly one, and only for the half of its job that is not talking to Life OS:
+ * `image-cache.ts` fetches agent-supplied pictures from whatever host they live
+ * on, to put them in Cache Storage. Sending our `Authorization` and
+ * `X-LifeOS-Protocol` headers to a stranger's image host would leak the token
+ * and trip CORS, so that path must not use the client.
+ *
+ * Since protocol 4 it also loads *our* artwork, which is content-addressed and
+ * does need the token. That half goes through `fetchAsset` in `api.ts`, and the
+ * second test below is what holds the line: the module may not name a Life OS
+ * path itself, so the decision about which URLs are ours stays in one place.
  */
 const FETCH_EXEMPT = new Set(["lib/image-cache.ts"]);
 
@@ -167,8 +186,10 @@ describe("nothing bypasses the client", () => {
   it("keeps the exempt file out of the API", () => {
     /*
      * The exemption is for third-party images, not a way around the client. If
-     * this file ever calls a Life OS endpoint it is doing so without the
-     * protocol header, which is precisely the bug the rule above exists for.
+     * this file ever names a Life OS endpoint it is building a request to one
+     * without the protocol header, which is precisely the bug the rule above
+     * exists for — and it would also be a second place that knows what one of
+     * our asset URLs looks like.
      */
     for (const rel of FETCH_EXEMPT) {
       const source = fs.readFileSync(path.join(SRC, rel), "utf8");
@@ -177,5 +198,25 @@ describe("nothing bypasses the client", () => {
         `${rel} is exempt from the fetch rule but is calling the Life OS API`,
       );
     }
+  });
+
+  it("loads our own artwork with the token on it", async () => {
+    /*
+     * The art is not inline base64 any more; it is a content-addressed URL on
+     * our own server, and that route is authenticated because the instance may
+     * be on a public tunnel. An `<img src>` cannot carry a header, so the only
+     * thing that makes a picture appear at all is this fetch having the bearer
+     * token on it — and nothing on screen says which of the two paths a given
+     * URL took.
+     */
+    const { fetchAsset, isAssetUrl } = await import("../src/lib/api.js");
+    seen = [];
+
+    assert.equal(isAssetUrl("http://127.0.0.1:8787/api/v1/assets/abc123"), true);
+    // An agent's link to someone else's host must never see our token.
+    assert.equal(isAssetUrl("https://images.example.com/cat.jpg"), false);
+
+    await fetchAsset("http://127.0.0.1:8787/api/v1/assets/abc123");
+    assert.equal(lastHeaders().Authorization, "Bearer lifeos_test_token");
   });
 });

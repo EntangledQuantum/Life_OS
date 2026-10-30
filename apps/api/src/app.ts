@@ -126,13 +126,30 @@ export function createApp() {
        * that does would fail on the protocol-version header alone, and the
        * failure looks like a dead endpoint rather than a missing header.
        */
+      /*
+       * `If-None-Match` is not a CORS-safelisted request header, so without it
+       * here the browser strips the conditional poll's validator and every
+       * `/sync` request comes back `200` with a body. Nothing fails: the
+       * dashboard works perfectly and simply never gets a `304`, which is the
+       * difference between 314 bytes a poll and zero, and nothing in the
+       * console connects the two.
+       */
       allowHeaders: [
         "Content-Type",
         "Authorization",
+        "If-None-Match",
         PROTOCOL_HEADER,
         "mcp-protocol-version",
         "mcp-session-id",
       ],
+      /*
+       * And `ETag` is not a safelisted *response* header, so a cross-origin
+       * client reads `null` from it and has no validator to send back next
+       * time — the same silent loss from the other end. Both only bite when the
+       * dashboard is not served by the API itself, which is the dev setup and
+       * any split deployment.
+       */
+      exposeHeaders: ["ETag"],
     }),
   );
 

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { Sparkles } from "lucide-react";
 import { resolveArt, themePalette, type Goal, type GoalTier } from "@life-os/shared";
-import { api } from "@/lib/api";
+import { pushMutation } from "@/lib/sync";
 import { celebrate } from "@/lib/celebrate";
 import { useUiStore } from "@/lib/store";
 import { playChime } from "@/lib/notify";
@@ -21,7 +21,6 @@ import { useCachedImage } from "@/lib/image-cache";
  * condition), so they queue and play one at a time.
  */
 export function GoalCelebration({ goals }: { goals: Goal[] }) {
-  const qc = useQueryClient();
   const intensity = useUiStore((s) => s.celebrationIntensity);
   const goal = goals[0] ?? null;
   const firedRef = useRef<string | null>(null);
@@ -33,10 +32,18 @@ export function GoalCelebration({ goals }: { goals: Goal[] }) {
    */
   const tier = goal?.pendingTier ?? null;
 
+  /*
+   * Claiming is the only path to `achieved`: a goal whose condition is met but
+   * whose animation nobody watched stays open. The push reply carries the delta
+   * that clears `celebrationPending`, so the overlay closes on its own and
+   * nothing is refetched to find out that it should.
+   */
   const claim = useMutation({
     mutationFn: ({ id, tierId }: { id: string; tierId?: string }) =>
-      api.markCelebrationSeen(id, tierId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+      pushMutation("goal.celebrationSeen", {
+        goalId: id,
+        ...(tierId ? { tier: tierId } : {}),
+      }),
   });
 
   useEffect(() => {

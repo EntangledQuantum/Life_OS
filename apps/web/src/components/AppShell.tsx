@@ -8,11 +8,11 @@ import {
   Target,
 } from "lucide-react";
 import { isTimelineTask, isWithinQuietHours } from "@life-os/shared";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
 import { asset, LANDING_PATH } from "@/lib/deploy";
 import { useUiStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { start as startSync, stop as stopSync } from "@/lib/sync";
+import { useDashboard, useSettings } from "@/lib/use-sync";
 import { useEffect } from "react";
 
 const tabs = [
@@ -25,15 +25,20 @@ const tabs = [
 
 export function AppShell() {
   const { setAccentTheme } = useUiStore();
-  const { data } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: api.dashboard,
-    refetchInterval: 12000,
-  });
-  const { data: settings } = useQuery({
-    queryKey: ["settings"],
-    queryFn: api.settings,
-  });
+
+  /*
+   * The one poll for the whole app, started here because this is the first
+   * thing mounted behind the token. There used to be four separate dashboard
+   * queries — this shell on 12 s, Overview on 8 s, Timeline on 15 s, Analytics
+   * on demand — each of them asking for the same 2.26 MB on its own schedule.
+   */
+  useEffect(() => {
+    startSync();
+    return () => stopSync();
+  }, []);
+
+  const data = useDashboard();
+  const settings = useSettings();
 
   useEffect(() => {
     if (settings?.accentTheme) setAccentTheme(settings.accentTheme);

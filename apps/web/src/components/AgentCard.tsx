@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   cardImages,
@@ -8,7 +8,8 @@ import {
   type Task,
 } from "@life-os/shared";
 import { Check } from "lucide-react";
-import { api } from "@/lib/api";
+import { useCachedImage } from "@/lib/image-cache";
+import { pushMutation } from "@/lib/sync";
 import { cn } from "@/lib/utils";
 
 export function AgentCard({
@@ -32,7 +33,17 @@ export function AgentCard({
 }) {
   const done = card.status === "done";
   const color = card.themeColor ?? "#5B8CFF";
-  const { media: img, icon } = cardImages(card);
+  /*
+   * Through the cache, because a card's pictures are asset URLs now and an
+   * `<img src>` cannot carry the bearer token the asset route requires. Handing
+   * one straight to the browser gets a 401 whose JSON body the browser then
+   * blocks as an opaque cross-origin response — an empty card with
+   * `ERR_BLOCKED_BY_ORB` in the network log and nothing on screen to say why.
+   * A `data:` URI or a third-party link passes through untouched.
+   */
+  const raw = cardImages(card);
+  const img = useCachedImage(raw.media);
+  const icon = useCachedImage(raw.icon);
   // Agent-supplied SVG is sanitized server-side and rendered via <img>,
   // so it is inert even if something slipped through.
   const svg = card.svg ? svgToDataUri(card.svg) : null;
@@ -234,7 +245,6 @@ export function AgentCard({
  * if the agent subscribed, nine webhooks.
  */
 function CardControlWidget({ card }: { card: Task }) {
-  const qc = useQueryClient();
   const control = card.control!;
   const [draft, setDraft] = useState(
     control.kind === "slider" ? control.value : 0,
@@ -242,8 +252,7 @@ function CardControlWidget({ card }: { card: Task }) {
 
   const interact = useMutation({
     mutationFn: (body: { value?: number; pressed?: boolean }) =>
-      api.interactWithTask(card.id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+      pushMutation("task.interact", { taskId: card.id, ...body }),
     onError: (e: Error) => toast.error(e.message),
   });
 

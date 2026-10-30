@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { KeyRound, Loader2 } from "lucide-react";
 import { api, setToken } from "@/lib/api";
+import { forget } from "@/lib/sync";
 import { asset } from "@/lib/deploy";
 
 /**
@@ -30,6 +31,15 @@ export function ConnectPage() {
     setToken(trimmed);
     try {
       await api.me();
+      /*
+       * Drop any cached day from whatever instance this browser was connected
+       * to before. A cursor from another database is refused on sight — the
+       * epoch in it will not match, and the server answers with a reset — so
+       * this is belt and braces rather than load-bearing, but it means the
+       * first screen after connecting is this instance's day and never a flash
+       * of someone else's.
+       */
+      forget();
       navigate("/app", { replace: true });
     } catch (err) {
       setToken(null);
