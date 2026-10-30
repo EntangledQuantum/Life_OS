@@ -26,7 +26,7 @@ handshake three times over a link where it costs 1–5 s. Everything now shares
 `ApiClient.connections` — `/health` went from 1.09 s to 0.30 s on a reused connection, and
 a dashboard fetch from 37.1 s to 9.3 s.
 
-### Why it was slow, and what fixed it — protocol 4 (2.1.0)
+### Why it was slow, and what fixed it — protocol 4 (3.0.0)
 
 **97.4% of the dashboard payload was inline base64 artwork.**
 `GET /api/v1/dashboard/today` was 2,263,773 bytes on this instance; stripped of pictures it
@@ -78,7 +78,7 @@ first read after the first *successful* fetch threw `SQLiteBlobTooBigException` 
 the process with it — on every launch, for good. It only appeared once a user had
 accumulated enough inline artwork to cross the line, which is why a small LAN instance
 paired and ran perfectly. 2.0.2 moved the body to a file beside the database (schema 3 → 4),
-which stopped the crash but kept the shape. **2.1.0 removes the shape**: the largest single
+which stopped the crash but kept the shape. **3.0.0 removes the shape**: the largest single
 value the database now holds, on this user's real data, is a 7,287-byte document — 288×
 under the limit — and nothing in the schema is an unbounded single-column blob.
 

@@ -973,7 +973,7 @@ tap waits on a socket and every failure is an error panel. The rewrite inverts t
   collections keyed by the server's own ids (`habits`, `tasks`, `goals`, `properties` by
   `uid`, `quests`, `achievements`), nine derived documents, and one `sync_state` row — plus
   `pending_writes`. A cold start renders real content in the first frame.
-  - **Nothing in the database is an unbounded single-column blob** (2.1.0, protocol 4).
+  - **Nothing in the database is an unbounded single-column blob** (3.0.0, protocol 4).
     Android's `CursorWindow` is 2 MB *per row* and that is a hard limit; the old
     `dashboard/today` payload was 2.26 MB, because habits and goals carried their artwork
     as inline base64 and it grew with every picture an agent attached. So the first read
@@ -1255,7 +1255,7 @@ A full-screen block, not a panel, because nothing in the app can work:
 Checked cheaply via unauthenticated `GET /api/v1/protocol` on every cold start before the
 first authenticated call, and reactively on any `426`. `X-LifeOS-Protocol: <n>` goes on
 every `/api/v1/*` request from a single OkHttp interceptor, where `<n>` is
-`BuildConfig.LIFEOS_PROTOCOL` — **4** as of 2.1.0, copied from
+`BuildConfig.LIFEOS_PROTOCOL` — **4** as of 3.0.0, copied from
 `packages/shared/src/protocol.ts`, which is the source of truth. The number is written in
 one place and pinned by a test; the screens above illustrate the shape of the message
 rather than the current version.
