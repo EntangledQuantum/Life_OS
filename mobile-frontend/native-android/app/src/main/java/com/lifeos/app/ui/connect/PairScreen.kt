@@ -91,8 +91,9 @@ fun PairRoute(
 
         is PairPhase.Failed -> FailedBlock(
             message = current.message,
-            changeServer = current.changeServer,
+            remedy = current.remedy,
             onRescan = vm::rescan,
+            onRetry = vm::retry,
             onEnterManually = onEnterManually,
             onChangeServer = onChangeServer,
             modifier = modifier,
@@ -178,16 +179,29 @@ private fun ClaimingBlock(address: String, modifier: Modifier = Modifier) {
 /**
  * A refusal, with the way out that matches it.
  *
- * A burnt or expired code is fixed at the dashboard, so the offer is another
- * scan. An address this phone cannot reach is not a code problem at all, so the
- * offer is **Change server** — sending someone to mint more codes for an
- * unreachable box is how an app wastes an afternoon.
+ * Three shapes, because there are three things that can be wrong and they want
+ * different buttons:
+ *
+ *  - A burnt or expired code is fixed at the dashboard, so the offer is another
+ *    scan.
+ *  - An address this phone cannot reach is not a code problem at all, so the
+ *    offer is **Change server** — sending someone to mint more codes for an
+ *    unreachable box is how an app wastes an afternoon.
+ *  - A server the phone **connected to** and which then took too long is
+ *    neither. Its address is right and its code may still be good, so the
+ *    offer is **Try again** and the title does not accuse the address. 2.0.1
+ *    put this case under "Couldn't reach that address", which is how a user
+ *    with a perfectly good tunnel spent an evening re-typing it.
+ *
+ * Which one is decided in `PairViewModel` and arrives as [remedy]; this
+ * function never re-derives it.
  */
 @Composable
 private fun FailedBlock(
     message: String,
-    changeServer: Boolean,
+    remedy: PairRemedy,
     onRescan: () -> Unit,
+    onRetry: () -> Unit,
     onEnterManually: () -> Unit,
     onChangeServer: () -> Unit,
     modifier: Modifier = Modifier,
@@ -195,36 +209,51 @@ private fun FailedBlock(
     val p = palette
     PairBlock(modifier = modifier) {
         Text(
-            text = if (changeServer) "Couldn't reach that address" else "That code didn't work",
+            text = when (remedy) {
+                PairRemedy.RESCAN -> "That code didn't work"
+                PairRemedy.CHANGE_SERVER -> "Couldn't reach that address"
+                PairRemedy.RETRY -> "That server is slow to answer"
+            },
             style = LifeOsType.cardTitle,
             color = p.text,
         )
         Text(message, style = LifeOsType.bodySmall, color = p.muted)
 
-        if (changeServer) {
-            Button(
-                onClick = onChangeServer,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = p.accent,
-                    contentColor = p.bg,
-                ),
-            ) { Text("Change server") }
-            TextButton(onClick = onRescan) { Text("Scan again", color = p.muted) }
-        } else {
-            Button(
-                onClick = onRescan,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = p.accent,
-                    contentColor = p.bg,
-                ),
-            ) { Text("Scan again") }
-            TextButton(onClick = onEnterManually) {
-                Text("Enter the address instead", color = p.muted)
+        when (remedy) {
+            PairRemedy.CHANGE_SERVER -> {
+                PrimaryAction("Change server", onChangeServer)
+                TextButton(onClick = onRescan) { Text("Scan again", color = p.muted) }
+            }
+
+            PairRemedy.RETRY -> {
+                PrimaryAction("Try again", onRetry)
+                TextButton(onClick = onChangeServer) {
+                    Text("Change server", color = p.muted)
+                }
+            }
+
+            PairRemedy.RESCAN -> {
+                PrimaryAction("Scan again", onRescan)
+                TextButton(onClick = onEnterManually) {
+                    Text("Enter the address instead", color = p.muted)
+                }
             }
         }
     }
+}
+
+/** The one filled button these three shapes share. */
+@Composable
+private fun PrimaryAction(label: String, onClick: () -> Unit) {
+    val p = palette
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = p.accent,
+            contentColor = p.bg,
+        ),
+    ) { Text(label) }
 }
 
 /**

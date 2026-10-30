@@ -13,6 +13,9 @@ import com.lifeos.app.data.db.ServerSettingsDao
 import com.lifeos.app.data.db.ServerSettingsEntity
 import com.lifeos.app.data.db.SnapshotDao
 import com.lifeos.app.data.db.SnapshotEntity
+import com.lifeos.app.data.db.SnapshotPayloads
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
 import com.lifeos.app.domain.AnalyticsRange
 import com.lifeos.app.domain.LifeDayGuard
 import com.lifeos.app.domain.MAX_WRITE_ATTEMPTS
@@ -70,6 +73,8 @@ data class StrandedNotice(val count: Int, val lifeDayDate: String)
  */
 class LifeOsRepository(
     private val snapshots: SnapshotDao,
+    /** Where the dashboard body lives — a file, not a 2 MB-capped table row. */
+    private val payloads: SnapshotPayloads,
     private val settingsStore: ServerSettingsDao,
     private val writes: PendingWriteDao,
     private val prefs: ConnectionConfig,
@@ -87,6 +92,33 @@ class LifeOsRepository(
     /** The drain and a manual refresh must not race each other's queue reads. */
     private val drainLock = Mutex()
 
+    /**
+     * One refresh in flight at a time, and the extras are **dropped**, not queued.
+     *
+     * This is not an optimisation; without it the app cannot work against a
+     * server that is further away than a LAN. `refresh()` is fired on a timer
+     * (§7.1: 8s on Today) and by `LifeOsViewModel` as a launch-and-return, so
+     * nothing ever waited for the previous one. On a LAN that is invisible —
+     * a refetch takes ~50ms and two can never overlap. Against this user's
+     * tunnelled server the dashboard payload is **2.26 MB** and takes 6.8–15.2s
+     * from the phone, so the timer started a *new* 2.26 MB download every eight
+     * seconds on top of the ones still running. They compete for the same link,
+     * each one slows all the others, and within a minute every one of them
+     * exceeds any deadline you care to set — which looks exactly like a server
+     * that has gone away, and walks the state machine to Unreachable while the
+     * server is answering fine. Measured on the device: a 30s budget still
+     * reported `timeout`, and the fix was never a bigger number.
+     *
+     * **Dropped rather than queued** because a poll tick asks for "the latest",
+     * and a request that started three seconds ago will answer that better than
+     * one started now. Queueing them would only move the pile-up.
+     *
+     * A write's follow-up refetch may be dropped by this too; that is safe,
+     * because the optimistic overlay (§4.6) is already showing the result and
+     * the next tick refetches anyway.
+     */
+    private val refreshing = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /* ------------------------------------------------------------- reading */
 
     val today: Flow<TodayView> = combine(
@@ -96,7 +128,8 @@ class LifeOsRepository(
         _connection,
     ) { snapshot, settingsRow, queued, state ->
         val pending = queued.map(::toDomain).filter { it.state == WriteState.PENDING }
-        val parsed = snapshot?.let { decode(it.payloadJson) }
+        // The row says a snapshot exists; the file says what it is.
+        val parsed = snapshot?.let { payloads.read() }?.let { decode(it) }
         val strandedUnnoticed = queued
             .map(::toDomain)
             .filter { it.state == WriteState.STRANDED && !it.noticeShown }
@@ -115,6 +148,18 @@ class LifeOsRepository(
                 ?.let { StrandedNotice(it.value.size, it.key) },
         )
     }
+        /*
+         * Off the main thread, deliberately.
+         *
+         * This lambda reads the snapshot file and deserialises it, and that
+         * payload is 2.26 MB on a real instance. Collected into a
+         * `viewModelScope` state flow, every one of those parses was happening
+         * on `Dispatchers.Main.immediate` — a dropped frame on the one list the
+         * user looks at every morning, once per poll. `flowOn` moves the
+         * upstream, which is this lambda and the Room queries behind it;
+         * collection stays wherever the caller put it.
+         */
+        .flowOn(Dispatchers.Default)
 
     val pendingWrites: Flow<List<PendingWrite>> =
         writes.observeAll().map { list -> list.map(::toDomain) }
@@ -139,6 +184,16 @@ class LifeOsRepository(
             return ConnectionState.Unconfigured.also { _connection.value = it }
         }
 
+        // Already fetching: let that one answer for both. See `refreshing`.
+        if (!refreshing.compareAndSet(false, true)) return _connection.value
+        try {
+            return fetchToday(base)
+        } finally {
+            refreshing.set(false)
+        }
+    }
+
+    private suspend fun fetchToday(base: String): ConnectionState {
         val api = apiFactory(base)
         val result = runCatching { api.today() }
 
@@ -207,9 +262,13 @@ class LifeOsRepository(
     }
 
     private suspend fun store(body: DashboardTodayDto, baseUrl: String) {
+        // The file first, then the row. A row is the app's claim that a
+        // snapshot exists, so it must never be written before the thing it
+        // claims — a process killed between the two should lose the new
+        // snapshot, not acquire a reference to one that is not there.
+        payloads.write(json.encodeToString(DashboardTodayDto.serializer(), body))
         snapshots.put(
             SnapshotEntity(
-                payloadJson = json.encodeToString(DashboardTodayDto.serializer(), body),
                 fetchedAt = now(),
                 lifeDayDate = body.lifeDay.lifeDay.ifBlank { body.date },
                 baseUrl = baseUrl,
@@ -258,6 +317,19 @@ class LifeOsRepository(
      */
     suspend fun serverLifeDay(): String? = snapshots.get()?.lifeDayDate?.ifBlank { null }
 
+    /**
+     * The poll interval, and the empty-cache grace, for the configured server.
+     *
+     * Asked of the repository rather than worked out in the view model because
+     * the address lives behind a suspending DataStore read, and because a
+     * "Change server" has to move the poll rate with it (§7.9).
+     */
+    suspend fun pollInterval(base: Long): Long =
+        PollIntervals.forAddress(prefs.baseUrl(), base)
+
+    suspend fun emptyCacheTimeout(base: Long): Long =
+        PollIntervals.emptyCacheTimeout(prefs.baseUrl(), base)
+
     /** Saving a different address clears the cache: a different server is a different life. */
     suspend fun onServerChanged(newBaseUrl: String) {
         val existing = snapshots.get()
@@ -265,6 +337,7 @@ class LifeOsRepository(
             existing.baseUrl != newBaseUrl
         ) {
             snapshots.clear()
+            payloads.clear()
             settingsStore.clear()
         }
         prefs.setBaseUrl(newBaseUrl)

@@ -16,10 +16,30 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
+ * What to offer after a failed claim — one per thing that is actually wrong.
+ *
+ * Three, not two, and the third is the whole of 2.0.2's copy change. A claim
+ * that timed out against a server the phone *connected to* is not a bad
+ * address, and [CHANGE_SERVER] is the one piece of advice that cannot possibly
+ * help: the user re-types a correct address, scans again, and waits out the
+ * same timeout. [RETRY] says what happened and has another go.
+ */
+enum class PairRemedy {
+    /** The code is spent or wrong. Fixed at the dashboard. */
+    RESCAN,
+
+    /** Nothing is at that address. Fixed in the address field. */
+    CHANGE_SERVER,
+
+    /** The server is reachable and slow. Fixed by waiting, or by trying again. */
+    RETRY,
+}
+
+/**
  * Where the pairing screen is.
  *
  * `Failed` carries what to offer next rather than a code the screen switches on,
- * because the two failures want opposite buttons and deciding that in the view
+ * because the failures want different buttons and deciding that in the view
  * means the decision is made twice (§7.3).
  */
 sealed interface PairPhase {
@@ -31,8 +51,7 @@ sealed interface PairPhase {
 
     data class Failed(
         val message: String,
-        /** A reachability failure. Offer **Change server**, not a rescan. */
-        val changeServer: Boolean,
+        val remedy: PairRemedy,
     ) : PairPhase
 
     data object Paired : PairPhase
@@ -81,8 +100,17 @@ class PairViewModel(
      * "scanned in the camera app" — which is the whole reason the deep link is
      * worth having.
      */
+    /**
+     * The last invite, kept so [retry] has something to send.
+     *
+     * Held in memory only, never persisted and never logged: for the five
+     * minutes it lives, the code in it is a credential (§7.3).
+     */
+    private var lastInvite: PairInvite? = null
+
     fun submit(invite: PairInvite) {
         if (_phase.value is PairPhase.Claiming) return
+        lastInvite = invite
         _phase.value = PairPhase.Claiming(invite.baseUrl)
         viewModelScope.launch {
             when (val outcome = claim.claim(invite)) {
@@ -97,7 +125,7 @@ class PairViewModel(
 
                 is PairOutcome.Refused -> _phase.value = PairPhase.Failed(
                     message = outcome.message,
-                    changeServer = false,
+                    remedy = PairRemedy.RESCAN,
                 )
 
                 is PairOutcome.Unreachable -> _phase.value = PairPhase.Failed(
@@ -106,10 +134,40 @@ class PairViewModel(
                     // way out is the address, not another QR.
                     message = "Scanned, but this phone couldn't reach ${outcome.address} " +
                         "(${outcome.detail}).",
-                    changeServer = true,
+                    remedy = PairRemedy.CHANGE_SERVER,
+                )
+
+                /*
+                 * Reachable, and slow. The address is right — the phone got a
+                 * TLS connection to it — so the sentence says that, names the
+                 * budget we actually spent, and warns about the one thing a
+                 * retry can still run into: the server may have completed the
+                 * claim after we stopped listening, and the code is single-use.
+                 */
+                is PairOutcome.TooSlow -> _phase.value = PairPhase.Failed(
+                    message = "This phone reached ${outcome.address}, but it didn't answer " +
+                        "within ${outcome.seconds}s. The connection is fine, so the address " +
+                        "is right — try again. If the code has been used up by then, mint a " +
+                        "new one on your dashboard.",
+                    remedy = PairRemedy.RETRY,
                 )
             }
         }
+    }
+
+    /**
+     * Another go with the same code, after a timeout against a reachable server.
+     *
+     * Deliberately the *same* invite rather than a fresh scan: the address was
+     * never the problem, and sending the user back to the dashboard for a new
+     * QR is the advice that wasted their evening in 2.0.1. If the server did
+     * finish the first claim while we were not listening, this comes back `401`
+     * and the copy then says to mint a new one — which is the honest sequence.
+     */
+    fun retry() {
+        val invite = lastInvite ?: return
+        if (_phase.value is PairPhase.Claiming) return
+        submit(invite)
     }
 
     /** Back to the viewfinder after a refusal. */

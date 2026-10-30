@@ -21,11 +21,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import android.graphics.Bitmap
 import coil3.BitmapImage
 import coil3.Image as CoilImage
 import coil3.compose.AsyncImagePainter
+import coil3.compose.DrawScopeSizeResolver
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
@@ -98,7 +100,14 @@ private const val SAMPLE = 8
 @Composable
 fun ArtBackground(art: ResolvedArt, modifier: Modifier = Modifier) {
     val picture = art.background ?: return
-    val loaded = rememberArt(picture.source, picture.cacheKey, ContentScale.Crop)
+    // The one request that has to come back as a software bitmap: the scrim
+    // below is measured from this picture's own pixels.
+    val loaded = rememberArt(
+        source = picture.source,
+        cacheKey = picture.cacheKey,
+        contentScale = ContentScale.Crop,
+        needsPixels = true,
+    )
 
     /*
      * Until the picture has been measured the scrim is the agent's floor, which
@@ -208,6 +217,9 @@ fun ArtIcon(
                 source = picture.source,
                 cacheKey = picture.cacheKey,
                 contentScale = ContentScale.Crop,
+                // The tile's size is known here, so the decode is told it
+                // rather than left to default to the source's own resolution.
+                exactSize = size,
                 fallback = fallback,
             )
         }
@@ -275,28 +287,67 @@ private class LoadedArt(
 )
 
 /**
- * One request per picture, built once per **cache key**, and always drawn.
+ * One request per picture, built once per **cache key**, sized to the box it is
+ * drawn in, and always drawn.
  *
- * Two things here are load-bearing and neither is obvious.
+ * Three things here are load-bearing and none of them is obvious.
  *
- * `remember(cacheKey)` is not a micro-optimisation: the dashboard poll replaces
- * every DTO every eight seconds, so without it each poll would hand the painter
- * a fresh `ImageRequest` and restart the load — the row would blink even though
- * the picture had not changed. Keyed on the fingerprint, an unchanged picture is
- * literally the same request object and the painter never learns a poll
- * happened.
+ * **1. `remember(cacheKey)`** is not a micro-optimisation: the dashboard poll
+ * replaces every DTO every eight seconds, so without it each poll would hand
+ * the painter a fresh `ImageRequest` and restart the load — the row would blink
+ * even though the picture had not changed. Keyed on the fingerprint, an
+ * unchanged picture is literally the same request object and the painter never
+ * learns a poll happened.
  *
- * And the painter has to be **drawn** or it never loads. An `AsyncImagePainter`
- * has no layout node of its own, so it takes its target size from the draw
- * scope; a painter that is composed but never handed to an `Image` sits waiting
- * for a size that will never arrive. So every caller draws the image
- * unconditionally and puts the fallback *over* it until there is something
- * underneath — rather than drawing one or the other, which deadlocks.
+ * **2. The size is declared, and that is the 2.0.2 fix.** A comment here used
+ * to claim these images were "already decoded down to the box they are drawn
+ * in". They were not. `AsyncImagePainter` resolves its own size *only* when the
+ * request carries a `DrawScopeSizeResolver`; given a request with no size
+ * defined it substitutes `SizeResolver.ORIGINAL` — so every habit icon in a
+ * 48dp tile was decoded at the source resolution of whatever the agent
+ * uploaded, and a 1024² picture that should have cost ~80 KB as a tile cost
+ * 4 MB as a bitmap. Multiplied across a list, that is the memory pressure that
+ * invites ColorOS's `OsenseKillAction` mem-guard to take the process out, and
+ * it is a full-size decode on the main list every time the cache misses.
+ * So: a tile whose size is known states it exactly, and a picture that fills
+ * its box takes the draw scope's size. Coil puts the resolved size into the
+ * memory-cache key's own extras, so a tile and a card of the same photograph
+ * are separate entries rather than one entry at whichever size asked first.
+ *
+ * **3. The painter has to be drawn** or it never loads. It has no layout node
+ * of its own, so a painter that is composed but never handed to an `Image` sits
+ * waiting for a size that will never arrive. Every caller therefore draws the
+ * image unconditionally and puts the fallback *over* it until there is
+ * something underneath — rather than drawing one or the other, which deadlocks.
+ *
+ * [exactSize] is the tile case: a known square, in dp. Null means "fill",
+ * and the draw scope decides.
+ *
+ * [needsPixels] is only true for the background, which measures its own mean
+ * luminance to size the scrim. A hardware bitmap has no pixels on the CPU side,
+ * so that one request gives them up — and the rest, which only ever draw, keep
+ * them off the Java heap.
+ *
+ * `DrawScopeSizeResolver` is marked experimental in Coil 3.2.0, and the opt-in
+ * is deliberate rather than reluctant: Coil is pinned to an exact version (see
+ * the dependency note in the README), so this API cannot change underneath the
+ * app without somebody choosing to move it. The alternative is the bug — a
+ * request with no size declared is a request decoded at the source's own
+ * resolution.
  */
+@OptIn(coil3.annotation.ExperimentalCoilApi::class)
 @Composable
-private fun rememberArt(source: Any, cacheKey: String, contentScale: ContentScale): LoadedArt {
+private fun rememberArt(
+    source: Any,
+    cacheKey: String,
+    contentScale: ContentScale,
+    exactSize: Dp? = null,
+    needsPixels: Boolean = false,
+): LoadedArt {
     val context = LocalContext.current
-    val request = remember(cacheKey) {
+    val density = LocalDensity.current
+    val sizePx = exactSize?.let { with(density) { it.roundToPx() } }?.coerceAtLeast(1)
+    val request = remember(cacheKey, sizePx, needsPixels) {
         ImageRequest.Builder(context)
             .data(source)
             // Both keys explicit, and short. The default key for a `data:` URI
@@ -304,11 +355,10 @@ private fun rememberArt(source: Any, cacheKey: String, contentScale: ContentScal
             // every poll before the cache can tell us it already had the bitmap.
             .memoryCacheKey(cacheKey)
             .diskCacheKey(cacheKey)
-            // The background's scrim is computed from the picture's own pixels,
-            // and a hardware bitmap has none on the CPU side. The images here
-            // are already decoded down to the box they are drawn in, so what
-            // this gives up is small beside a card that cannot be read.
-            .allowHardware(false)
+            .apply {
+                if (sizePx != null) size(sizePx, sizePx) else size(DrawScopeSizeResolver())
+                if (needsPixels) allowHardware(false)
+            }
             .build()
     }
     val painter = rememberAsyncImagePainter(model = request, contentScale = contentScale)
@@ -330,9 +380,10 @@ private fun Picture(
     source: Any,
     cacheKey: String,
     contentScale: ContentScale,
+    exactSize: Dp? = null,
     fallback: @Composable () -> Unit = {},
 ) {
-    val loaded = rememberArt(source, cacheKey, contentScale)
+    val loaded = rememberArt(source, cacheKey, contentScale, exactSize = exactSize)
     Image(
         painter = loaded.painter,
         contentDescription = null,

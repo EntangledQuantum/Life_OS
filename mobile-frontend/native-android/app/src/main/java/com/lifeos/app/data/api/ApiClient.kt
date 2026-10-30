@@ -4,6 +4,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import com.lifeos.app.BuildConfig
 import com.lifeos.app.data.TokenSource
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
 import okhttp3.Interceptor
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -19,17 +20,50 @@ import java.util.concurrent.TimeUnit
  * sleeping laptop, a stale LAN IP, a VPN in the way — neither resolved nor
  * rejected, and the old app sat on a spinner forever. Relying on any default
  * here is the bug coming back; nothing is unbounded.
+ *
+ * **And every timeout comes from the address**, not from a constant in this
+ * file. One set of numbers cannot be right for both a laptop on the same Wi-Fi
+ * and a Tailscale Funnel: see [Budget], which holds the two sets and the
+ * measurements behind them.
  */
 object ApiClient {
 
-    /** §0.2: connect 5s, read 12s, call 15s. 6s for probes. */
-    private const val CONNECT_SECONDS = 5L
-    private const val READ_SECONDS = 12L
-    private const val WRITE_SECONDS = 12L
-    private const val CALL_SECONDS = 15L
-
-    /** A probe is a thing the user is waiting on, so it gives up sooner. */
-    const val PROBE_SECONDS = 6L
+    /**
+     * **One connection pool for the whole app**, shared by every client this
+     * object builds and by the image loader.
+     *
+     * Measured on the phone against the user's Funnel, three `GET /health` in
+     * one process:
+     *
+     * | Request | Total | of which TLS |
+     * |---|---|---|
+     * | first, new connection | 1.09 s | 0.80 s |
+     * | second, reused | 0.30 s | 0.00 s |
+     * | third, reused | 0.30 s | 0.00 s |
+     *
+     * A reused connection is **3.6× faster**, and on a worse sample the
+     * handshake was 3.58s of a 5.00s request — over 70% of it. Keep-alive
+     * works perfectly through the portal proxy; the app simply was not using
+     * it across its own components. `ApiClient` built one client per address,
+     * `PairClaim` built its own, `ServerProbe` built its own per run and
+     * `ArtLoader` built another, and an `OkHttpClient.Builder` gets a **fresh
+     * `ConnectionPool` every time** — so pairing paid the handshake for the
+     * probe, again for the claim, and again for the first dashboard fetch, on
+     * a link where that is a second and a half each.
+     *
+     * The dispatcher is deliberately **not** shared. Sharing it would also
+     * share OkHttp's five-requests-per-host limit, and a burst of artwork could
+     * then queue the dashboard poll behind it. The handshake is the measured
+     * cost; thread pools are not.
+     */
+    val connections = ConnectionPool(
+        maxIdleConnections = 5,
+        // Comfortably longer than the slowest poll interval (§7.9: 60s on You
+        // for a remote server), so a quiet gap between polls does not throw
+        // away the connection and buy another handshake.
+        keepAliveDuration = 5,
+        timeUnit = TimeUnit.MINUTES,
+    )
 
     val json: Json = Json {
         // A server that grows a field must not break an installed app.
@@ -82,17 +116,32 @@ object ApiClient {
         )
     }
 
-    fun okHttp(tokens: TokenSource, callTimeoutSeconds: Long = CALL_SECONDS): OkHttpClient =
+    /**
+     * A client for one server, with that server's budget.
+     *
+     * [witness] is optional and records only whether a connection was
+     * established, so a timeout can be reported as "slow" rather than as
+     * "wrong address" (see `TransportFailure`). It is **not** a logger.
+     */
+    fun okHttp(
+        tokens: TokenSource,
+        budget: Budget,
+        witness: ConnectionWitness? = null,
+    ): OkHttpClient =
         OkHttpClient.Builder()
-            .connectTimeout(CONNECT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(READ_SECONDS, TimeUnit.SECONDS)
-            .writeTimeout(WRITE_SECONDS, TimeUnit.SECONDS)
-            .callTimeout(callTimeoutSeconds, TimeUnit.SECONDS)
+            // Shared, so the handshake this request would otherwise pay has
+            // usually already been paid by the probe or the claim.
+            .connectionPool(connections)
+            .connectTimeout(budget.connectSeconds, TimeUnit.SECONDS)
+            .readTimeout(budget.readSeconds, TimeUnit.SECONDS)
+            .writeTimeout(budget.writeSeconds, TimeUnit.SECONDS)
+            .callTimeout(budget.callSeconds, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .addInterceptor(protocolHeader)
             .addInterceptor(authHeader(tokens))
             // No logging interceptor, at any build type. A request log would
             // carry the Authorization header, and the token is never logged.
+            .apply { if (witness != null) eventListener(witness) }
             .build()
 
     fun retrofit(baseUrl: String, client: OkHttpClient): Retrofit =
@@ -102,8 +151,17 @@ object ApiClient {
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
 
+    /**
+     * The ordinary client for an address — the poll, the drain, the refetch.
+     *
+     * The budget is derived here rather than passed in, so that every caller
+     * that only knows an address (`AppContainer`'s per-address cache, and
+     * therefore the dashboard poll, `SyncWorker`, the widget's refresh and the
+     * notification reconcile) gets the right deadlines without having to know
+     * that there is a choice to make.
+     */
     fun api(baseUrl: String, tokens: TokenSource): LifeOsApi =
-        retrofit(baseUrl, okHttp(tokens)).create(LifeOsApi::class.java)
+        retrofit(baseUrl, okHttp(tokens, Budget.of(baseUrl))).create(LifeOsApi::class.java)
 
     /** Retrofit demands a trailing slash on a base URL or it throws. */
     fun normaliseBase(baseUrl: String): String =

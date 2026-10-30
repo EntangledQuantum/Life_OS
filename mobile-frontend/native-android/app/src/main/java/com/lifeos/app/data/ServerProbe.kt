@@ -1,10 +1,11 @@
 package com.lifeos.app.data
 
 import com.lifeos.app.data.api.ApiClient
+import com.lifeos.app.data.api.Budget
+import com.lifeos.app.data.api.ConnectionWitness
 import com.lifeos.app.data.api.LifeOsApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.concurrent.TimeUnit
 
 /** One probe's verdict. Four of these are shown side by side, never merged. */
 sealed interface ProbeResult {
@@ -55,14 +56,23 @@ class ServerProbe(private val tokens: TokenStore) {
         withContext(Dispatchers.IO) {
             val base = ApiClient.normaliseBase(address)
 
-            // A probe client of its own: a 6s deadline rather than 15s, because
-            // the user is sitting in front of it waiting, and a one-shot token
-            // that is not committed to the Keystore yet.
+            /*
+             * A probe client of its own: a shorter deadline than an ordinary
+             * request, because the user is sitting in front of it waiting, and
+             * a one-shot token that is not committed to the Keystore yet.
+             *
+             * **The deadline comes from the address** (`Budget.forProbe`): 6s
+             * for a machine on this network, 15s for a public or tunnelled one.
+             * A flat 6s was why this user's server tested as flaky rather than
+             * as working — their `/health` takes 3.4–5.7s through the Funnel, so
+             * the same address passed some runs and failed others.
+             */
+            val budget = Budget.of(base).forProbe()
             val probeTokens: TokenSource = tokenOverride?.let { StaticToken(it) } ?: tokens
-            val client = ApiClient.okHttp(probeTokens, ApiClient.PROBE_SECONDS)
-                .newBuilder()
-                .callTimeout(ApiClient.PROBE_SECONDS, TimeUnit.SECONDS)
-                .build()
+            // One witness for a strictly sequential run of three, reset before
+            // each, so "did we connect" is the answer for *that* request.
+            val witness = ConnectionWitness()
+            val client = ApiClient.okHttp(probeTokens, budget, witness)
             val api: LifeOsApi = ApiClient.retrofit(base, client).create(LifeOsApi::class.java)
 
             var report = ProbeReport()
@@ -70,6 +80,7 @@ class ServerProbe(private val tokens: TokenStore) {
             /* 1. Reachability + lan, from /health. Unauthenticated, so a bad
              *    token cannot make a reachable server look unreachable. */
             val started = System.nanoTime()
+            witness.reset()
             val health = runCatching { api.health("${base}health") }
             val healthResponse = health.getOrNull()
             report = if (healthResponse != null && healthResponse.isSuccessful) {
@@ -87,7 +98,7 @@ class ServerProbe(private val tokens: TokenStore) {
                 )
             } else {
                 val detail = healthResponse?.let { "HTTP ${it.code()}" }
-                    ?: health.exceptionOrNull()?.let { describe(it) }
+                    ?: health.exceptionOrNull()?.let { describe(it, witness, budget) }
                     ?: "no answer"
                 report.copy(
                     reachable = ProbeResult.Fail(detail),
@@ -97,6 +108,7 @@ class ServerProbe(private val tokens: TokenStore) {
             }
 
             /* 2. Protocol, unauthenticated. */
+            witness.reset()
             val protocol = runCatching { api.protocol("${base}api/v1/protocol") }
             val protocolResponse = protocol.getOrNull()
             val mine = ApiClient.clientProtocol
@@ -129,13 +141,16 @@ class ServerProbe(private val tokens: TokenStore) {
 
                 else -> report.copy(
                     protocol = ProbeResult.Fail(
-                        protocolResponse?.let { "HTTP ${it.code()}" } ?: "no answer",
+                        protocolResponse?.let { "HTTP ${it.code()}" }
+                            ?: protocol.exceptionOrNull()?.let { describe(it, witness, budget) }
+                            ?: "no answer",
                     ),
                 )
             }
 
             /* 3. Auth, with the token. Reported on its own line, so a rotated
              *    token reads as "paste a new one" and not as "server is down". */
+            witness.reset()
             val me = runCatching { api.me() }
             val meResponse = me.getOrNull()
             report = when {
@@ -150,7 +165,9 @@ class ServerProbe(private val tokens: TokenStore) {
 
                 else -> report.copy(
                     auth = ProbeResult.Fail(
-                        meResponse?.let { "HTTP ${it.code()}" } ?: "no answer",
+                        meResponse?.let { "HTTP ${it.code()}" }
+                            ?: me.exceptionOrNull()?.let { describe(it, witness, budget) }
+                            ?: "no answer",
                     ),
                 )
             }
@@ -158,24 +175,18 @@ class ServerProbe(private val tokens: TokenStore) {
             report
         }
 
-    private fun describe(error: Throwable): String = describeTransportFailure(error)
-}
-
-/**
- * What to tell the user when nothing answered.
- *
- * Named cases, because "java.net.SocketTimeoutException" on a settings screen
- * tells the user nothing about which of the four things to go and fix.
- *
- * Top-level rather than private to the probe because the pairing claim needs the
- * same sentence for the same failure, and two copies of this list would drift
- * into the probe saying "connection refused" where pairing says "could not
- * connect" about the identical socket.
- */
-internal fun describeTransportFailure(error: Throwable): String = when (error) {
-    is java.net.SocketTimeoutException -> "timed out"
-    is java.net.UnknownHostException -> "no such host"
-    is java.net.ConnectException -> "connection refused"
-    is java.io.InterruptedIOException -> "timed out"
-    else -> error.message?.takeIf { it.isNotBlank() } ?: "could not connect"
+    /**
+     * One line for a failed probe, and the same line the pairing claim would
+     * give for the same socket (`TransportFailure`).
+     *
+     * A timeout where the connection was established reads *"connected, but no
+     * answer within 15s"* rather than *"timed out"* — on the server screen that
+     * is the difference between "your address is wrong" and "your server is
+     * slow", and only one of those is worth retyping an address over.
+     */
+    private fun describe(
+        error: Throwable,
+        witness: ConnectionWitness,
+        budget: Budget,
+    ): String = TransportFailure.of(error, witness, budget.callSeconds).detail
 }

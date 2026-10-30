@@ -4,7 +4,9 @@ import android.content.Context
 import com.lifeos.app.data.api.ApiClient
 import com.lifeos.app.data.api.LifeOsApi
 import com.lifeos.app.data.art.ArtOrigin
+import com.lifeos.app.data.db.FileSnapshotPayloads
 import com.lifeos.app.data.db.LifeOsDatabase
+import com.lifeos.app.data.db.SnapshotPayloads
 import com.lifeos.app.notify.ReminderCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,9 +62,19 @@ class AppContainer(private val context: Context) {
         }
     }
 
+    /**
+     * The dashboard body, in a file beside the database rather than in it.
+     *
+     * A 2.26 MB payload in a `TEXT` column is over Android's 2 MB
+     * `CursorWindow` limit, and reading it threw `SQLiteBlobTooBigException` on
+     * every launch once one had been stored — see [SnapshotPayloads].
+     */
+    private val snapshotPayloads by lazy { FileSnapshotPayloads(context.filesDir) }
+
     val repository by lazy {
         LifeOsRepository(
             snapshots = database.snapshots(),
+            payloads = snapshotPayloads,
             settingsStore = database.serverSettings(),
             writes = database.pendingWrites(),
             prefs = preferences,

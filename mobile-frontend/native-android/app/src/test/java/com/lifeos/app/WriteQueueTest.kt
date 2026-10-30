@@ -7,6 +7,9 @@ import com.lifeos.app.data.api.DashboardTodayDto
 import com.lifeos.app.data.api.LifeDayDto
 import com.lifeos.app.data.db.SnapshotEntity
 import com.lifeos.app.domain.WriteKind
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -24,13 +27,16 @@ class WriteQueueTest {
     private val serverDay = "2026-10-20"
 
     private fun snapshot(day: String = serverDay) = SnapshotEntity(
-        payloadJson = ApiClient.json.encodeToString(
-            DashboardTodayDto.serializer(),
-            DashboardTodayDto(date = day, lifeDay = LifeDayDto(lifeDay = day)),
-        ),
         fetchedAt = 1_000L,
         lifeDayDate = day,
         baseUrl = "http://127.0.0.1:8787/",
+    )
+
+    private fun payload(day: String = serverDay) = FakeSnapshotPayloads(
+        ApiClient.json.encodeToString(
+            DashboardTodayDto.serializer(),
+            DashboardTodayDto(date = day, lifeDay = LifeDayDto(lifeDay = day)),
+        ),
     )
 
     private fun repo(
@@ -40,6 +46,7 @@ class WriteQueueTest {
         now: Long = 10_000L,
     ) = LifeOsRepository(
         snapshots = snapshots,
+        payloads = payload(),
         settingsStore = FakeServerSettingsDao(),
         writes = writes,
         prefs = FakeConfig(),
@@ -138,6 +145,7 @@ class WriteQueueTest {
         var clock = 10_000L
         val repository = LifeOsRepository(
             snapshots = snapshots,
+            payloads = payload(),
             settingsStore = FakeServerSettingsDao(),
             writes = writes,
             prefs = FakeConfig(),
@@ -243,6 +251,7 @@ class WriteQueueTest {
         val writes = FakePendingWriteDao()
         val repository = LifeOsRepository(
             snapshots = FakeSnapshotDao(snapshot()),
+            payloads = payload(),
             settingsStore = FakeServerSettingsDao(),
             writes = writes,
             prefs = FakeConfig(url = null),
@@ -252,5 +261,87 @@ class WriteQueueTest {
         )
         assertEquals(DrainOutcome.NOT_CONFIGURED, repository.drain())
         assertTrue(api.calls.isEmpty())
+    }
+
+    /* ----------------------------------------------------- the poll, paced */
+
+    /* ------------------------------------------- the snapshot, out of SQLite */
+
+    @Test
+    fun `a dashboard larger than a CursorWindow round-trips`() = runTest {
+        // The user's "it crashed altogether after connecting". Their payload is
+        // 2.26 MB — habits and goals carry inline base64 artwork — and Android's
+        // CursorWindow is 2 MB per row, so the first read after the first
+        // successful fetch threw SQLiteBlobTooBigException and took the process
+        // with it, on every launch, permanently. The row now holds metadata and
+        // the body lives in a file, so size is not a cliff any more.
+        val big = "x".repeat(3 * 1024 * 1024)
+        val payloads = FakeSnapshotPayloads()
+        payloads.write(big)
+
+        assertEquals(big.length, payloads.read()?.length)
+        // And nothing about the row grows with it: four small columns.
+        val row = snapshot()
+        assertEquals(serverDay, row.lifeDayDate)
+    }
+
+    @Test
+    fun `changing server clears the body as well as the row`() = runTest {
+        // A different server is a different life. Leaving the file behind would
+        // mean the new server's first empty poll rendered the old server's day.
+        val snapshots = FakeSnapshotDao(snapshot())
+        val payloads = payload()
+        val repository = LifeOsRepository(
+            snapshots = snapshots,
+            payloads = payloads,
+            settingsStore = FakeServerSettingsDao(),
+            writes = FakePendingWriteDao(),
+            prefs = FakeConfig(),
+            tokens = FakeToken(),
+            apiFactory = { FakeApi() },
+            now = { 10_000L },
+        )
+
+        repository.onServerChanged("http://192.168.1.9:8787")
+
+        assertEquals(null, snapshots.get())
+        assertEquals(null, payloads.read())
+    }
+
+    @Test
+    fun `a refresh that arrives while one is in flight is dropped`() = runTest {
+        // The bug this prevents is not subtle once you see it on a real
+        // network: the poll fires every 8s and `LifeOsViewModel.refresh()`
+        // launches and returns, so against a server whose dashboard takes
+        // 6.8–15.2s (2.26 MB through a tunnel, measured on the phone) a new
+        // full download started on top of every one still running. They starve
+        // each other until all of them blow any deadline, and the app reports
+        // a server that has gone away while it is answering fine.
+        val api = FakeApi(todayDelayMs = 30_000)
+        val repository = repo(api, FakePendingWriteDao(), FakeSnapshotDao(snapshot()))
+
+        val first = launch { repository.refresh() }
+        runCurrent()
+
+        // Three more poll ticks land mid-flight. None of them may start a
+        // second download.
+        repeat(3) { repository.refresh() }
+        assertEquals(1, api.calls.count { it == "today" })
+
+        advanceUntilIdle()
+        first.join()
+        assertEquals(1, api.calls.count { it == "today" })
+    }
+
+    @Test
+    fun `a refresh after the previous one finished does fetch`() = runTest {
+        // The other half: coalescing must not turn into a latch that stops the
+        // app ever refetching again.
+        val api = FakeApi(todayDelayMs = 1_000)
+        val repository = repo(api, FakePendingWriteDao(), FakeSnapshotDao(snapshot()))
+
+        repository.refresh()
+        repository.refresh()
+        assertEquals(2, api.calls.count { it == "today" })
     }
 }
