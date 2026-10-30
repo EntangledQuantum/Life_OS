@@ -410,11 +410,21 @@ These are the things that used to be in the payload and now are not, because
 they depend on the current time. Pure helpers for every one of them are exported
 from `@life-os/shared`; a non-TypeScript client reimplements them, and each is
 small on purpose. They are not all in one file — `isCurrentAt`,
-`isReminderDueAt` and `composeTimeline` are in `packages/shared/src/sync.ts`,
-while `paceAdjustedImprovementPct` and `dayFractionAt` are in
-`packages/shared/src/xp.ts` (with their cases in `xp.test.ts`, which is what a
-port to another language should be tested against). The package barrel exports
-all of them, so `@life-os/shared` is the only import a TypeScript client needs.
+`isReminderDueAt`, `dayFractionAt`, `activityColor` and `composeTimeline` are in
+`packages/shared/src/sync.ts`, while `improvementPct` and
+`paceAdjustedImprovementPct` are in `packages/shared/src/xp.ts` (with their cases
+in `xp.test.ts`). The package barrel exports all of them, so `@life-os/shared` is
+the only import a TypeScript client needs.
+
+A client in another language should not restate these by hand: run the real
+TypeScript over a table of cases, commit what it returned, and assert against
+that. The Android port did, and it caught a divergence no hand-written
+expectation would have — `kotlin.math.round` rounds a half away from zero while
+JavaScript rounds toward +infinity, so `-0.25` is `-0.2` here and `-0.3` there.
+Three JavaScript behaviours are load-bearing and must be preserved, not
+tidied: `Date.parse` returning `NaN` means an unparseable `currentUntil` does
+**not** close a window, `if (task.showAt)` is a truthiness test so `""` counts as
+absent, and `getHours()` reads the device's zone.
 
 | was | now | helper |
 |---|---|---|
@@ -563,6 +573,13 @@ revalidation *is* the mechanism.
 
 Send `If-None-Match` on every poll. It is the difference between 314 bytes and
 zero.
+
+**The first conditional poll after a cold sync always misses**, and that is
+correct, not a bug. The `ETag` covers `since`, so the tag of a cold response
+(no `since`) can never match that of a poll (`since=cursor`). Store the tag from
+*every* response and a client self-corrects on the second poll; a client that
+cached the cold tag and expected an immediate `304` would conclude the whole
+mechanism was broken.
 
 ### A browser client needs two CORS entries before any of this works
 
