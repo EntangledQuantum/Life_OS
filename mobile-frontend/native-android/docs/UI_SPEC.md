@@ -616,7 +616,7 @@ more time, it is doing too much.
 | **Tick** | Ring → fill, 100ms, with a single `spring.snap` scale 1.0 → 1.12 → 1.0. The check path draws in 120ms. This is the app's signature micro-interaction and it is allowed to be crisp. |
 | **Card → done** | Alpha and border colour over `medium`. No size change, no position change. |
 | **Meter** | `animateFloatAsState` over `long` from the previous value. Leaves reveal as thresholds are crossed; the bloom at 1.0 is a one-shot arrival, because 100% must not look like a brighter 99%. |
-| **Destination change** | By tap: content cross-fades + 4% scale-in over `medium` (M3 "top level transition"), the bar itself does not move or re-layout, and its **indicator travels** to the new item on a critically damped spring (§5.4). By swipe: the pages follow the finger and the indicator tracks them continuously, settling in `short` (§5.4). |
+| **Destination change** | By tap: content cross-fades + 4% scale-in over `medium` (M3 "top level transition"), the bar itself does not move or re-layout, and its three **destinations interpolate** toward the new one on a critically damped spring (§5.4). By swipe: the pages follow the finger and the destinations interpolate with them continuously, settling in `short` (§5.4). |
 | **Drill-in — a full screen (settings, `server`, `connect/pair`, a goal)** | **Shared axis X.** Forward: incoming slides in from +12% of the width with a `medium` fade; outgoing slides to −12% and fades over `short`, so the old screen is gone before the new one is solid. Back is the same thing mirrored, and predictive back scrubs it under the user's finger. A cross-fade is banned here: it has no direction, so forward and back look identical and the back gesture stops feeling like going back. |
 | **Drill-in — a sheet** | Shared-axis Z: incoming scales 92%→100% with fade, outgoing 100%→104% with fade, `medium`. A sheet comes from *in front of* the screen rather than from beside it, so it keeps Z while full screens take X. Predictive back drives it in reverse (`PredictiveBackHandler`). |
 | **Loading → loaded** | One fade over the whole content, `short`, and **only** when the cache was empty — a cold start with a cache is already at full opacity on its first frame, so the path that matters never animates. A hard cut from six seconds of skeletons to content reads as the screen being swapped out from under you. Never per row (§5.4). |
@@ -636,39 +636,60 @@ licenses a reviewer to apply is: *what did that movement tell me?* A movement th
 is allowed. A movement that answers nothing is decoration at the bottom edge of the screen,
 where the thumb already draws the eye, and it is banned.
 
-Applied to the navigation bar's active indicator, three clauses:
+Applied to the navigation bar, four clauses:
 
-- **It tracks a gesture, frame for frame.** While a horizontal swipe is moving the pages the
-  indicator moves with them in real time. It stops when the finger stops and it goes back
-  when the finger goes back. Label and icon states interpolate with it rather than flipping
-  at the halfway point. This is direct manipulation; an indicator that ignored the finger
-  until the gesture ended would be *less* honest, not more.
-- **It travels between destinations on a tap.** Not a cross-fade in place — it moves, from
-  the old slot to the new one, and the eye follows it there. **Critically damped**
-  (`dampingRatio = 1.0`) so it has no oscillating term at all and therefore cannot overshoot
-  by construction, at a stiffness that crosses one slot in roughly 180ms. Quick, and done.
-  There is nothing to "tune away" later, which is the difference between this and the pill
-  it replaces.
+- **The destinations interpolate, continuously, with the gesture.** While a horizontal
+  swipe is moving the pages, each item's glyph size, its lift, its colour, its label and its
+  indicator all move with them in real time. They stop when the finger stops and they go
+  back when the finger goes back. Nothing waits for the halfway point and nothing waits for
+  the gesture to end. This is direct manipulation, and it is the clause that carries the
+  others: **freeze any frame of a swipe and the bar must say where you are between two
+  tabs.** That is a reviewable test and it is meant to be applied to a screenshot.
+- **No chrome ever occupies the space between two destinations.** An item's indicator
+  belongs to its own icon and stays on it. It changes shape — a disc closed around the
+  glyph opens into the full capsule — and it may lean toward the movement by at most
+  `IndicatorLean`, 10dp, but it does not set out across the gap. The gap is empty space: a
+  lit shape travelling through it is attached to nothing and says nothing until it lands.
+- **A tap moves the bar the way a finger would.** Not a cross-fade in place — the one number
+  that drives everything above animates from the old tab to the new one, so the destinations
+  pass through exactly the states a fast swipe would have put them in and the whole bar leans
+  the way you just went. **Critically damped** (`dampingRatio = 1.0`) so it has no
+  oscillating term at all and therefore cannot overshoot by construction, at a stiffness that
+  crosses one slot in roughly 180ms. Quick, and done. There is nothing to "tune away" later.
 - **Nothing else in the bar moves.** The bar does not re-layout, does not animate its
   background, does not change height, does not collapse on scroll, and nothing in it moves
   because data arrived. Labels are always visible (`alwaysShowLabel = true`), so nothing
-  appears or disappears either.
+  appears or disappears either, and no item ever changes its place in the row.
 
 A gesture's settle is a fixed `short` (200ms, decelerate) and never a spring — the finger
 has already said where it is going, so the pages only have to finish arriving. With reduced
-motion the gesture still tracks (it is the user's finger) and both the settle and the
-indicator's travel become immediate, leaving the content cross-fade to carry the change
-(§5.6).
+motion the gesture still tracks, because it is the user's own finger, but in **opacity
+only**: every geometric interpolation in the bar is switched off, the capsule stays its full
+width, and both the settle and the tap's travel become immediate, leaving the content
+cross-fade to carry the change (§5.6).
 
-Mechanically the compact bar is ours rather than a stock `NavigationBarItem`, whose
-indicator cannot be told where to be. There is **one number** — the indicator's position in
-tab units, which is the pages' own position during a gesture and a damped animation toward
-the selected tab otherwise — and every item draws its indicator at its `selectedness` of
-that number, offset by how far it is from that item. In motion two coincide and read as one
-pill; at rest exactly one is visible and un-offset. Because it is the same arithmetic in
-both cases, the handover between them is invisible. The navigation rail (Medium/Expanded)
-keeps the stock items: a vertical rail has no sideways travel to track, and the swipe still
-works underneath it.
+Mechanically the compact bar is ours rather than a stock `NavigationBarItem`, which cannot
+be told how to interpolate. There is **one number** — the indicator's position in tab units,
+which is the pages' own position during a gesture and a damped animation toward the selected
+tab otherwise — and every item draws itself at its `emphasis` of that number, a smoothstep
+of how near the pages are to it (`domain/TabSwipe`). Four things read it and therefore cannot
+drift apart: the glyph's scale (0.84 → 1), its lift (4dp → 0), the cross-fade from an
+outlined `muted` glyph to a filled `accent` one, and the indicator's width (a 32dp disc → a
+64dp capsule) and opacity. Because it is the same arithmetic during a gesture and after a
+tap, the handover between them is invisible.
+
+Three properties of `emphasis` are load-bearing rather than cosmetic, and all three are
+unit-tested. It is **eased**, because a linear hand-over spreads its contrast evenly and a
+frozen frame needs it in the middle — at 40% of a swipe linear gives 0.60/0.40 and smoothstep
+gives 0.648/0.352. It is **symmetric**, so the three still sum to one and the bar never gets
+brighter or dimmer overall, only moves its weight. And it **cannot exceed 1**, which matters
+because all four readings above are a `lerp` between a rest value and a full one: an
+overshooting ease would make the glyph grow past full size and spring back, which is the old
+wobble arriving by a different door. The indicator is **drawn**, not laid out, so a width
+that changes every frame never re-measures the bar under the one finger that is watching it.
+
+The navigation rail (Medium/Expanded) keeps the stock items: a vertical rail has no sideways
+travel to track, and the swipe still works underneath it.
 
 #### Decision history — this section has been reversed twice. Read this before "fixing" it.
 
@@ -685,15 +706,39 @@ works underneath it.
    spotlight from one place to another"*. Exactly right — a highlight extinguished in one
    slot and lit in the next is not a movement, and the eye is given nothing to follow. The
    rule produced a worse artefact than the thing it was written to prevent.
-4. **Now:** the rule above. What is banned is self-animating chrome that carries no
-   information, which is what the Expo pill actually was. Travel that answers "where you
+4. **2.0.1 restored the travel.** What is banned is self-animating chrome that carries no
+   information, which is what the Expo pill actually was; travel that answers "where you
    just went" is information, and 180ms of critically damped travel across one slot is not
-   "busy" by any measure the original complaint was about.
+   "busy" by any measure the original complaint was about. Correct as far as it went — and
+   it went one step too far, because the fix was written as *let the capsule move again*
+   rather than as *make the bar legible*.
+5. **Shipped in 2.0.2 and rejected on sight, again.** With travel restored, every item drew
+   its capsule at `(indicator - index) * slotWidth` — the **whole** distance between two
+   slots — so for the entire middle of every gesture a 64dp lozenge sat over the background
+   between two icons. The user: *"when you drag the tabs, it's just an empty thing moving,
+   like an empty glow moving on the background glow until it lands on an icon. So that's
+   weird."* Right for the third time, and a screenshot taken a third of the way through a
+   swipe settles it: a blank capsule in the gap, and all three glyphs an identical mid-grey,
+   because the icons' own interpolation was one white glyph cross-fading into a nearly
+   identical white glyph and could not be seen at all.
+6. **Now:** the four clauses above. The error shared by steps 2, 3 and 5 was arguing about
+   **how far the highlight should slide** while the destinations — the things the bar is
+   actually *about* — sat inert. Zero pixels gave a teleporting spotlight; a whole slot gave
+   a glow adrift in a void. The distance was never the variable. Put the signal in the
+   destinations and the question stops mattering: the glyphs grow, lift and warm from grey to
+   the palette's accent under the finger, each capsule opens around the icon it belongs to,
+   and what is left of the travel is 10dp of lean that still says which way you are going
+   without ever leaving the glyph. The result has strictly **less** moving chrome than 2.0.2
+   and strictly **more** that a still frame can be read from, which is the test this section
+   has needed since it was first written.
 
 The constants are `HomeTabsState.INDICATOR_DAMPING` / `INDICATOR_STIFFNESS` and the damping
 ratio is **unit-tested at exactly 1.0**, with this history in the test, specifically so that
 the next person to read step 2 above and reinstate it has to delete a test that explains why
-they should not.
+they should not. `TabSwipeTest` pins the rest of it the same way: that `emphasis` beats a
+linear hand-over at 40%, that it sums to one, that it never exceeds 1 and never dips, and
+that an item's lean is bounded — the last of which is step 5's fault written down as
+arithmetic so it cannot come back by accident.
 
 **Gesture ownership.** The swipe only takes a drag that is past the touch slop *and* twice
 as horizontal as vertical. Inherited from the Expo app and kept deliberately: the screen
@@ -738,6 +783,9 @@ When reduced:
 
 - Every duration above collapses to **100ms cross-fade**. No springs, no scale, no
   translation anywhere.
+- The navigation bar still tracks the swipe, because the finger is the user's movement and
+  not ours — but in opacity alone. The glyphs do not grow or lift, the capsules do not lean
+  and do not change width, and a tap changes the bar's state in one step (§5.4).
 - The meter jumps to its value. Leaves do not grow in; the bloom is a static arrival state.
 - The orb's crests stop (static liquid at the right level). The sprout is static.
 - The pulse becomes a **static** 60%-alpha border. The information ("this needs you")
