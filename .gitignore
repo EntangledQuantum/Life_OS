@@ -19,3 +19,6 @@ dist-pages
 
 # Rolling database snapshots (data/backups/lifeos-*.db)
 data/backups/
+
+# Agent worktrees: real git checkouts, never content of this repo
+.claude/worktrees/

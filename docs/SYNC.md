@@ -408,8 +408,13 @@ and leaves the other six exactly as they were.
 
 These are the things that used to be in the payload and now are not, because
 they depend on the current time. Pure helpers for every one of them are exported
-from `@life-os/shared` (`packages/shared/src/sync.ts`); a non-TypeScript client
-reimplements them, and each is small on purpose.
+from `@life-os/shared`; a non-TypeScript client reimplements them, and each is
+small on purpose. They are not all in one file — `isCurrentAt`,
+`isReminderDueAt` and `composeTimeline` are in `packages/shared/src/sync.ts`,
+while `paceAdjustedImprovementPct` and `dayFractionAt` are in
+`packages/shared/src/xp.ts` (with their cases in `xp.test.ts`, which is what a
+port to another language should be tested against). The package barrel exports
+all of them, so `@life-os/shared` is the only import a TypeScript client needs.
 
 | was | now | helper |
 |---|---|---|
@@ -558,6 +563,18 @@ revalidation *is* the mechanism.
 
 Send `If-None-Match` on every poll. It is the difference between 314 bytes and
 zero.
+
+### A browser client needs two CORS entries before any of this works
+
+Neither header is on the CORS safelist: `If-None-Match` is not a safelisted
+*request* header, and `ETag` is not a safelisted *response* header. So a web
+client on an origin the API does not itself serve — which is every development
+setup, and any dashboard hosted apart from its server — can neither send a
+validator nor read one back. Nothing fails loudly; the browser drops the request
+header, the client never learns the `ETag`, and every poll quietly returns
+`200`-with-body while appearing to work. The API therefore names
+`If-None-Match` in `allowHeaders` and `ETag` in `exposeHeaders`
+(`apps/api/src/app.ts`). A native client has no equivalent to do.
 
 ---
 
