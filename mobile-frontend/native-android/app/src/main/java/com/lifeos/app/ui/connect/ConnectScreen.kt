@@ -24,9 +24,10 @@ import com.lifeos.app.ui.theme.palette
  * a single-use code, shows it as a QR, and the phone trades the code for
  * `{baseUrl, token}` at `POST /api/v1/pair/claim`.
  *
- * Since 2.0.1 the button opens a **real** scanner (see `PairRoute`), and the
+ * There is no scanner behind the button (see `PairScreen`), on purpose: the
  * same QR scanned in any other camera app opens this app through the
- * `lifeos://pair` deep link. 2.0.0 shipped a stub here that said scanning was
+ * `lifeos://pair` deep link, so the button says to do that instead of
+ * duplicating the camera. 2.0.0 shipped a stub here that said scanning was
  * unavailable, which is the worst of the three options: the capability existed
  * on the server, the link existed in the QR, and the app's own button said
  * neither did.

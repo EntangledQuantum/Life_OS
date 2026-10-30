@@ -188,9 +188,13 @@ stays pending and they all fire at once the next time a client polls.
 
 ### Where they surface
 
-`dashboard/today` carries `tasks` (everything open), `current` (what is landing now, for Quick
-log) and `dueReminders`. Agents can schedule as far ahead as they like without crowding the
-dashboard — the rest is on the Timeline tab.
+`GET /api/v1/sync` carries `tasks` (everything open, including `done` and `missed`), and each
+one carries the four window instants `currentFrom` / `currentUntil` / `dueFrom` / `dueUntil`.
+**`current` and `dueReminders` are no longer sent.** They depended on what time it was, which
+is what made the old payload impossible to cache, so the client derives them from those
+instants with `isCurrentAt` and `isReminderDueAt` from `@life-os/shared` — see
+[`SYNC.md`](SYNC.md) §8. Nothing changes for an agent writing tasks: schedule as far ahead as
+you like without crowding the dashboard, and the rest is on the Timeline tab.
 
 A task leaves Quick log when its own window ends, completed or not. Otherwise every missed
 thing piles up on the front page forever, which is the to-do list this app refuses to be.
@@ -477,10 +481,14 @@ none of them renders exactly as it did before art existed, which is the normal c
 | `backgroundImageUrl` / `backgroundImageData` | **3:2 landscape, 1200×800** recommended, 600×400 minimum. Cover-cropped from the centre, always under a scrim |
 | `artOverlay` | `0.35`–`0.92`. How dark that scrim is. Clamped; it cannot be turned off |
 
-`…Data` is a `data:` URI and wins over `…Url`. Inline data needs no network and survives the
-device being offline; a URL is better for anything large, since every inline byte rides on
-every dashboard poll. Both clients cache what they fetch and prefetch the day's art on load,
-so send a picture once — re-sending the same art is churn on every device watching.
+`…Data` is a `data:` URI and wins over `…Url`. **Since protocol 4 the choice no longer costs
+the clients anything.** Inline bytes used to ride on every poll; now the server hashes them
+once and hands clients a content-addressed `/api/v1/assets/<sha256>` URL instead, cached for a
+year and immutable, so a picture crosses the wire once ever. Send whichever is easier.
+
+What still matters is **not changing a picture that did not change**: new bytes are a new hash,
+which every device watching then fetches. Re-sending identical bytes is free — the same bytes
+hash the same — but re-encoding the same image is not.
 
 A card (a task in slot 0/1) has the same two slots under its older names: `imageUrl` /
 `imageData` for the picture `cardStyle.layout` places, and `iconImageUrl` / `iconImageData`

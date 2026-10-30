@@ -96,8 +96,9 @@ and the 2.0.2 work above now sit on the 3.0 line, where the version is set once.
 
 **2.0.1** — four things the user found by installing 2.0.0 on their phone. Scanning the
 pairing QR in any other app now actually opens and pairs Life OS (the manifest matched the
-link; nothing read it). The "Scan QR" button opens a real CameraX + ML Kit scanner instead
-of a screen saying scanning is unavailable. Secondary screens arrive on a shared-axis X
+link; nothing read it). The "Scan QR" button no longer
+claims scanning is unavailable; it says to scan the code with the phone's own camera app,
+which is honest because the deep link above is what makes it true. Secondary screens arrive on a shared-axis X
 rather than a cross-fade, and the navigation indicator **travels** between destinations
 instead of appearing to teleport. Cards, rows and presses got their craft back at the same
 information density — see
@@ -504,7 +505,7 @@ purpose:
 
 | Warning | Count | Why not fixed |
 |---|---|---|
-| `GradleDependency` | 72 | The dependency set is a proven combination. Bumping any of it needs the build re-proven, which is not this release's job. CameraX 1.4.1, ML Kit 17.3.0 and Coil 3.2.0 are pinned exactly for the same reason — exact versions, each chosen old enough to have been shipped by other people first. |
+| `GradleDependency` | 72 | The dependency set is a proven combination. Bumping any of it needs the build re-proven, which is not this release's job. Coil 3.2.0 is pinned exactly for the same reason — exact versions, each chosen old enough to have been shipped by other people first. |
 | `UseKtx` | 1 | `Bitmap.createScaledBitmap` in `ArtImages`, where the scrim's mean luminance is measured. Pre-existing and left alone: the KTX extension is the same call, and this one sits in the one piece of image code with a unit test pinning its output. |
 | `AndroidGradlePluginVersion` | 3 | AGP 9.x requires Gradle 9, and AGP 8.x must not run on Gradle 9. Moving is a deliberate migration, not a nit. |
 | `OldTargetApi` | 1 | targetSdk 35 is the proven combination; 36 is available and untested here. |
@@ -545,11 +546,12 @@ Run `lint` **online**. `--offline` cannot check for newer dependency versions, s
   `connect` as an alias) is read on the cold-start intent *and* on `onNewIntent`, cleared off
   the intent once read, parsed by one pure-Kotlin parser, and claimed through
   `POST /api/v1/pair/claim` with no auth header. Scanning the dashboard's QR in any camera
-  app, Google Lens or the pair page opens this app and pairs it. The **scanner**: CameraX
-  with ML Kit's bundled barcode model, so it works on a first run with no network at all;
-  camera permission asked in context, a framed viewfinder, and a denial that falls through
-  to manual entry *and* to the camera-app route, which is only honest because the link works.
-  A refused code and an unreachable address are different outcomes with different buttons.
+  app, Google Lens or the pair page opens this app and pairs it. And **no scanner**: the
+  button points at the phone's own camera app rather than bundling one, so there is no
+  camera permission, no viewfinder and no ML Kit model in the APK. The spec asked for a
+  scanner; shipping one cost 24 MB to duplicate something the phone already does well, and
+  it came out again. A refused code and an unreachable address are different outcomes with
+  different buttons.
   Nothing logs the code or the token, and `PairInvite.toString()` prints `code=***` so an
   accident cannot either.
 - **§7.7 Outdated** — the full-screen `426` block, reactive on any poll.
@@ -687,10 +689,13 @@ mistake of mine, and the third was a rule I had written.
 2. **The "Scan QR" button said scanning was unavailable.** It was a stub.
    *"there is button to scan QR in the app where you say its not available when it is"* —
    and they were right twice over: the server mints codes, the QR carries a working link,
-   and the only thing missing was this app. It is now CameraX + ML Kit's bundled barcode
-   model, which is what UI_SPEC §7.3 asked for and for the reason it gives: the model is in
-   the APK, so the first run of a fresh install scans with no network, and pairing is the
-   one moment the phone provably cannot reach Life OS yet.
+   and the only thing missing was this app. First it became a real CameraX
+   + ML Kit scanner, which is what UI_SPEC §7.3 asked for — and that was the wrong read of
+   the complaint. The user had asked for the *message* to stop lying, not for a scanner:
+   *"i said instead of showing messaef not aviable tell them they can scan in any other app
+   or in camera"*. The scanner came out again in `49092cd`, with 24 MB of APK and the camera
+   permission, and the button now says what to do instead. The phone's camera already opens
+   the app; the honest sentence was the whole fix.
 
 3. **Every press in the app was Compose's debug indication.** This is the one that explains
    the general "feels cheap", and it was invisible in review because every call site looks
