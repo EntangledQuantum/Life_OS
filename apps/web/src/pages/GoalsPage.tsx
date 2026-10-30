@@ -1,8 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { Bot, Check, CircleDot, Sparkles } from "lucide-react";
 import { themePalette, type AgentProperty, type Goal, type GoalTier } from "@life-os/shared";
-import { api } from "@/lib/api";
+import { useSyncState } from "@/lib/use-sync";
 import { cn } from "@/lib/utils";
 import { ArtBackground, ArtIcon, hasArt } from "@/components/Art";
 
@@ -15,16 +14,16 @@ import { ArtBackground, ArtIcon, hasArt } from "@/components/Art";
  * counters it is watching.
  */
 export function GoalsPage() {
-  const { data: goals = [], isLoading } = useQuery({
-    queryKey: ["goals"],
-    queryFn: () => api.goals(),
-    refetchInterval: 15_000,
-  });
-  const { data: properties = [] } = useQuery({
-    queryKey: ["properties"],
-    queryFn: () => api.properties(),
-    refetchInterval: 15_000,
-  });
+  /*
+   * Both of these are collections the sync state already holds, kept current by
+   * the one poll. They used to be two more requests on a 15-second interval,
+   * which on this page meant a full list of goals — art included — arriving
+   * four times a minute to say nothing had changed.
+   */
+  const state = useSyncState();
+  const goals = Object.values(state.goals);
+  const properties = Object.values(state.properties);
+  const isLoading = !state.loaded;
 
   const open = goals.filter((g) => g.status === "active" && !g.celebrationPending);
   const waiting = goals.filter((g) => g.celebrationPending);

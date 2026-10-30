@@ -114,7 +114,12 @@ function AgendaCard({
   const isHabit = item.source === "habit";
   const color = item.themeColor || "var(--accent)";
   /* The habit's own art if it has any; otherwise whatever the row resolved. */
-  const art = habit ?? { iconImageData: item.iconImage, iconImageUrl: null };
+  /*
+   * The agenda's own icon is an asset URL now, not inline base64, so it goes
+   * in the url slot. `resolveArt` reads either, and `useCachedImage` beneath it
+   * is what puts the token on the request.
+   */
+  const art = habit ?? { iconImageData: null, iconImageUrl: item.iconImage };
   const overdue = item.state === "overdue" && !item.done;
 
   return (

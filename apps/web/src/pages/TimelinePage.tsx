@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Bell, Calendar, Check, ExternalLink, Repeat } from "lucide-react";
 import { isTimelineTask, type Task, type TimelineBlock } from "@life-os/shared";
-import { api } from "@/lib/api";
+import { pushMutation } from "@/lib/sync";
+import { useDashboard, useNow, useTasksByStatus } from "@/lib/use-sync";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,7 +22,6 @@ import { cn } from "@/lib/utils";
  * time.
  */
 export function TimelinePage() {
-  const qc = useQueryClient();
   /**
    * `?task=<id>` arrives from a clicked OS notification. The row is highlighted
    * and scrolled to, so the notification lands you on the thing itself with one
@@ -29,45 +29,41 @@ export function TimelinePage() {
    */
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get("task");
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, []);
+  const now = useNow();
 
-  const { data: dashboard } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: api.dashboard,
-    refetchInterval: 15_000,
-  });
-  const { data: open = [], isLoading } = useQuery({
-    queryKey: ["tasks", "active"],
-    queryFn: () => api.tasks("?status=active"),
-    refetchInterval: 15_000,
-  });
-  const { data: done = [] } = useQuery({
-    queryKey: ["tasks", "done"],
-    queryFn: () => api.tasks("?status=done"),
-    refetchInterval: 60_000,
-  });
-
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["dashboard"] });
-    qc.invalidateQueries({ queryKey: ["tasks"] });
-  };
+  /*
+   * All three of these used to be their own polling request — the whole day on
+   * 15 s, the open tasks on 15 s, the finished ones on 60 s. The sync state
+   * holds every task, of every status, precisely so this page needs no network
+   * of its own: `?status=active` and `?status=done` are a filter and a clock
+   * comparison, and both are cheaper here than a round trip.
+   */
+  const dashboard = useDashboard();
+  const open = useTasksByStatus("active");
+  const done = useTasksByStatus("done");
+  const isLoading = dashboard === null;
 
   const complete = useMutation({
-    mutationFn: (id: string) => api.completeTask(id),
-    onSuccess: (res) => {
-      invalidate();
-      toast.success(res.xpAwarded ? `Done · +${res.xpAwarded} XP` : "Done");
+    mutationFn: async (id: string) => {
+      const { result } = await pushMutation("task.complete", {
+        taskId: id,
+        source: "user",
+      });
+      return result;
+    },
+    onSuccess: (result) => {
+      if (result && result.status !== "applied" && result.status !== "duplicate") {
+        toast.error(result.error ?? "That could not be saved");
+        return;
+      }
+      const xp = (result?.result as { xpAwarded?: number } | undefined)?.xpAwarded;
+      toast.success(xp ? `Done · +${xp} XP` : "Done");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const dismiss = useMutation({
-    mutationFn: (id: string) => api.dismissTask(id),
-    onSuccess: invalidate,
+    mutationFn: (id: string) => pushMutation("task.dismiss", { taskId: id }),
     onError: (e: Error) => toast.error(e.message),
   });
 

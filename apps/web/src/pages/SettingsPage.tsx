@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { pull, pushMutation } from "@/lib/sync";
+import { useSettings } from "@/lib/use-sync";
 import { useUiStore } from "@/lib/store";
 import {
   fireReminderAlert,
@@ -21,12 +23,14 @@ import { toast } from "sonner";
 import { motion } from "motion/react";
 
 export function SettingsPage() {
-  const qc = useQueryClient();
   const ui = useUiStore();
-  const { data: settings, isLoading } = useQuery({
-    queryKey: ["settings"],
-    queryFn: api.settings,
-  });
+  /*
+   * `settings` is one of the nine derived documents, so it arrives with the day
+   * and is re-sent only when its bytes actually change. This page used to fetch
+   * it on its own, and so did the shell and the reminder runner.
+   */
+  const settings = useSettings();
+  const isLoading = settings === null;
 
   useEffect(() => {
     if (!settings) return;
@@ -36,10 +40,24 @@ export function SettingsPage() {
   }, [settings]);
 
   const update = useMutation({
-    mutationFn: api.updateSettings,
-    onSuccess: (s: any) => {
-      qc.setQueryData(["settings"], s);
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    mutationFn: async (patch: Record<string, unknown>) => {
+      const { result } = await pushMutation("settings.patch", patch);
+      return result;
+    },
+    onSuccess: (result) => {
+      if (result && result.status !== "applied" && result.status !== "duplicate") {
+        toast.error(result.error ?? "Those settings could not be saved");
+        return;
+      }
+      /*
+       * The delta in the push reply has already replaced the `settings`
+       * document, so there is nothing to invalidate and nothing to refetch —
+       * the themes below are driven from the value the write returned.
+       */
+      const s = (result?.result ?? {}) as {
+        accentTheme?: AccentThemeId;
+        celebrationIntensity?: "full" | "minimal" | "off";
+      };
       toast.success("Settings saved");
       if (s.accentTheme) ui.setAccentTheme(s.accentTheme);
       if (s.celebrationIntensity) ui.setCelebrationIntensity(s.celebrationIntensity);
@@ -239,11 +257,19 @@ export function SettingsPage() {
                  * rejected — and the picker snapped back on the next refetch
                  * with nothing to explain why.
                  */
+                /*
+                 * Still a REST write: the XP rules belong to the agent and have
+                 * no mutation name in the sync set. That is fine and needs no
+                 * special handling — the change log lives in SQLite triggers,
+                 * so every REST write bumps the cursor too. `pull()` just asks
+                 * for the delta now rather than waiting for the next poll, and
+                 * the delta is the one document that moved.
+                 */
                 onClick={() =>
                   api
                     .updateGamificationConfig({ growthStyle: option.id })
-                    .then(() => {
-                      qc.invalidateQueries({ queryKey: ["dashboard"] });
+                    .then(async () => {
+                      await pull();
                       toast.success(`Day graphic: ${option.label.toLowerCase()}`);
                     })
                     .catch((e: Error) => toast.error(e.message))

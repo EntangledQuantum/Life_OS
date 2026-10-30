@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { motion } from "motion/react";
 import { api } from "@/lib/api";
+import { useDashboard } from "@/lib/use-sync";
 import { cn } from "@/lib/utils";
 
 /** Same four words the front-page chip uses, so they cannot drift apart. */
@@ -55,11 +56,7 @@ export function AnalyticsPage() {
    * every morning should not be a number about yesterday. It lives here, where
    * there is room to show it against a series instead of on its own.
    */
-  const { data: today } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: api.dashboard,
-    staleTime: 30_000,
-  });
+  const today = useDashboard();
 
   if (isLoading || !data) {
     return <div className="text-[var(--muted)]">Loading analytics…</div>;
