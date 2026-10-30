@@ -5,6 +5,22 @@ here wants Life OS installed, running, and shaped around their life. Do the
 whole thing — install, connect, interview, configure — and do not stop halfway
 to ask whether you should continue.
 
+**This is the fresh-install document, and it assumes there is no Life OS on this
+machine yet.** If they already run a version of it — a server they have been
+using, a phone that has been paired, a dashboard with their real data in it —
+this is the wrong file. Read [`AGENT_UPGRADE.md`](AGENT_UPGRADE.md) instead. A
+3.0 server refuses every 2.x client outright, so moving an existing install has
+an order to it that this document does not teach, and getting that order wrong
+leaves the user's phone dead. §1 tells you how to find out which case you are
+in, and it is the first thing you should do.
+
+This is **Life OS 3.0, protocol 4**. Clients ask the server only for what
+changed since they last asked, so an unchanged poll is 314 bytes rather than
+2.26 MB and artwork is fetched once by URL rather than re-sent as base64 every
+few seconds. You mostly do not have to care — you talk MCP, the apps talk sync —
+but it is what decides which app build can talk to which server, which is why §1
+asks before it installs.
+
 Life OS is a local-first execution layer for someone who struggles to hold a day
 together. It is not a to-do app. It has exactly two nouns:
 
@@ -19,10 +35,30 @@ with different fields set.
 
 ## 1. Install it
 
-**First: is it already running?** If the user has a phone paired or a dashboard
-open, it is, and your job here is to connect rather than to install. Try
-`GET <their-url>/health`. Installing a second copy gives them two databases and
-one of them silently stops being the real one.
+**First: is it already running?** Installing a second copy gives them two
+databases and one of them silently stops being the real one. Two requests settle
+it, and neither needs the token:
+
+```bash
+curl -s http://127.0.0.1:8787/health
+curl -s http://127.0.0.1:8787/api/v1/protocol
+```
+
+If the user's instance is somewhere else, ask where and use that address — and
+try their LAN address too, because a server bound to `0.0.0.0` answers on both.
+
+- **Nothing answers**, and they say they have never installed it → carry on down
+  this page.
+- **`/health` answers and `/api/v1/protocol` reports `{"protocol":4,…}`** → a
+  3.0 server is already there. Do not install. Skip to §2 and connect to it.
+- **`/health` answers and the protocol is lower than 4, or `/api/v1/protocol`
+  404s** → this is an older Life OS with the user's real data in it. **Stop
+  reading this file** and go to [`AGENT_UPGRADE.md`](AGENT_UPGRADE.md). Do not
+  clone a second copy next to it, and do not run `pnpm setup` hoping it sorts
+  itself out.
+
+A clone on disk with nothing listening is still an existing install — check for
+one (`data/lifeos.db` under the clone) before you create another.
 
 ```bash
 git clone https://github.com/EntangledQuantum/Life_OS.git
@@ -43,6 +79,20 @@ pnpm dev
 ```
 
 The API comes up on `http://127.0.0.1:8787` and the web dashboard on `:5173`.
+Confirm both, and confirm the protocol, before you go on:
+
+```bash
+curl -s http://127.0.0.1:8787/health
+curl -s http://127.0.0.1:8787/api/v1/protocol    # {"protocol":4,"minProtocol":4}
+```
+
+If `pnpm setup` fails, read the step it failed on rather than re-running it —
+it is idempotent, so a second run will fail in the same place. Needs Node 22.5
+or newer and pnpm; an old Node fails in `node:sqlite` and the message does not
+say so. If the API will not start because the port is taken, find out what has
+it (`ss -ltnp | grep 8787`, or `netstat -ano | findstr :8787` on Windows) before
+you kill anything — on this machine it may well be their real Life OS, which is
+§1's first question again.
 
 ### Make it start with the machine
 
@@ -55,11 +105,24 @@ it up as a service **now**, not as a follow-up:
   survives logout.
 - **macOS** — a `launchd` plist in `~/Library/LaunchAgents/` with
   `RunAtLoad` true.
-- **Windows** — a Scheduled Task at logon, or NSSM if the user wants a real
-  service.
+- **Windows** — if the machine runs **Service Runner** (a local production host;
+  look for something answering on `http://127.0.0.1:4780`), **register Life OS
+  with it.** That is what it is for, and a registered app comes back after a
+  reboot. Otherwise a Scheduled Task at logon, or NSSM for a real service.
 
 Pick the one that matches their machine, write it, enable it, and confirm it
 comes back after a reboot or a logout.
+
+**"It is running in a terminal" is not done.** A process you started in a shell
+dies with the shell, the SSH session, or the next reboot, and the user finds out
+when their phone stops syncing in the middle of a Tuesday. Register it, then
+prove the registration: stop the process and confirm the supervisor brings it
+back, and if you can get a reboot out of the user, check again afterwards.
+
+If you have to stop something, **kill it by PID or by listening port** — never by
+matching a command-line substring. `pnpm` and `node` command lines on a
+developer's machine look alike, and a pattern match has already taken a
+production host down here.
 
 ### Start it with your gateway too
 
@@ -81,8 +144,8 @@ section entirely — you cannot start a process on a computer you are not on.
 **MCP is your interface. REST is the apps' interface.** They are different
 shapes on purpose and you should not mix them:
 
-- The REST API is built for a screen — one big dashboard payload, many small
-  writes, polled every few seconds.
+- The REST API is built for a screen — an incremental delta of what changed
+  since the client's cursor, many small writes, polled every few seconds.
 - The MCP tools are built for you — a whole day or a whole range in one call,
   summarised, so you are not reconstructing someone's week out of forty
   round-trips.
@@ -194,7 +257,27 @@ for JSON-RPC that a terminal is never going to send. That is it working
 correctly. Ctrl-C out of it. If you want a real check, ask your client to list
 the tools — there are 56.
 
-Use the REST API only if you genuinely cannot speak MCP over either transport.
+### If you end up on REST anyway
+
+Use it only if you genuinely cannot speak MCP over either transport. Two things
+will bite you immediately:
+
+- **Send `X-LifeOS-Protocol: 4` on every `/api/v1` request.** A missing header
+  means protocol 1, and the server answers **426** — the whole surface, not just
+  the reads. `/health`, `/api/v1/protocol` and `/api/v1/assets/:hash` are
+  outside that gate; nothing else is.
+- **`GET /api/v1/dashboard/today` does not exist** and returns 404. The read is
+  `GET /api/v1/sync` (whole state with no `since`, a delta with one), writes can
+  go through `POST /api/v1/sync/push`, and artwork is a URL under
+  `/api/v1/assets/<sha256>` rather than base64 in the body.
+
+```bash
+curl -s "http://127.0.0.1:8787/api/v1/sync" \
+  -H "Authorization: Bearer $API_TOKEN" -H "X-LifeOS-Protocol: 4" | head -c 400
+```
+
+[`SYNC.md`](SYNC.md) is the contract — read §1 and §5 and stop there unless you
+are building a client.
 
 ### What the reads actually contain
 
@@ -367,8 +450,9 @@ deliberate.
   two things to tick for one act. `slot: null` turns a card back into a row.
 - **The life-day is not the calendar day.** It rolls over at `dayResetTime`
   (default 04:00), so a 01:00 completion belongs to the day before. Do not
-  re-derive this: every day payload carries `lifeDay` with the exact start and
-  end instants and the zone they are in. Use those.
+  re-derive this: every sync response carries `lifeDay` with the exact start and
+  end instants and the zone they are in, even when nothing else changed. Use
+  those.
 - **Life OS is an execution shell, not a catalogue.** If the user has a system
   that already knows when a card is due — a vault, Anki, an SR plugin — that
   system owns the schedule. Bring across *what is due today* and leave the rest
@@ -388,13 +472,111 @@ deliberate.
 
 ## 6. Get it on their phone
 
-There is an Android build on the
-[releases page](https://github.com/EntangledQuantum/Life_OS/releases). The app
-needs the server's URL and the same `API_TOKEN`.
+Most of what Life OS is for happens away from the desk, so this is not an
+optional extra. Do it in this order — reachable server, then install, then pair
+— because the app's first screen asks to pair and there is nothing to pair with
+until the server can be reached.
 
-For it to work outside the house the server has to be reachable — see
-`docs/NETWORK.md`. Set `API_HOST=0.0.0.0` at minimum so the phone can reach it
-over the LAN.
+### 6.1 Make the server reachable first
+
+A server on `127.0.0.1` cannot be reached by a phone, including a phone on the
+same Wi-Fi. In `.env`:
+
+```env
+API_HOST=0.0.0.0
+VITE_API_URL=
+```
+
+Restart, then check from the phone's point of view rather than the server's:
+
+```bash
+curl -s http://127.0.0.1:8787/health                 # expect "lan":true
+curl -s http://127.0.0.1:8787/api/v1/pair/reachability \
+  -H "Authorization: Bearer $API_TOKEN" -H "X-LifeOS-Protocol: 4"
+```
+
+`/health` is open; `reachability` is not, so it needs the token and the protocol
+header like every other `/api/v1` route. It tells you the address the phone has
+to use, every LAN address this instance answers on, and whether a tunnel is up. Then actually try that
+address **from another device on the network** — a request from the server to
+itself proves nothing about the firewall. On Windows the first bind to `0.0.0.0`
+pops a Defender prompt: allow **private networks only**.
+
+**Outside the LAN**, put it behind Tailscale. A Tailscale Funnel is a supported
+and tested way in, and so is a reverse proxy serving Life OS under a path
+(`https://box.tailnet.ts.net/lifeos`) — set `PUBLIC_PATH=/lifeos` (or a full
+`PUBLIC_URL`) so the pairing QR hands the phone that base URL instead of a LAN
+address it will not have later. Do not port-forward this to the open internet:
+authentication is one shared token and the traffic is plain HTTP without a
+tunnel in front of it. [`NETWORK.md`](NETWORK.md) is the detail.
+
+### 6.2 Install the APK
+
+The build is on the
+[releases page](https://github.com/EntangledQuantum/Life_OS/releases/latest).
+Link the user to `releases/latest` rather than a versioned file — it stays
+correct across releases.
+
+**The install path is: open that page in the browser on the phone, download the
+APK, tap it.** Android asks once whether that browser may install apps; the user
+accepts, and that is the whole flow.
+
+**Never tell the user to enable developer options or USB debugging.** It is not
+needed for this, and on at least one phone here it makes banking apps refuse to
+run until the setting is turned off *and the phone restarted*. `adb install` is a
+tool for whoever is building the app, on a device they already use for building.
+It is not a setup step, and you should not propose it.
+
+If the user cannot sideload at all — a managed device, a locked-down profile —
+say so plainly and leave it. The dashboard works in the phone's browser at the
+same address, and that is a reasonable place to stop.
+
+### 6.3 Pair it
+
+Pairing never involves typing the token.
+
+1. On the dashboard: **Settings → Pair a phone**. It mints a code and draws a QR.
+2. The user scans that QR **with the phone's ordinary camera app** — or Lens, or
+   anything else that reads a QR. The code encodes a `lifeos://pair` deep link,
+   so the phone offers to open Life OS, and the app trades the code for the real
+   token in one request.
+
+**There is no QR scanner inside the app, deliberately.** It needs no camera
+permission and no bundled barcode model, and the camera-app route works before
+the app has even been opened. Do not write instructions that tell the user to
+scan from inside Life OS, and do not propose building a scanner.
+
+The code is 12 characters, lives **five minutes**, and burns on first use. A
+second scan of the same QR answering *"That code is no longer valid"* is the
+server being strict, not a fault — mint another one.
+
+**Never print the pairing code or the `API_TOKEN`** into a chat log, a terminal
+you are sharing, a commit, or a file. The code is one request away from being
+the token, and the token is the only credential this instance has.
+
+#### If the QR route fails
+
+Enter the address by hand on the app's connect screen, plus the `API_TOKEN`:
+
+- The field **honours a scheme you type, exactly** — `https://`, a port, and a
+  path prefix all survive, so `https://box.tailnet.ts.net/lifeos` reaches an
+  instance behind a reverse proxy.
+- A **bare host** (`192.168.1.24`) gets the LAN default port filled in for you.
+- Then **Test**, then **Save**. Test reporting `lan: false` means the server is
+  still on loopback — go back to §6.1; nothing about the phone will fix it.
+
+### 6.4 Prove it works, on the phone
+
+Not "it paired". Pairing only proves one request succeeded.
+
+- Today's screen shows **their** habits and tasks, not an empty day.
+- A picture loads (artwork is fetched from `/api/v1/assets/<hash>` separately
+  from the data now, so a day that renders with blank art means the asset
+  requests are failing, usually auth or the proxy).
+- Complete something on the phone, then confirm it is complete on the dashboard
+  within a few seconds — and check the reverse direction too.
+- Lock the phone, leave it a minute, open it again. It should come back with the
+  day already there rather than a spinner.
 
 ---
 
@@ -402,8 +584,14 @@ over the LAN.
 
 Before you tell them you are done:
 
-- [ ] The service survives a reboot.
+- [ ] The service survives a reboot — registered with a supervisor, not left in
+      a terminal, and you have seen it come back.
 - [ ] `GET /health` answers, and `lan: true` if they want phone access.
+- [ ] `GET /api/v1/protocol` reports `{"protocol":4,"minProtocol":4}`.
+- [ ] The database is at schema **15** or later:
+      `sqlite3 data/lifeos.db "PRAGMA user_version;"`. The API applies
+      migrations at boot, so a lower number means it never successfully started
+      against this file.
 - [ ] Your MCP client lists the Life OS tools, and one read tool returns their
       real data rather than an empty result — an empty one means you are on the
       wrong `DATABASE_PATH` (stdio) or the wrong host (HTTP).
@@ -416,7 +604,10 @@ Before you tell them you are done:
       degrees has a ladder rather than one distant bar.
 - [ ] Tomorrow already has a schedule in it.
 - [ ] Your recurring check-in is scheduled and you have tested that it fires.
-- [ ] They have the token, and the app is connected if they wanted it.
+- [ ] They have the token, stored somewhere they will find it again and nowhere
+      you have printed it.
+- [ ] If they wanted the phone: it is installed, paired, showing their real day,
+      and a completion crosses in both directions (§6.4).
 
 Then tell them what you set up, in plain language, and what you will do at the
 check-in tonight.

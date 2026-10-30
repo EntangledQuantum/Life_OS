@@ -4,7 +4,9 @@
  */
 import lifeOs from "@docs/LIFE_OS.md?raw";
 import setup from "@docs/AGENT_SETUP.md?raw";
+import upgrade from "@docs/AGENT_UPGRADE.md?raw";
 import api from "@docs/API.md?raw";
+import sync from "@docs/SYNC.md?raw";
 import network from "@docs/NETWORK.md?raw";
 import database from "@docs/DATABASE.md?raw";
 import skill from "@docs/skills/life-os/SKILL.md?raw";
@@ -36,8 +38,18 @@ export const DOCS: DocPage[] = [
     title: "Set it up",
     group: "Start",
     file: "docs/AGENT_SETUP.md",
-    description: "Install, connect, interview, configure — addressed to an agent.",
+    description:
+      "Fresh install: install, connect, interview, configure — addressed to an agent.",
     markdown: setup,
+  },
+  {
+    slug: "upgrade",
+    title: "Upgrade to 3.0",
+    group: "Start",
+    file: "docs/AGENT_UPGRADE.md",
+    description:
+      "Already running Life OS? Move the server, your hooks and your phone to 3.0, in that order.",
+    markdown: upgrade,
   },
   {
     slug: "api",
@@ -46,6 +58,15 @@ export const DOCS: DocPage[] = [
     file: "docs/API.md",
     description: "Endpoints, headers, protocol version, pairing, tasks, webhooks.",
     markdown: api,
+  },
+  {
+    slug: "sync",
+    title: "Sync protocol",
+    group: "API",
+    file: "docs/SYNC.md",
+    description:
+      "Protocol 4, in full: the cursor, collections, tombstones, assets, push.",
+    markdown: sync,
   },
   {
     slug: "network",

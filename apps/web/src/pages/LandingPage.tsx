@@ -41,6 +41,8 @@ import {
 import {
   AGENT_ONE_LINER,
   AGENT_SETUP_URL,
+  AGENT_UPGRADE_ONE_LINER,
+  AGENT_UPGRADE_URL,
   ANDROID_APK_URL,
   asset,
   IS_PAGES,
@@ -111,19 +113,48 @@ function PrimaryCta({ className }: { className?: string }) {
 }
 
 /**
- * The one thing most people need from this page.
+ * The two sentences, and which one is yours.
  *
  * Setting Life OS up *is* an agent task — installing it, running it as a
  * service, and being interviewed about your day is more than a Get Started
  * button can carry. So the page hands over the sentence that starts that, and
  * a link to read what the agent will be told before you let it run.
+ *
+ * There are two of them because the single sentence silently assumed a fresh
+ * machine. 3.0 answers `426` to every 2.x client, so the moment an existing
+ * server upgrades, the app on that person's phone stops working until the new
+ * APK is on it — which is an ordering problem, and the whole subject of the
+ * second document. Someone who already runs Life OS must not be handed the
+ * install sentence, so the choice is made here, on two labelled tabs, rather
+ * than left to a line of small print they are expected to notice.
  */
+const SETUP_PATHS = [
+  {
+    key: "fresh",
+    tab: "New install",
+    heading: "Give this to your agent",
+    line: AGENT_ONE_LINER,
+    doc: AGENT_SETUP_URL,
+    note: "It installs Life OS, runs it as a service, connects over MCP, interviews you about your actual day, and schedules its own nightly check-in.",
+  },
+  {
+    key: "upgrade",
+    tab: "Already running it",
+    heading: "Upgrading to 3.0",
+    line: AGENT_UPGRADE_ONE_LINER,
+    doc: AGENT_UPGRADE_URL,
+    note: "It checks what you are on, backs up, gets the new app onto your phone before the server moves, confirms both migrations and verifies the result. No re-pairing, and nothing is wiped.",
+  },
+] as const;
+
 function SetupBox({ className }: { className?: string }) {
+  const [path, setPath] = useState<(typeof SETUP_PATHS)[number]["key"]>("fresh");
   const [copied, setCopied] = useState(false);
+  const active = SETUP_PATHS.find((p) => p.key === path) ?? SETUP_PATHS[0];
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(AGENT_ONE_LINER);
+      await navigator.clipboard.writeText(active.line);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -138,10 +169,37 @@ function SetupBox({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold">Give this to your agent</h3>
+      <div
+        role="tablist"
+        aria-label="Which setup is yours"
+        className="flex gap-1 rounded-xl border border-white/[0.07] bg-black/20 p-1"
+      >
+        {SETUP_PATHS.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            role="tab"
+            aria-selected={p.key === path}
+            onClick={() => {
+              setPath(p.key);
+              setCopied(false);
+            }}
+            className={cn(
+              "flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+              p.key === path
+                ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                : "text-[var(--faint)] hover:text-[var(--text)]",
+            )}
+          >
+            {p.tab}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold">{active.heading}</h3>
         <a
-          href={AGENT_SETUP_URL}
+          href={active.doc}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-[var(--accent)] hover:underline"
@@ -152,13 +210,17 @@ function SetupBox({ className }: { className?: string }) {
 
       <div className="mt-3 flex items-stretch gap-2">
         <code className="min-w-0 flex-1 select-all rounded-lg bg-black/30 px-3 py-2.5 font-mono text-[11px] leading-relaxed break-all text-[var(--muted)]">
-          {AGENT_ONE_LINER}
+          {active.line}
         </code>
         <button
           type="button"
           onClick={copy}
           className="btn shrink-0 self-start px-3 py-2.5"
-          aria-label="Copy the setup command"
+          aria-label={
+            path === "fresh"
+              ? "Copy the setup command"
+              : "Copy the upgrade command"
+          }
         >
           {copied ? (
             <Check className="h-4 w-4 text-[#34D399]" />
@@ -169,8 +231,7 @@ function SetupBox({ className }: { className?: string }) {
       </div>
 
       <p className="mt-2.5 text-xs leading-relaxed text-[var(--faint)]">
-        It installs Life OS, runs it as a service, connects over MCP, interviews
-        you about your actual day, and schedules its own nightly check-in.
+        {active.note}
       </p>
     </div>
   );
@@ -964,6 +1025,42 @@ function QuickStart() {
           label="paste into your agent"
           previewLines={12}
         />
+      </Reveal>
+
+      {/*
+       * The upgrade path, offered beside the install path rather than buried.
+       * Someone already running 2.x who pastes the sentence above gets an agent
+       * reading the fresh-install document, which is written to send them here
+       * — but only after it has had them check. Cheaper to put the right
+       * sentence on the page.
+       */}
+      <Reveal className="mt-6">
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
+          <h4 className="text-sm font-semibold">
+            Already running an older Life OS?
+          </h4>
+          <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
+            Use this sentence instead. 3.0 refuses protocol 3 outright, so the
+            moment the server updates, the app on your phone stops working until
+            the new APK is on it — the upgrade document exists to get that order
+            right. You will not have to pair again, and nothing is wiped.
+          </p>
+          <div className="mt-4">
+            <CodeBlock
+              code={AGENT_UPGRADE_ONE_LINER}
+              label="upgrading from 2.x"
+              previewLines={12}
+            />
+          </div>
+          <a
+            href={AGENT_UPGRADE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-block text-xs text-[var(--accent)] hover:underline"
+          >
+            Read what it says first →
+          </a>
+        </div>
       </Reveal>
 
       <Reveal className="mt-10">
