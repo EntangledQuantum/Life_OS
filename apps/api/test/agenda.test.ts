@@ -265,6 +265,93 @@ describe("a day that has ended stays ended", () => {
     assert.equal(tasks.getTask(db, stale.id)!.status, "missed");
   });
 
+  /** Every active occurrence of a repeating task, soonest first. */
+  function chainOf(title: string) {
+    return tasks.listTasks(db, { status: "active" }).filter((t) => t.title === title);
+  }
+
+  it("carries a repeating task forward, so one skipped evening is not the last", () => {
+    /*
+     * The miss used to be the end of the series. Marking the row `missed` was
+     * the whole of rollover, and a missed row cannot be completed, so nothing
+     * was left that could move the chain on — skip "Read" once and there was no
+     * "Read" on any day after.
+     */
+    const missed = makeTask({
+      title: "Read",
+      eventAt: new Date(Date.now() - 30 * 3600_000).toISOString(),
+      repeatRule: "daily",
+    });
+
+    agenda.rolloverPastDays(db);
+    assert.equal(tasks.getTask(db, missed.id)!.status, "missed");
+
+    const chain = chainOf("Read");
+    assert.equal(chain.length, 1, "exactly one Read is waiting");
+    assert.ok(
+      chain[0]!.eventAt! >= agenda.agendaLifeDay(db).lifeDayStart,
+      "and it belongs to this life-day or later, never to a day that has ended",
+    );
+    assert.equal(chain[0]!.repeatRule, "daily", "it still repeats");
+  });
+
+  it("wakes from a fortnight off with one task, not fourteen", () => {
+    // The catch-up walks the chain to today rather than paying out every
+    // occurrence the machine slept through.
+    makeTask({
+      title: "Read",
+      eventAt: new Date(Date.now() - 14 * 24 * 3600_000).toISOString(),
+      repeatRule: "daily",
+    });
+
+    agenda.rolloverPastDays(db);
+    const chain = chainOf("Read");
+    assert.equal(chain.length, 1);
+    assert.ok(chain[0]!.eventAt! >= agenda.agendaLifeDay(db).lifeDayStart);
+  });
+
+  it("does not spawn a second occurrence on the next sweep", () => {
+    makeTask({
+      title: "Read",
+      eventAt: new Date(Date.now() - 30 * 3600_000).toISOString(),
+      repeatRule: "daily",
+    });
+
+    agenda.rolloverPastDays(db);
+    agenda.rolloverPastDays(db);
+    assert.equal(chainOf("Read").length, 1, "the sweep is still idempotent");
+  });
+
+  it("retires a spaced task whose ladder ran out while nobody was looking", () => {
+    // A spent ladder means "stop repeating" — catching up must not invent rungs.
+    const spent = makeTask({
+      title: "Revise",
+      eventAt: new Date(Date.now() - 30 * 3600_000).toISOString(),
+      repeatRule: "spaced",
+      repeatOffsetsDays: [1],
+    });
+    db.update(schema.tasks)
+      .set({ repeatIndex: 1 })
+      .where(eq(schema.tasks.id, spent.id))
+      .run();
+
+    agenda.rolloverPastDays(db);
+    assert.equal(chainOf("Revise").length, 0);
+  });
+
+  it("does not loop forever on a repeat rule that cannot move time forward", () => {
+    // A hand-written ladder of zeroes would otherwise be stepped for ever.
+    makeTask({
+      title: "Nowhere",
+      eventAt: new Date(Date.now() - 30 * 3600_000).toISOString(),
+      repeatRule: "spaced",
+      repeatOffsetsDays: [0, 0, 0],
+    });
+
+    agenda.rolloverPastDays(db);
+    assert.equal(chainOf("Nowhere").length, 0);
+  });
+
   it("keeps it off today's list, so it is not mistaken for today's work", () => {
     makeTask({
       title: "Yesterday's thing",

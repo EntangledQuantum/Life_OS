@@ -207,6 +207,28 @@ describe("dismissing", () => {
     assert.equal(after!.status, "dismissed");
     assert.equal(after!.completedAt, null, "dismissed is not completed");
   });
+
+  it("ends a repeating series instead of handing back another occurrence", () => {
+    /*
+     * The one place a chain deliberately stops. Dismiss is the only clearing
+     * gesture the Timeline offers, so a daily task that came back from it could
+     * never be got rid of from any screen the user has — they would dismiss it
+     * again tomorrow, and the day after. A miss is the passive case and does
+     * carry on; see the rollover tests.
+     */
+    const task = create({
+      title: "Nightly thing",
+      eventAt: inMinutes(60),
+      repeatRule: "daily",
+    });
+    tasks.dismissTask(db, task.id);
+
+    assert.equal(
+      tasks.listTasks(db, { status: "active" }).filter((t) => t.title === "Nightly thing")
+        .length,
+      0,
+    );
+  });
 });
 
 describe("interacting", () => {

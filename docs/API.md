@@ -164,7 +164,7 @@ POST /api/v1/tasks
 | POST | `/api/v1/tasks` | Create |
 | GET/PATCH/DELETE | `/api/v1/tasks/:id` | Read / update / delete |
 | POST | `/api/v1/tasks/:id/complete` | XP + study session (if `kind: study`) + webhook + next repeat |
-| POST | `/api/v1/tasks/:id/dismiss` | Put it away without doing it. Distinct from done |
+| POST | `/api/v1/tasks/:id/dismiss` | Put it away without doing it. Distinct from done; ends a repeating series |
 | POST | `/api/v1/tasks/:id/notified` | Client confirms the notification fired (fires once) |
 | POST | `/api/v1/tasks/:id/interact` | Move a slider or press a button. **Not** a completion |
 
@@ -225,11 +225,29 @@ to, for grouping and colour — it does not make the task take over the timeline
 
 ### Repetition
 
-Completing a repeating task inserts the next occurrence as a **new** row (returned as
-`nextOccurrence`) and leaves the completed one in history. Rewinding it in place would make
-*"how many times did I actually do this"* unanswerable. `spaced` walks `1, 3, 7, 14, 30, 60`
-days by default — override with `repeatOffsetsDays` — preserving the lead times between
-`showAt`, `remindAt` and `eventAt`.
+When an occurrence of a repeating task ends, the next one is inserted as a **new** row and the
+one that ended stays in history. Rewinding it in place would make *"how many times did I
+actually do this"* unanswerable. `spaced` walks `1, 3, 7, 14, 30, 60` days by default —
+override with `repeatOffsetsDays` — preserving the lead times between `showAt`, `remindAt`
+and `eventAt`.
+
+An occurrence ends three ways, and two of them continue the chain:
+
+| | Next occurrence? |
+|---|---|
+| Completed (`/complete`, returns it as `nextOccurrence`) | yes |
+| Missed — the day ended without it | yes, dated in the current life-day or later |
+| Dismissed (`/dismiss`) | **no** — this is how a series is ended |
+
+A miss is passive, so the series is not in question: skip one evening's reading and there is
+still reading tomorrow. Dismissing is the user clearing the thing deliberately, and it is the
+only clearing gesture the clients offer — if it bred the next occurrence there would be no way
+to be rid of a daily task. Want the series back? Create it, or `PATCH` `repeatRule` onto a row.
+
+A machine that was off for a fortnight gets **one** task for the day it is opened on, not
+fourteen for days that are over: the chain is walked forward to the current `lifeDayStart`,
+paying out the `spaced` ladder as it goes, and a chain whose ladder ran out in the meantime
+simply stops.
 
 This is also how Life OS schedules its own recurring work, instead of an agent re-creating it
 every night.
