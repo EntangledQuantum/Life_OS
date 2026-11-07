@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
+import { eq } from "drizzle-orm";
 
 /**
  * Delivery end to end, against a real HTTP server.
@@ -29,6 +30,7 @@ let nextStatus = 200;
 
 let dir: string;
 let db: import("@life-os/db").LifeOsDb;
+let schema: typeof import("@life-os/db");
 let webhook: typeof import("../src/services/webhook.js");
 
 before(async () => {
@@ -38,6 +40,7 @@ before(async () => {
   const dbmod = await import("@life-os/db");
   dbmod.bootstrapDatabase(process.env.DATABASE_PATH);
   db = dbmod.getDb();
+  schema = dbmod;
   webhook = await import("../src/services/webhook.js");
 
   sink = createServer((req, res) => {
@@ -81,6 +84,27 @@ function reset() {
   for (const t of webhook.listWebhookTargets(db)) {
     webhook.deleteWebhookTarget(db, t.id);
   }
+}
+
+/*
+ * Read the secret straight out of the row. The service deliberately offers no
+ * way to get it back, so proving a refused patch left it alone means going
+ * around the service rather than through it.
+ */
+function storedSecret(id: string): string | null {
+  const row = db
+    .select({ secret: schema.webhookTargets.secret })
+    .from(schema.webhookTargets)
+    .where(eq(schema.webhookTargets.id, id))
+    .get();
+  return row?.secret ?? null;
+}
+
+/** Create a target the tests expect to succeed, and hand back its id. */
+function makeTarget(input: Parameters<typeof webhook.createWebhookTarget>[1]): string {
+  const out = webhook.createWebhookTarget(db, input);
+  assert.ok(!("error" in out), `setup target was refused: ${JSON.stringify(out)}`);
+  return (out as { id: string }).id;
 }
 
 describe("hermes delivery", () => {
@@ -252,5 +276,223 @@ describe("target validation", () => {
     const listed = JSON.stringify(webhook.listWebhookTargets(db));
     assert.ok(!listed.includes("do-not-leak"), "secrets must not leave the server");
     assert.match(listed, /"secretSet":true/);
+  });
+});
+
+/*
+ * The same rule on the way in through a patch.
+ *
+ * Create refuses a signed preset with no secret because every delivery to it
+ * would 401. A patch could reach that state by a different door — clearing the
+ * secret, moving onto a signed preset, or both at once — and a 200 for a target
+ * that can never deliver is the failure this whole module exists to prevent.
+ */
+describe("patch validation", () => {
+  /** Create's own refusal for the preset, so the tests cannot drift from it. */
+  function createRefusal(preset: "hermes" | "openclaw"): string {
+    const out = webhook.createWebhookTarget(db, {
+      name: preset,
+      preset,
+      url: `http://127.0.0.1:${port}/hook`,
+    });
+    assert.ok("error" in out, "create must refuse a signed preset with no secret");
+    return (out as { error: string }).error;
+  }
+
+  it("refuses to clear the secret on a signed preset", () => {
+    reset();
+    const id = makeTarget({
+      name: "Hermes",
+      preset: "hermes",
+      url: `http://127.0.0.1:${port}/webhooks/lifeos`,
+      secret: "route-secret",
+    });
+
+    const out = webhook.updateWebhookTarget(db, id, { secret: "" });
+    assert.ok("error" in out, "clearing a hermes secret must be refused");
+    assert.equal(storedSecret(id), "route-secret", "the stored secret must survive");
+    assert.equal(webhook.getWebhookTarget(db, id)?.secretSet, true);
+  });
+
+  it("treats a null secret as clearing it, and refuses that too", () => {
+    reset();
+    const id = makeTarget({
+      name: "OpenClaw",
+      preset: "openclaw",
+      url: `http://127.0.0.1:${port}/hooks/wake`,
+      secret: "hooks-token",
+    });
+
+    const out = webhook.updateWebhookTarget(db, id, { secret: null });
+    assert.ok("error" in out, "a null secret is still a cleared secret");
+    assert.equal(storedSecret(id), "hooks-token");
+  });
+
+  it("refuses to move a secretless target onto a signed preset", () => {
+    reset();
+    const id = makeTarget({
+      name: "Plain",
+      preset: "generic",
+      url: `http://127.0.0.1:${port}/hook`,
+    });
+
+    const out = webhook.updateWebhookTarget(db, id, { preset: "hermes" });
+    assert.ok("error" in out, "a secretless generic must not become hermes");
+    assert.equal(
+      webhook.getWebhookTarget(db, id)?.preset,
+      "generic",
+      "the refused preset must not be written",
+    );
+  });
+
+  it("refuses a preset switch and a secret clear in the same patch", () => {
+    reset();
+    const id = makeTarget({
+      name: "Plain",
+      preset: "generic",
+      url: `http://127.0.0.1:${port}/hook`,
+      secret: "generic-secret",
+    });
+
+    // Neither half is broken on its own: the target has a secret, and a signed
+    // preset is fine with one. Only the two together leave it unable to deliver.
+    const out = webhook.updateWebhookTarget(db, id, { preset: "hermes", secret: "" });
+    assert.ok("error" in out, "the pair must be judged together, not one at a time");
+    assert.equal(storedSecret(id), "generic-secret");
+    assert.equal(webhook.getWebhookTarget(db, id)?.preset, "generic");
+  });
+
+  it("gives the refusal create gives, word for word", () => {
+    reset();
+    const hermesId = makeTarget({
+      name: "Hermes",
+      preset: "hermes",
+      url: `http://127.0.0.1:${port}/webhooks/lifeos`,
+      secret: "route-secret",
+    });
+    const openclawId = makeTarget({
+      name: "OpenClaw",
+      preset: "openclaw",
+      url: `http://127.0.0.1:${port}/hooks/wake`,
+      secret: "hooks-token",
+    });
+
+    const hermes = webhook.updateWebhookTarget(db, hermesId, { secret: "" });
+    const openclaw = webhook.updateWebhookTarget(db, openclawId, { secret: "" });
+    assert.ok("error" in hermes);
+    assert.ok("error" in openclaw);
+    assert.equal((hermes as { error: string }).error, createRefusal("hermes"));
+    assert.equal((openclaw as { error: string }).error, createRefusal("openclaw"));
+  });
+
+  it("leaves every other field of a refused patch unapplied", () => {
+    reset();
+    const id = makeTarget({
+      name: "Hermes",
+      preset: "hermes",
+      url: `http://127.0.0.1:${port}/webhooks/lifeos`,
+      secret: "route-secret",
+      events: ["goal.achieved"],
+    });
+
+    const out = webhook.updateWebhookTarget(db, id, {
+      name: "Renamed",
+      url: "http://127.0.0.1:9/elsewhere",
+      events: ["habit.complete"],
+      active: false,
+      secret: "",
+    });
+    assert.ok("error" in out);
+
+    const after = webhook.getWebhookTarget(db, id)!;
+    assert.equal(after.name, "Hermes", "a refused patch must not rename");
+    assert.match(after.url, /webhooks\/lifeos$/, "a refused patch must not re-point");
+    assert.deepEqual(after.events, ["goal.achieved"]);
+    assert.equal(after.active, true);
+    assert.equal(storedSecret(id), "route-secret");
+  });
+
+  it("leaves hermes signing with the original secret after a refusal", async () => {
+    reset();
+    const id = makeTarget({
+      name: "Hermes",
+      preset: "hermes",
+      url: `http://127.0.0.1:${port}/webhooks/lifeos`,
+      secret: "route-secret",
+    });
+
+    assert.ok("error" in webhook.updateWebhookTarget(db, id, { secret: "" }));
+
+    // The strongest proof the secret is intact: a real delivery still verifies.
+    const result = await webhook.fireAgentWebhook(db, "habit.complete", {
+      name: "Wake window",
+    });
+    assert.equal(result.delivered, 1);
+    const got = received[0]!;
+    const ts = got.headers["x-webhook-timestamp"] as string;
+    const expected = createHmac("sha256", "route-secret")
+      .update(`${ts}.${got.raw}`)
+      .digest("hex");
+    assert.equal(got.headers["x-webhook-signature-v2"], expected);
+  });
+
+  it("allows dropping to generic and clearing the secret at once", () => {
+    reset();
+    const id = makeTarget({
+      name: "Hermes",
+      preset: "hermes",
+      url: `http://127.0.0.1:${port}/webhooks/lifeos`,
+      secret: "route-secret",
+    });
+
+    // Generic needs no secret, so this is a legitimate target, not a broken one.
+    const out = webhook.updateWebhookTarget(db, id, { preset: "generic", secret: "" });
+    assert.ok(!("error" in out), `a generic target needs no secret: ${JSON.stringify(out)}`);
+    assert.equal((out as { preset: string }).preset, "generic");
+    assert.equal(storedSecret(id), null);
+  });
+
+  it("allows replacing one secret with another", () => {
+    reset();
+    const id = makeTarget({
+      name: "Hermes",
+      preset: "hermes",
+      url: `http://127.0.0.1:${port}/webhooks/lifeos`,
+      secret: "old-secret",
+    });
+
+    const out = webhook.updateWebhookTarget(db, id, { secret: "new-secret" });
+    assert.ok(!("error" in out));
+    assert.equal(storedSecret(id), "new-secret");
+  });
+
+  it("allows a signed preset and its secret arriving together", () => {
+    reset();
+    const id = makeTarget({
+      name: "Plain",
+      preset: "generic",
+      url: `http://127.0.0.1:${port}/hook`,
+    });
+
+    const out = webhook.updateWebhookTarget(db, id, {
+      preset: "openclaw",
+      secret: "hooks-token",
+    });
+    assert.ok(!("error" in out), "the patch supplies the secret it needs");
+    assert.equal((out as { preset: string }).preset, "openclaw");
+  });
+
+  it("still leaves an untouched secret alone on an unrelated patch", () => {
+    reset();
+    const id = makeTarget({
+      name: "Hermes",
+      preset: "hermes",
+      url: `http://127.0.0.1:${port}/webhooks/lifeos`,
+      secret: "route-secret",
+    });
+
+    const out = webhook.updateWebhookTarget(db, id, { active: false });
+    assert.ok(!("error" in out), "an unrelated patch must not trip the secret check");
+    assert.equal(storedSecret(id), "route-secret");
   });
 });
