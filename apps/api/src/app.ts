@@ -645,7 +645,11 @@ export function createApp() {
   api.patch("/webhooks/targets/:id", async (c) => {
     const body = updateWebhookTargetSchema.parse(await c.req.json());
     const result = webhook.updateWebhookTarget(getDb(), c.req.param("id"), body);
-    if ("error" in result) return c.json(result, 404);
+    if ("error" in result) {
+      // A patch can be refused for the same reason create is — a signed preset
+      // left without a secret — and that is a bad request, not a missing target.
+      return c.json(result, result.error === "Webhook target not found" ? 404 : 400);
+    }
     return c.json(result);
   });
   api.delete("/webhooks/targets/:id", (c) =>
