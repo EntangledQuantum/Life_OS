@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import {
+  catchUpOccurrence,
   expiresAt,
   isCardImminent,
   isReminderDue,
@@ -209,5 +210,107 @@ describe("validateCardSchedule", () => {
     });
     assert.equal(out.ok, true);
     assert.equal(out.normalized.eventAt, "2026-08-14T19:00:00.000Z");
+  });
+});
+
+describe("catchUpOccurrence", () => {
+  const at = (iso: string) => new Date(iso);
+
+  it("steps once when nothing has to be caught up", () => {
+    const out = catchUpOccurrence("daily", at("2026-08-14T19:00:00Z"), 0);
+    assert.equal(out!.at.toISOString(), "2026-08-15T19:00:00.000Z");
+    assert.equal(out!.repeatIndex, 1);
+  });
+
+  it("walks a fortnight of absence down to one occurrence", () => {
+    /*
+     * The machine was off and fourteen evenings went by. The answer is one task
+     * for the day being opened — not fourteen for days that are over, and not
+     * one dated in the past, which the life-day rule forbids.
+     */
+    const floor = at("2026-08-15T04:00:00Z");
+    const out = catchUpOccurrence(
+      "daily",
+      at("2026-08-01T19:00:00Z"),
+      0,
+      undefined,
+      floor,
+    );
+
+    assert.ok(out!.at.getTime() >= floor.getTime());
+    assert.equal(out!.at.toISOString(), "2026-08-15T19:00:00.000Z");
+    assert.equal(out!.repeatIndex, 14, "every evening that passed counts as one");
+  });
+
+  it("lands on the first rung at or after the floor, never past it", () => {
+    const out = catchUpOccurrence(
+      "weekly",
+      at("2026-08-01T19:00:00Z"),
+      0,
+      undefined,
+      at("2026-08-15T04:00:00Z"),
+    );
+    assert.equal(out!.at.toISOString(), "2026-08-15T19:00:00.000Z");
+  });
+
+  it("pays out the spaced ladder rung by rung as it catches up", () => {
+    // 1 + 3 + 7 days from the 1st is the 12th; the 14-day rung clears the floor.
+    const out = catchUpOccurrence(
+      "spaced",
+      at("2026-08-01T19:00:00Z"),
+      0,
+      [1, 3, 7, 14],
+      at("2026-08-13T04:00:00Z"),
+    );
+    assert.equal(out!.at.toISOString(), "2026-08-26T19:00:00.000Z");
+    assert.equal(out!.repeatIndex, 4, "the ladder is spent, so this is the last");
+  });
+
+  it("stops rather than inventing rungs when the ladder runs out short", () => {
+    assert.equal(
+      catchUpOccurrence(
+        "spaced",
+        at("2026-08-01T19:00:00Z"),
+        0,
+        [1, 3],
+        at("2026-09-01T04:00:00Z"),
+      ),
+      null,
+    );
+  });
+
+  it("stops on a rule that does not repeat", () => {
+    assert.equal(catchUpOccurrence("none", at("2026-08-01T19:00:00Z"), 0), null);
+  });
+
+  it("stops on a ladder that cannot move time forward", () => {
+    // Without this the walk would step for ever on a hand-written zero.
+    assert.equal(
+      catchUpOccurrence(
+        "spaced",
+        at("2026-08-01T19:00:00Z"),
+        0,
+        [0, 0, 0],
+        at("2026-08-15T04:00:00Z"),
+      ),
+      null,
+    );
+    assert.equal(
+      catchUpOccurrence("spaced", at("2026-08-01T19:00:00Z"), 0, [-7]),
+      null,
+    );
+  });
+
+  it("gives up rather than walking a floor no absence could explain", () => {
+    // Decades out: the walk is bounded, and a bound that is reached spawns nothing.
+    const from = at("2026-08-01T19:00:00Z");
+    const out = catchUpOccurrence(
+      "daily",
+      from,
+      0,
+      undefined,
+      new Date(from.getTime() + 5000 * 24 * 3600_000),
+    );
+    assert.equal(out, null);
   });
 });

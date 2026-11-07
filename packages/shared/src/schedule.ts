@@ -323,6 +323,54 @@ export function nextOccurrence(
 }
 
 /**
+ * How many rungs of a chain one catch-up may climb.
+ *
+ * `nextOccurrence` moves by whole days, so this is years of absence rather than
+ * a bound anyone meets. It exists because the alternative to a bound is a read
+ * that never returns when the machine has been off long enough.
+ */
+const MAX_CATCH_UP_STEPS = 4000;
+
+/**
+ * Where the chain lands once it has caught up to `notBefore`.
+ *
+ * Completing an occurrence on time steps once and that is the answer. An
+ * occurrence whose day ended while nobody was looking is different: the chain
+ * has to be walked forward until it reaches the life-day being opened, so a
+ * machine that was off for a fortnight wakes to one task for today rather than
+ * fourteen for days that are over. The spaced ladder is paid out rung by rung
+ * as the walk goes, because skipping a repetition is still a repetition.
+ *
+ * Null means the chain is finished and no occurrence should follow: the rule
+ * does not repeat, a spaced ladder is spent, the rule cannot move time forward
+ * at all (a hand-written `repeatOffsetsDays` of zeroes is the way in), or the
+ * walk is longer than any real absence.
+ */
+export function catchUpOccurrence(
+  rule: RepeatRule,
+  from: Date,
+  repeatIndex: number,
+  offsets: readonly number[] = SPACED_OFFSETS_DAYS,
+  notBefore: Date | null = null,
+): { at: Date; repeatIndex: number } | null {
+  let at = from;
+  let index = repeatIndex;
+
+  for (let step = 0; step < MAX_CATCH_UP_STEPS; step += 1) {
+    const candidate = nextOccurrence(rule, at, index, offsets);
+    if (candidate === null) return null;
+    // A rule that stands still would be stepped for ever.
+    if (candidate.getTime() <= at.getTime()) return null;
+    at = candidate;
+    index += 1;
+    if (notBefore === null || at.getTime() >= notBefore.getTime()) {
+      return { at, repeatIndex: index };
+    }
+  }
+  return null;
+}
+
+/**
  * Shift a whole schedule to a new event time, preserving the lead times the
  * agent chose (e.g. "show 2h before, ping 10min before" survives repetition).
  */

@@ -32,7 +32,7 @@ import {
 } from "@life-os/shared";
 import { getDayResetTime, getSettingsRow, nowIso } from "./helpers.js";
 import { listHabits } from "./habits.js";
-import { listTasks } from "./tasks.js";
+import { getTask, listTasks, spawnNextOccurrence } from "./tasks.js";
 
 /** Which life-day it is here, and where its edges are. */
 export function agendaLifeDay(db: LifeOsDb, now = new Date()): LifeDay {
@@ -253,8 +253,18 @@ export function getAgenda(db: LifeOsDb, now = new Date()): Agenda {
  * need no equivalent — a habit is not done until it is logged, and a missing
  * log for a past day already *is* the record.
  *
+ * A repeating task closed out here still gets its next occurrence. The miss is
+ * the record of a day not done, not a verdict on the series: skipping one
+ * evening's reading used to leave no reading task on any day afterwards,
+ * because a missed row cannot be completed and completion was the only thing
+ * that moved a chain along. The new occurrence is placed at or after
+ * `lifeDayStart`, never inside a day that has already ended, so the rule this
+ * function exists to enforce — yesterday cannot pay out today's XP — survives
+ * the repeat it spawns.
+ *
  * Idempotent, and cheap enough to run on every read: it only touches rows whose
- * event is strictly before the current life-day began.
+ * event is strictly before the current life-day began, and what it spawns is
+ * never one of them.
  */
 export function rolloverPastDays(db: LifeOsDb, now = new Date()): number {
   const day = agendaLifeDay(db, now);
@@ -273,11 +283,17 @@ export function rolloverPastDays(db: LifeOsDb, now = new Date()): number {
   if (stale.length === 0) return 0;
 
   const at = nowIso();
-  for (const task of stale) {
+  const floor = new Date(day.lifeDayStart);
+  for (const row of stale) {
     db.update(schema.tasks)
       .set({ status: "missed", updatedAt: at })
-      .where(eq(schema.tasks.id, task.id))
+      .where(eq(schema.tasks.id, row.id))
       .run();
+
+    // Marked first, so a chain being caught up is not spending an open-task
+    // slot on the occurrence it is replacing.
+    const task = getTask(db, row.id);
+    if (task) spawnNextOccurrence(db, task, floor);
   }
   return stale.length;
 }

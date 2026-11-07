@@ -867,8 +867,10 @@ const tools = [
       "Create a task. There is no start — a task has a target time and a completion. " +
       "Set eventAt for when it should happen and durationMinutes for how long it takes " +
       "(without a duration it leaves the front page the moment its time passes). " +
-      "repeatRule daily|weekly|spaced makes Life OS schedule it again on completion, so you " +
-      "do not have to recreate recurring work every night. resources[] carries links — that is " +
+      "repeatRule daily|weekly|spaced makes Life OS schedule it again once the occurrence ends, " +
+      "whether it was done or missed, so you do not have to recreate recurring work every " +
+      "night. Dismissing an occurrence is the one thing that stops the series. " +
+      "resources[] carries links — that is " +
       "all a study block ever was. control adds a slider or button that asks the user something " +
       "without completing the task.",
     inputSchema: {
@@ -1008,7 +1010,9 @@ const tools = [
   },
   {
     name: "lifeos_dismiss_task",
-    description: "Put a task away without doing it. Distinct from done; stays in history.",
+    description:
+      "Put a task away without doing it. Distinct from done; stays in history. On a repeating " +
+      "task this ends the series — a miss carries the chain on, dismissing stops it.",
     inputSchema: {
       type: "object" as const,
       properties: { id: { type: "string" } },
