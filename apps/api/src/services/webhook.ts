@@ -80,6 +80,31 @@ export function listWebhookTargets(db: LifeOsDb): WebhookTarget[] {
   return db.select().from(schema.webhookTargets).all().map(mapTarget);
 }
 
+/**
+ * Hermes rejects unsigned requests and OpenClaw rejects unauthenticated ones,
+ * so a signed preset with no secret would fail on every single delivery. Say so
+ * at the write rather than letting it look configured and 401 forever after.
+ *
+ * Shared by create and update because it is one rule: a patch can arrive at the
+ * same broken target by a different door, and a caller that handles the refusal
+ * should not have to recognise two wordings of it.
+ *
+ * Takes *whether* a secret is set rather than the secret, so no caller has to
+ * hold the value to ask the question.
+ */
+function unsignedPresetError(
+  preset: WebhookPreset,
+  secretSet: boolean,
+): { error: string } | null {
+  if (preset === "generic" || secretSet) return null;
+  return {
+    error:
+      preset === "hermes"
+        ? "Hermes verifies an HMAC signature — set the route's secret"
+        : "OpenClaw requires a bearer token — set hooks.token as the secret",
+  };
+}
+
 export function createWebhookTarget(
   db: LifeOsDb,
   input: {
@@ -103,16 +128,8 @@ export function createWebhookTarget(
   }
 
   const preset = isWebhookPreset(input.preset) ? input.preset : "generic";
-  // Hermes rejects unsigned requests and OpenClaw rejects unauthenticated ones,
-  // so a target without a secret would fail on every single delivery. Say so now.
-  if (preset !== "generic" && !input.secret) {
-    return {
-      error:
-        preset === "hermes"
-          ? "Hermes verifies an HMAC signature — set the route's secret"
-          : "OpenClaw requires a bearer token — set hooks.token as the secret",
-    };
-  }
+  const unsigned = unsignedPresetError(preset, Boolean(input.secret));
+  if (unsigned) return unsigned;
 
   const now = nowIso();
   const id = nanoid();
@@ -156,6 +173,27 @@ export function updateWebhookTarget(
 ): WebhookTarget | { error: string } {
   const existing = getWebhookTarget(db, id);
   if (!existing) return { error: "Webhook target not found" };
+
+  /*
+   * Judge the target as it will be, not as it was. Three patches land on the
+   * same unusable target — clearing the secret on a signed preset, moving a
+   * secretless target onto one, and doing both in a single call — and only the
+   * post-patch view catches all three. `secretSet` rather than the secret
+   * itself, so deciding this never puts the value in reach of an error message.
+   *
+   * An invalid preset is dropped below rather than written, so it must not
+   * count here either.
+   */
+  const preset =
+    patch.preset !== undefined && isWebhookPreset(patch.preset)
+      ? patch.preset
+      : existing.preset;
+  const secretSet =
+    patch.secret !== undefined ? Boolean(patch.secret) : existing.secretSet;
+  const unsigned = unsignedPresetError(preset, secretSet);
+  // Returning before the single `db.update` is what keeps a refusal total:
+  // the secret shares the row, so nothing can be left half-applied.
+  if (unsigned) return unsigned;
 
   db.update(schema.webhookTargets)
     .set({

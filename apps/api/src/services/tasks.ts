@@ -5,10 +5,10 @@ import * as schema from "@life-os/db";
 import {
   IMMINENT_WINDOW_MINUTES,
   SPACED_OFFSETS_DAYS,
+  catchUpOccurrence,
   isCardImminent,
   isReminderDue,
   isTaskKind,
-  nextOccurrence,
   normalizeCardStyle,
   notifyAt,
   sanitizeSvg,
@@ -494,6 +494,80 @@ export function markTaskNotified(db: LifeOsDb, id: string) {
 }
 
 /**
+ * Insert the occurrence that follows `task`, as a **new** row.
+ *
+ * The occurrence just ended stays in history and keeps counting; rewinding it
+ * in place would make "how many times did I actually do this" unanswerable.
+ *
+ * An occurrence can end three ways and only one of them is a completion, so
+ * this is the single place that moves a chain forward. Leaving it inside
+ * `completeTask` is what killed repeating tasks outright: a missed row cannot
+ * be completed, so a miss was the end of the series.
+ *
+ * `notBefore` is the floor the new occurrence must not fall below — the start
+ * of the life-day being opened, when the chain is being caught up after days
+ * nobody saw. Omit it and the chain advances exactly one step, which is what
+ * finishing something on time means.
+ */
+export function spawnNextOccurrence(
+  db: LifeOsDb,
+  task: Task,
+  notBefore: Date | null = null,
+): Task | null {
+  if (task.repeatRule === "none" || !task.eventAt) return null;
+
+  const landing = catchUpOccurrence(
+    task.repeatRule,
+    new Date(task.eventAt),
+    task.repeatIndex,
+    task.repeatOffsetsDays ?? SPACED_OFFSETS_DAYS,
+    notBefore,
+  );
+  if (!landing) return null;
+
+  // Preserve the lead times the agent chose: "show 2h before, ping 10min
+  // before" survives repetition instead of collapsing to the raw instant.
+  const shifted = shiftSchedule(
+    { showAt: task.showAt, remindAt: task.remindAt, eventAt: task.eventAt },
+    landing.at,
+  );
+  const created = createTask(db, {
+    kind: task.kind,
+    title: task.title,
+    subtitle: task.subtitle,
+    body: task.body,
+    purpose: task.purpose,
+    activityTag: task.activityTag,
+    showAt: shifted.showAt,
+    remindAt: shifted.remindAt,
+    eventAt: shifted.eventAt,
+    durationMinutes: task.durationMinutes,
+    repeatRule: task.repeatRule,
+    repeatOffsetsDays: task.repeatOffsetsDays,
+    xpOnComplete: task.xpOnComplete,
+    webhookOnComplete: task.webhookOnComplete,
+    webhookOnInteract: task.webhookOnInteract,
+    resources: task.resources,
+    emoji: task.emoji,
+    themeColor: task.themeColor,
+    ctaLabel: task.ctaLabel,
+    ctaLink: task.ctaLink,
+    control: task.control,
+    sound: task.sound,
+    flash: task.flash,
+    source: task.source,
+    meta: task.meta,
+  });
+  if (!("task" in created)) return null;
+
+  db.update(schema.tasks)
+    .set({ repeatIndex: landing.repeatIndex })
+    .where(eq(schema.tasks.id, created.task.id))
+    .run();
+  return getTask(db, created.task.id);
+}
+
+/**
  * Complete a task.
  *
  * A repeating task spawns its next occurrence as a **new** row, so the one just
@@ -540,57 +614,7 @@ export async function completeTask(
     .where(eq(schema.tasks.id, id))
     .run();
 
-  let next: Task | null = null;
-  if (task.repeatRule !== "none" && task.eventAt) {
-    const at = nextOccurrence(
-      task.repeatRule,
-      new Date(task.eventAt),
-      task.repeatIndex,
-      task.repeatOffsetsDays ?? SPACED_OFFSETS_DAYS,
-    );
-    if (at) {
-      // Preserve the lead times the agent chose: "show 2h before, ping 10min
-      // before" survives repetition instead of collapsing to the raw instant.
-      const shifted = shiftSchedule(
-        { showAt: task.showAt, remindAt: task.remindAt, eventAt: task.eventAt },
-        at,
-      );
-      const created = createTask(db, {
-        kind: task.kind,
-        title: task.title,
-        subtitle: task.subtitle,
-        body: task.body,
-        purpose: task.purpose,
-        activityTag: task.activityTag,
-        showAt: shifted.showAt,
-        remindAt: shifted.remindAt,
-        eventAt: shifted.eventAt,
-        durationMinutes: task.durationMinutes,
-        repeatRule: task.repeatRule,
-        repeatOffsetsDays: task.repeatOffsetsDays,
-        xpOnComplete: task.xpOnComplete,
-        webhookOnComplete: task.webhookOnComplete,
-        webhookOnInteract: task.webhookOnInteract,
-        resources: task.resources,
-        emoji: task.emoji,
-        themeColor: task.themeColor,
-        ctaLabel: task.ctaLabel,
-        ctaLink: task.ctaLink,
-        control: task.control,
-        sound: task.sound,
-        flash: task.flash,
-        source: task.source,
-        meta: task.meta,
-      });
-      if ("task" in created) {
-        db.update(schema.tasks)
-          .set({ repeatIndex: task.repeatIndex + 1 })
-          .where(eq(schema.tasks.id, created.task.id))
-          .run();
-        next = getTask(db, created.task.id);
-      }
-    }
-  }
+  const next = spawnNextOccurrence(db, task);
 
   /*
    * Completing a study task records a study session, which is what feeds study
@@ -638,7 +662,22 @@ export async function completeTask(
   return { task: completed, xpAwarded: xp, nextOccurrence: next, study, webhook };
 }
 
-/** Put a task away without doing it. Distinct from done, and it stays in history. */
+/**
+ * Put a task away without doing it. Distinct from done, and it stays in history.
+ *
+ * A repeating task dismissed here does **not** come back, and that is the whole
+ * difference between dismissing and missing. A miss is passive — the day simply
+ * ended — so the chain carries on. Dismissing is the user reaching for the one
+ * clearing gesture every client offers and saying "stop showing me this": the
+ * Timeline row has Complete and Dismiss and nothing else, so if this bred the
+ * next occurrence there would be no way, from any screen the user has, to be
+ * rid of a daily task. They would dismiss it again tomorrow, and the day after,
+ * for ever. `lifeos_bulk_dismiss_tasks` is the same gesture at scale — it exists
+ * to end duplicates left by an import, and it must not hand them back.
+ *
+ * Wanting the series itself again is a different act with a different name:
+ * create it, or patch `repeatRule` back onto this row.
+ */
 export function dismissTask(db: LifeOsDb, id: string) {
   const task = getTask(db, id);
   if (!task) return { error: "Task not found" as const };
